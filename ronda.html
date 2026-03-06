@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>RONDA SHIELD - MODO SEGUIR</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <style>
+        body { margin: 0; background: #001529; color: white; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        #map-ronda { flex: 1; width: 100%; }
+        .painel-ronda { background: #0f172a; padding: 20px; border-top: 4px solid #f59e0b; text-align: center; z-index: 1000; }
+        input { width: 100%; padding: 12px; border-radius: 8px; margin-bottom: 10px; border: none; background: #1e293b; color: white; font-size: 16px; box-sizing: border-box; }
+        .btn-ronda { background: #f59e0b; color: #000; border: none; padding: 20px; width: 100%; border-radius: 12px; font-weight: bold; font-size: 18px; cursor: pointer; }
+        .btn-ronda.ativo { background: #ef4444; color: white; }
+        #cronometro { margin-top: 10px; font-size: 22px; font-weight: bold; color: #f59e0b; min-height: 30px; }
+        .ponto-nome { color: #94a3b8; font-size: 14px; margin-bottom: 5px; }
+        .ponto-label { background: rgba(0,0,0,0.7); color: white; border: none; font-size: 10px; font-weight: bold; padding: 2px; text-align: center; border-radius: 3px; }
+    </style>
+</head>
+<body>
+
+<div id="map-ronda"></div>
+
+<div class="painel-ronda">
+    <div id="login-area">
+        <input type="text" id="nome-vigilante" placeholder="NOME DO VIGILANTE">
+        <input type="text" id="num-vigilante" placeholder="ID / NÚMERO">
+    </div>
+    <button id="btn-acao" class="btn-ronda" onclick="gerenciarRonda()">INICIAR TURNO DE RONDA</button>
+    <div id="cronometro"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+
+<script>
+// CONFIGURAÇÃO FIREBASE (MANTIDA)
+firebase.initializeApp({ apiKey: "AIzaSyA0rPJ_LsiYW8IcU1imTvWRXPExGNKmC6M", databaseURL: "https://gps-alvorada-default-rtdb.firebaseio.com" });
+const db = firebase.database();
+
+const map = L.map('map-ronda', { zoomControl: false }).setView([-23.201945, -47.029347], 17);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+const markerVig = L.circleMarker([0,0], {radius: 12, color: '#f59e0b', fillColor: '#fff', fillOpacity: 1, weight: 3}).addTo(map);
+
+// OS 10 PONTOS + PORTARIA
+const pontosObrigatorios = [
+    { nome: "Ponto 1: ETE", lat: -23.205488, lng: -47.029630 },
+    { nome: "Ponto 2: Q: AM", lat: -23.208707, lng: -47.031041 },
+    { nome: "Ponto 3: Travessa do Glauco", lat: -23.207588, lng: -47.034313 },
+    { nome: "Ponto 4: Muro: Q:Y", lat: -23.204679, lng: -47.035933 },
+    { nome: "Ponto 5: Fundos Q:T", lat: -23.201987, lng: -47.035756 },
+    { nome: "Ponto 6: Q: M", lat: -23.201366, lng: -47.034329 },
+    { nome: "Ponto 7: Fundos Q: L", lat: -23.200202, lng: -47.035649 },
+    { nome: "Ponto 8: Portão 5", lat: -23.197007, lng: -47.034806 },
+    { nome: "Ponto 9: Caixa d’agua", lat: -23.193299, lng: -47.033095 },
+    { nome: "Ponto 10: Divisa com Japi", lat: -23.196174, lng: -47.031556 },
+    { nome: "Portaria", lat: -23.201945, lng: -47.029347 }
+];
+
+// DESENHO DOS GUIAS NO MAPA
+pontosObrigatorios.forEach(p => {
+    L.circle([p.lat, p.lng], { radius: 25, color: '#3b82f6', fillOpacity: 0.2, weight: 1 }).addTo(map);
+    L.marker([p.lat, p.lng], { icon: L.divIcon({ className: 'ponto-label', html: p.nome.split(':')[0], iconSize: [40, 15] }) }).addTo(map);
+});
+
+let watchID, emRonda = false, paradaAtiva = false, sessionID = "";
+let ultimoPontoVisitado = null;
+
+function gerenciarRonda() {
+    const nome = document.getElementById('nome-vigilante').value;
+    const num = document.getElementById('num-vigilante').value;
+    if(!nome || !num) return alert("Preencha seu nome e ID!");
+
+    if(!emRonda) {
+        emRonda = true;
+        sessionID = "SESSAO_" + Date.now();
+        document.getElementById('login-area').style.display = 'none';
+        document.getElementById('btn-acao').innerText = "ENCERRAR TURNO";
+        document.getElementById('btn-acao').classList.add('ativo');
+        iniciarRastreio(nome, num, sessionID);
+    } else {
+        if(confirm("Deseja encerrar seu turno de ronda?")) {
+            navigator.geolocation.clearWatch(watchID);
+            db.ref('rondas_ativas/' + nome.replace(/\s/g,'_')).remove();
+            location.reload();
+        }
+    }
+}
+
+function iniciarRastreio(nome, num, sessao) {
+    const idVig = nome.replace(/\s/g,'_');
+    
+    // O WATCHPOSITION QUE VOCÊ PROCURAVA:
+    watchID = navigator.geolocation.watchPosition((p) => {
+        const lat = p.coords.latitude;
+        const lng = p.coords.longitude;
+        const vel = p.coords.speed ? Math.round(p.coords.speed * 3.6) : 0; // Converte para km/h
+        const cPos = L.latLng(lat, lng);
+        
+        markerVig.setLatLng(cPos);
+
+        // Segue o vigilante no mapa suavemente
+        map.panTo(cPos, { animate: true, duration: 1.0 });
+
+        // VERIFICAÇÃO DE PROXIMIDADE DOS PONTOS
+        if (!paradaAtiva) {
+            pontosObrigatorios.forEach(ponto => {
+                const dist = cPos.distanceTo(L.latLng(ponto.lat, ponto.lng));
+                // Se chegar a menos de 25 metros e for um ponto novo
+                if (dist < 25 && ultimoPontoVisitado !== ponto.nome) {
+                    ultimoPontoVisitado = ponto.nome;
+                    iniciarParadaObrigatoria(idVig, sessao, lat, lng, ponto.nome);
+                }
+            });
+        }
+
+        // 1. ATUALIZA POSIÇÃO EM TEMPO REAL (Para o ícone no CCO)
+        db.ref('rondas_ativas/' + idVig).set({
+            vigilante: nome.toUpperCase(),
+            numero: num,
+            lat: lat,
+            lng: lng,
+            pos: { lat, lng },
+            velocidade: vel,
+            status: paradaAtiva ? "PARADO: " + ultimoPontoVisitado : "EM MOVIMENTO",
+            timestamp: Date.now()
+        });
+
+        // 2. GRAVA HISTÓRICO DE RASTRO (Para a linha amarela e relatório no CCO)
+        db.ref('historico_rastro/' + idVig).push({
+            lat: lat,
+            lng: lng,
+            velocidade: vel,
+            ponto: ultimoPontoVisitado || "TRAJETO",
+            timestamp: Date.now()
+        });
+
+    }, (err) => { console.error("Erro GPS:", err); }, 
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 });
+}
+
+function iniciarParadaObrigatoria(idVig, sessao, lat, lng, nomePonto) {
+    paradaAtiva = true;
+    let tempo = 15;
+    const divCron = document.getElementById('cronometro');
+    const horaChegada = new Date().toLocaleTimeString();
+    
+    // Alerta sonoro ou vibração (opcional)
+    if (navigator.vibrate) navigator.vibrate(200);
+
+    const timer = setInterval(() => {
+        tempo--;
+        divCron.innerHTML = `<div class="ponto-nome">PONTO: ${nomePonto}</div>⏱️ OBSERVAÇÃO: ${tempo}s`;
+        
+  	      if(tempo <= 0) {
+            clearInterval(timer);
+            divCron.innerHTML = "✅ PONTO CONCLUÍDO!";
+            setTimeout(() => { if(!paradaAtiva) divCron.innerHTML = ""; }, 3000);
+            paradaAtiva = false;
+            
+            // Grava a conclusão da parada no relatório
+            db.ref(`relatorios_ronda/${idVig}/${sessao}/paradas`).push({
+                ponto: nomePonto,
+                hora: horaChegada,
+                lat: lat,
+                lng: lng,
+                permanencia: "15 seg"
+            });
+            
+            alert("Observação em " + nomePonto + " concluída! Prossiga.");
+        }
+    }, 1000);
+}
+
+// Bloqueios de segurança para evitar fechamento acidental
+window.onbeforeunload = function() {
+    if(emRonda) return "Você está em turno de ronda! Deseja realmente sair?";
+};
+</script>
+</body>
+</html>
