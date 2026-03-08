@@ -79,6 +79,9 @@
     </div>
     <div id="status-txt">AGUARDANDO INÍCIO</div>
 </div>
+<div id="status-destino" style="padding: 10px; background: #1e293b; color: #10b981; font-weight: bold; text-align: center;">
+    Destino: Selecione um lote
+</div>
 
 <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
@@ -419,7 +422,7 @@ function iniciarNavegacao(sentido) {
 
 async function ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord) {
     if(watchID) navigator.geolocation.clearWatch(watchID);
-    
+    document.getElementById('status-destino').innerText = "Rota para o Lote: " + labelDestino;
     // Tenta manter a tela acesa logo no início
     solicitarWakeLock();
 
@@ -435,18 +438,18 @@ async function ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord
         // Se o visitante estiver se movendo, o mapa centraliza nele
         map.panTo(gPos); 
         
-        // ENVIO PARA O SUPABASE (Adicionado tipo_usuario para o CCO novo reconhecer)
-        const { error } = await supabaseClient
-            .from('rastreamento')
-            .insert([{
-                nome: nome.toUpperCase(),
-                placa: placa.toUpperCase(),
-                lote_destino: labelDestino,
-                tipo_usuario: 'visitante', // Crucial para o seu CCO novo filtrar
-                latitude: lat,
-                longitude: lng,
-                velocidade: vel
-            }]);
+        // --- ENVIO PARA O SUPABASE ---
+const { error } = await supabaseClient
+  .from('rastreamento')
+  .insert([{
+    nome: nome.toUpperCase(),
+    placa: placa.toUpperCase(),
+    lote_destino: labelDestino,
+    tipo_usuario: 'visitante', // ADICIONE ESTA LINHA EXATAMENTE ASSIM
+    latitude: lat,
+    longitude: lng,
+    velocidade: vel
+}]);
 
         if (error) console.error("Erro Supabase:", error.message);
 
