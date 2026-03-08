@@ -422,8 +422,12 @@ function iniciarNavegacao(sentido) {
 
 async function ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord) {
     if(watchID) navigator.geolocation.clearWatch(watchID);
-    document.getElementById('status-destino').innerText = "Rota para o Lote: " + labelDestino;
-    // Tenta manter a tela acesa logo no início
+    
+    // Atualiza o texto na tela do visitante
+    const statusElem = document.getElementById('status-destino');
+    if(statusElem) statusElem.innerText = "Rota para o Lote: " + labelDestino;
+    
+    // Mantém a tela acesa
     solicitarWakeLock();
 
     watchID = navigator.geolocation.watchPosition(async (p) => {
@@ -432,34 +436,38 @@ async function ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord
         const vel = p.coords.speed ? Math.round(p.coords.speed * 3.6) : 0;
         const gPos = new google.maps.LatLng(lat, lng);
 
-        // ATUALIZAÇÃO VISUAL: Move o marcador e o mapa junto com o carro
-        marker.setPosition(gPos);
-        
-        // Se o visitante estiver se movendo, o mapa centraliza nele
+        // 1. ATUALIZAÇÃO VISUAL: Move o marcador e o mapa junto com o carro
+        if (marker) marker.setPosition(gPos);
         map.panTo(gPos); 
         
-        // --- ENVIO PARA O SUPABASE ---
-const { error } = await supabaseClient
-  .from('rastreamento')
-  .insert([{
-    nome: nome.toUpperCase(),
-    placa: placa.toUpperCase(),
-    lote_destino: labelDestino,
-    tipo_usuario: 'visitante', // ADICIONE ESTA LINHA EXATAMENTE ASSIM
-    latitude: lat,
-    longitude: lng,
-    velocidade: vel
-}]);
+        // Ajusta o zoom se o usuário mexer e ficar muito longe
+        if (map.getZoom() < 17) {
+            map.setZoom(18);
+        }
+
+        // 2. ENVIO PARA O SUPABASE (O que o CCO vê)
+        const { error } = await supabaseClient
+            .from('rastreamento')
+            .insert([{
+                nome: nome.toUpperCase(),
+                placa: placa.toUpperCase(),
+                lote_destino: labelDestino,
+                tipo_usuario: 'visitante',
+                latitude: lat,
+                longitude: lng,
+                velocidade: vel
+            }]);
 
         if (error) console.error("Erro Supabase:", error.message);
 
-        // Verifica se chegou ao destino (raio de 25 metros)
-        const dist = google.maps.geometry.spherical.computeDistanceBetween(gPos, new google.maps.LatLng(destCoord.lat, destCoord.lng));
+        // 3. Verifica se chegou ao destino (raio de 25 metros)
+        const pontoDestino = new google.maps.LatLng(destCoord.lat, destCoord.lng);
+        const dist = google.maps.geometry.spherical.computeDistanceBetween(gPos, pontoDestino);
         
         if (dist < 25) {
             navigator.geolocation.clearWatch(watchID);
             if (wakeLock) {
-                wakeLock.release();
+                await wakeLock.release();
                 wakeLock = null;
             }
             alert("Destino alcançado!");
@@ -470,7 +478,7 @@ const { error } = await supabaseClient
     }, { 
         enableHighAccuracy: true, 
         maximumAge: 0, 
-        timeout: 5000 
+        timeout: 10000 
     });
 }
 
