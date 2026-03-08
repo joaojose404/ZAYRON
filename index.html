@@ -420,14 +420,16 @@ function iniciarNavegacao(sentido) {
     }, null, { enableHighAccuracy: true });
 }
 
+// CRIE ESTA VARIÁVEL FORA DA FUNÇÃO (no topo do script)
+let ultimaGravacaoBanco = 0; 
+const INTERVALO_BANCO = 15000; // 15 segundos (Ideal para não travar o CCO)
+
 async function ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord) {
     if(watchID) navigator.geolocation.clearWatch(watchID);
     
-    // Atualiza o texto na tela do visitante
     const statusElem = document.getElementById('status-destino');
     if(statusElem) statusElem.innerText = "Rota para o Lote: " + labelDestino;
     
-    // Mantém a tela acesa
     solicitarWakeLock();
 
     watchID = navigator.geolocation.watchPosition(async (p) => {
@@ -435,32 +437,37 @@ async function ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord
         const lng = p.coords.longitude;
         const vel = p.coords.speed ? Math.round(p.coords.speed * 3.6) : 0;
         const gPos = new google.maps.LatLng(lat, lng);
+        const agora = Date.now();
 
-        // 1. ATUALIZAÇÃO VISUAL: Move o marcador e o mapa junto com o carro
+        // --- 1. ATUALIZAÇÃO VISUAL (FLUIDA - A cada segundo) ---
+        // Isso move a bolinha no celular do visitante sem travar nada
         if (marker) marker.setPosition(gPos);
         map.panTo(gPos); 
         
-        // Ajusta o zoom se o usuário mexer e ficar muito longe
-        if (map.getZoom() < 17) {
-            map.setZoom(18);
+        if (map.getZoom() < 17) map.setZoom(18);
+
+        // --- 2. TRAVA DE ENVIO PARA O SUPABASE (ESTRATÉGICA) ---
+        // Só entra aqui se já passaram 15 segundos desde o último envio
+        if (agora - ultimaGravacaoBanco >= INTERVALO_BANCO) {
+            ultimaGravacaoBanco = agora; // Reseta o cronômetro
+
+            const { error } = await supabaseClient
+                .from('rastreamento')
+                .insert([{
+                    nome: nome.toUpperCase(),
+                    placa: placa.toUpperCase(),
+                    lote_destino: labelDestino,
+                    tipo_usuario: 'visitante',
+                    latitude: lat,
+                    longitude: lng,
+                    velocidade: vel
+                }]);
+
+            if (error) console.error("Erro Supabase:", error.message);
+            console.log("Posição enviada ao CCO com sucesso.");
         }
 
-        // 2. ENVIO PARA O SUPABASE (O que o CCO vê)
-        const { error } = await supabaseClient
-            .from('rastreamento')
-            .insert([{
-                nome: nome.toUpperCase(),
-                placa: placa.toUpperCase(),
-                lote_destino: labelDestino,
-                tipo_usuario: 'visitante',
-                latitude: lat,
-                longitude: lng,
-                velocidade: vel
-            }]);
-
-        if (error) console.error("Erro Supabase:", error.message);
-
-        // 3. Verifica se chegou ao destino (raio de 25 metros)
+        // --- 3. VERIFICAÇÃO DE CHEGADA ---
         const pontoDestino = new google.maps.LatLng(destCoord.lat, destCoord.lng);
         const dist = google.maps.geometry.spherical.computeDistanceBetween(gPos, pontoDestino);
         
@@ -470,7 +477,7 @@ async function ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord
                 await wakeLock.release();
                 wakeLock = null;
             }
-            alert("Destino alcançado!");
+            alert("Destino alcançado! O monitoramento foi encerrado.");
             location.reload();
         }
     }, (err) => {
