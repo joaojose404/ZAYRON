@@ -501,29 +501,38 @@ const INTERVALO_BANCO = 15000; // 15 segundos (Ideal para não travar o CCO)
 async function ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord) {
     if(watchID) navigator.geolocation.clearWatch(watchID);
     
-    const statusElem = document.getElementById('status-destino');
-    if(statusElem) statusElem.innerText = "Rota para o Lote: " + labelDestino;
+    const statusDiv = document.getElementById('status-txt');
+    if(statusDiv) {
+        statusDiv.innerText = "Monitoramento Iniciado...";
+        statusDiv.className = "cor-verde";
+    }
     
     solicitarWakeLock();
 
     watchID = navigator.geolocation.watchPosition(async (p) => {
         const lat = p.coords.latitude;
         const lng = p.coords.longitude;
-        const vel = p.coords.speed ? Math.round(p.coords.speed * 3.6) : 0;
+        const velKmH = p.coords.speed ? Math.round(p.coords.speed * 3.6) : 0;
         const gPos = new google.maps.LatLng(lat, lng);
         const agora = Date.now();
 
-        // --- 1. ATUALIZAÇÃO VISUAL (FLUIDA - A cada segundo) ---
-        // Isso move a bolinha no celular do visitante sem travar nada
+        // --- 1. ATUALIZAÇÃO VISUAL E ALERTA DE VELOCIDADE ---
         if (marker) marker.setPosition(gPos);
         map.panTo(gPos); 
-        
         if (map.getZoom() < 17) map.setZoom(18);
 
-        // --- 2. TRAVA DE ENVIO PARA O SUPABASE (ESTRATÉGICA) ---
-        // Só entra aqui se já passaram 15 segundos desde o último envio
+        // Alerta na tela do motorista
+        if (velKmH > 40) {
+            statusDiv.innerHTML = `⚠️ REDUZA! VELOCIDADE: ${velKmH} km/h`;
+            statusDiv.className = "cor-vermelha"; // Aquela que pisca que você tem no CSS
+        } else {
+            statusDiv.innerHTML = `📡 ROTA: ${labelDestino} | ${velKmH} km/h`;
+            statusDiv.className = "cor-verde";
+        }
+
+        // --- 2. TRAVA DE ENVIO PARA O SUPABASE (15 SEGUNDOS) ---
         if (agora - ultimaGravacaoBanco >= INTERVALO_BANCO) {
-            ultimaGravacaoBanco = agora; // Reseta o cronômetro
+            ultimaGravacaoBanco = agora;
 
             const { error } = await supabaseClient
                 .from('rastreamento')
@@ -534,11 +543,10 @@ async function ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord
                     tipo_usuario: 'visitante',
                     latitude: lat,
                     longitude: lng,
-                    velocidade: vel
+                    velocidade: velKmH // Envia a velocidade correta para o relatório
                 }]);
 
             if (error) console.error("Erro Supabase:", error.message);
-            console.log("Posição enviada ao CCO com sucesso.");
         }
 
         // --- 3. VERIFICAÇÃO DE CHEGADA ---
@@ -547,10 +555,6 @@ async function ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord
         
         if (dist < 25) {
             navigator.geolocation.clearWatch(watchID);
-            if (wakeLock) {
-                await wakeLock.release();
-                wakeLock = null;
-            }
             alert("Destino alcançado! O monitoramento foi encerrado.");
             location.reload();
         }
