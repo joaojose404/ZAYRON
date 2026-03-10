@@ -393,19 +393,55 @@ function initMap() {
     });
 }
 
-function iniciarNavegacao(sentido) {
+let idViagemSupabase = null;
+
+async function iniciarNavegacao(sentido) {
     const nome = document.getElementById('nome_v').value.trim();
     const placa = document.getElementById('placa_v').value.trim();
-    const lote = document.getElementById('lote_alvo').value.trim().toUpperCase();
+    const loteDigitado = document.getElementById('lote_alvo').value.trim().toUpperCase();
+    const rua = document.getElementById('rua_alvo').value;
+    const num = document.getElementById('num_alvo').value.trim();
 
     if(!nome || !placa) return alert("Preencha Nome e Placa.");
 
-    let destCoord = (sentido === 'ida' && BANCO_COORDENADAS.LOTES[lote]) ? 
-                    {lat: BANCO_COORDENADAS.LOTES[lote][0], lng: BANCO_COORDENADAS.LOTES[lote][1]} : 
-                    BANCO_COORDENADAS.PORTARIA;
+  let destCoord, labelDestino;
+
+    if (sentido === 'ida') {
+        if (loteDigitado && BANCO_COORDENADAS.LOTES[loteDigitado]) {
+            destCoord = { lat: BANCO_COORDENADAS.LOTES[loteDigitado][0], lng: BANCO_COORDENADAS.LOTES[loteDigitado][1] };
+            labelDestino = loteDigitado; // Pega o Lote atual
+        } else if (rua && num && BANCO_COORDENADAS.RUAS[rua] && BANCO_COORDENADAS.RUAS[rua][num]) {
+            destCoord = { lat: BANCO_COORDENADAS.RUAS[rua][num][0], lng: BANCO_COORDENADAS.RUAS[rua][num][1] };
+            labelDestino = rua + " " + num; // Pega a Rua e Número atuais
+        } else if (loteDigitado) {
+             destCoord = BANCO_COORDENADAS.PORTARIA;
+             labelDestino = loteDigitado;
+        } else { return alert("Selecione um destino."); }
+    } else { 
+        destCoord = BANCO_COORDENADAS.PORTARIA; 
+        labelDestino = "SAÍDA";
+    }
+
+    // --- O PONTO CHAVE PARA O RELATÓRIO ---
+    // Precisamos garantir que o INSERT aconteça com o labelDestino NOVO
+    const { data, error } = await supabaseClient
+        .from('rastreamento')
+        .insert([{
+            nome: nome.toUpperCase(),
+            placa: placa.toUpperCase(),
+            lote_destino: labelDestino.toUpperCase(), // <--- ISSO VAI PARA O RELATÓRIO
+            entrada: new Date().toISOString(),
+            status: 'EM ROTA'
+        }])
+        .select();
+
+    if (data) idViagemSupabase = data[0].id;
 
     navigator.geolocation.getCurrentPosition((pos) => {
         const origin = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        map.setCenter(origin);
+        map.setZoom(19);
+
         directionsService.route({
             origin: origin,
             destination: destCoord,
@@ -413,11 +449,82 @@ function iniciarNavegacao(sentido) {
         }, (result, status) => {
             if (status === "OK") {
                 directionsRenderer.setDirections(result);
+                rotaPath = result.routes[0].overview_path;
                 solicitarWakeLock();
-                ativarMonitoramento(nome, placa, lote, sentido, destCoord);
+                ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord);
             }
         });
     }, null, { enableHighAccuracy: true });
+}
+
+function ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord) {
+    if(watchID) navigator.geolocation.clearWatch(watchID);
+
+    watchID = navigator.geolocation.watchPosition((p) => {
+        const lat = p.coords.latitude;
+        const lng = p.coords.longitude;
+        const vel = p.coords.speed ? Math.round(p.coords.speed * 3.6) : 0;
+        const gPos = new google.maps.LatLng(lat, lng);
+
+        if (marker) marker.setPosition(gPos);
+        if (map) map.setOptions({ center: gPos, zoom: 19, tilt: 45 });
+
+        // ATUALIZAÇÃO NO SUPABASE
+        if (idViagemSupabase) {
+            supabaseClient
+                .from('rastreamento')
+                .update({
+                    lat: lat,
+                    lng: lng,
+                    velocidade: vel,
+                    status: vel > 35 ? "EXCESSO VELOCIDADE" : "EM ROTA"
+                })
+                .eq('id', idViagemSupabase);
+        }
+
+        // LÓGICA DE CHEGADA AO DESTINO (VALOR EXATO DE 25 METROS)
+        if (destCoord && destCoord.lat) {
+            const dist = google.maps.geometry.spherical.computeDistanceBetween(
+                gPos, 
+                new google.maps.LatLng(destCoord.lat, destCoord.lng)
+            );
+            
+            if (dist < 25) { // <--- VOLTEI PARA 25 EXATAMENTE
+                if (sentido === 'ida') {
+                    navigator.geolocation.clearWatch(watchID);
+
+                    // Painel visual para não travar o mapa e manter os dados vivos
+                    const painel = document.createElement('div');
+                    painel.id = "painel-chegada";
+                    painel.innerHTML = `
+                        <div style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:10000; display:flex; align-items:center; justify-content:center;">
+                            <div style="background:#1e293b; padding:30px; border-radius:15px; text-align:center; border:2px solid #059669; width:80%;">
+                                <h2 style="color:white; margin-bottom:20px;">Você chegou!</h2>
+                                <button onclick="document.getElementById('painel-chegada').remove(); iniciarNavegacao('volta')" 
+                                        style="padding:20px; width:100%; background:#059669; color:white; border:none; border-radius:10px; font-weight:bold; font-size:18px;">
+                                    VOLTAR PARA PORTARIA
+                                </button>
+                            </div>
+                        </div>`;
+                    document.body.appendChild(painel);
+                } 
+                else {
+                    // Retorno para a portaria (Limpa tudo ao chegar)
+                    supabaseClient
+                        .from('rastreamento')
+                        .update({ saida: new Date().toISOString(), status: 'CONCLUÍDO' })
+                        .eq('id', idViagemSupabase)
+                        .then(() => {
+                            if (wakeLock) wakeLock.release();
+                            navigator.geolocation.clearWatch(watchID);
+                            alert("Destino alcançado! Monitoramento encerrado.");
+                            location.reload();
+                        });
+                }
+            }
+        }
+    }, (err) => { console.error("Erro GPS:", err); }, 
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 });
 }
 
 // CRIE ESTA VARIÁVEL FORA DA FUNÇÃO (no topo do script)
