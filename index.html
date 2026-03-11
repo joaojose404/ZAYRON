@@ -409,15 +409,14 @@ function initMap() {
         const areaDestino = document.querySelector('.area-destino');
         if (areaDestino) areaDestino.style.display = 'none';
     }
-}
-
-async function iniciarNavegacao(sentido) {
+}async function iniciarNavegacao(sentido) {
     const nome = document.getElementById('nome_v').value.trim();
     const placa = document.getElementById('placa_v').value.trim();
     let destCoord, labelDestino;
 
     if(!nome || !placa) return alert("Preencha Nome e Placa.");
 
+    // --- MANTENDO SUA BUSCA DE DESTINO ---
     if (sentido === 'ida') {
         const lote = document.getElementById('lote_alvo').value.trim().toUpperCase();
         const rua = document.getElementById('rua_alvo').value;
@@ -438,30 +437,30 @@ async function iniciarNavegacao(sentido) {
         labelDestino = "SAÍDA/PORTARIA";
     }
 
-    navigator.geolocation.getCurrentPosition(async (pos) => {
+    // --- CONEXÃO IMEDIATA COM O BANCO ---
+    // Usamos .then() em vez de await para não travar a rota se o banco demorar
+    supabaseClient.from('rastreamento').insert([{
+        nome: nome.toUpperCase(),
+        placa: placa.toUpperCase(),
+        lote_destino: labelDestino,
+        status_viagem: 'INICIOU ROTA'
+    }]).select().then(({ data, error }) => {
+        if (data && data.length > 0) {
+            idViagemSupabase = data[0].id;
+            console.log("CCO Conectado ID:", idViagemSupabase);
+        }
+        if (error) console.error("Erro no Banco:", error.message);
+    });
+
+    // --- MANTENDO SUA ROTA PERFEITA ---
+    solicitarWakeLock();
+
+    navigator.geolocation.getCurrentPosition((pos) => {
         const origin = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        ultimaPos = { lat: origin.lat.toFixed(4), lng: origin.lng.toFixed(4) };
         
         map.setCenter(origin);
         map.setZoom(19);
 
-        // --- CONEXÃO COM BANCO ---
-        try {
-            const { data, error } = await supabaseClient.from('rastreamento').insert([{
-                nome: nome.toUpperCase(),
-                placa: placa.toUpperCase(),
-                lote_destino: labelDestino,
-                status_viagem: 'INICIOU ROTA',
-                latitude: origin.lat,
-                longitude: origin.lng
-            }]).select();
-
-            if (data && data.length > 0) {
-                idViagemSupabase = data[0].id;
-            }
-        } catch (e) { console.error(e); }
-
-        // --- ROTA (MANTIDA IGUAL) ---
         directionsService.route({
             origin: origin,
             destination: destCoord,
@@ -479,7 +478,7 @@ async function iniciarNavegacao(sentido) {
                 });
                 rotaPath = [origin, destCoord];
             }
-            solicitarWakeLock();
+            // Inicia o rastreio mesmo que o ID ainda esteja sendo gerado
             ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord);
         });
     }, (err) => alert("Erro GPS"), { enableHighAccuracy: true });
