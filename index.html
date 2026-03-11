@@ -359,76 +359,93 @@ const SUPABASE_URL = 'https://ybadcbejraxpkmdjspcv.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InliYWRjYmVqcmF4cGttZGpzcGN2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI5ODEwNzAsImV4cCI6MjA4ODU1NzA3MH0.DpkEcK_ETkYdepGFyrcY7hitWCZGzyCq5J8rZpQTEO0';
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// 1. AS VARIÁVEIS TÊM QUE ESTAR AQUI NO TOPO
 let map, marker, directionsRenderer, directionsService, watchID, rotaPath = [];
 let wakeLock = null;
 let idViagemSupabase = null;
 let ultimaGravacaoBanco = 0;
 const INTERVALO_BANCO = 15000;
 
-// Variáveis de Controle de Alerta
-let segundosParado = 0;
-let ultimaPos = { lat: 0, lng: 0 };
-
 function initMap() {
+    // Inicializa o serviço de rotas (SEM ISSO O MAPA SOME)
+    directionsService = new google.maps.DirectionsService();
+
     map = new google.maps.Map(document.getElementById("map-visitante"), {
         center: BANCO_COORDENADAS.PORTARIA,
-        zoom: 20, 
-        mapTypeId: 'hybrid',
+        zoom: 19,
+        mapTypeId: 'roadmap', // VOLTEI PARA ROADMAP PARA TESTAR A ROTA PRIMEIRO
         disableDefaultUI: true,
-        gestureHandling: "greedy",
-        // Permite que o mapa chegue o mais perto possível do chão
-        maxZoom: 22, 
-        minZoom: 15
+        gestureHandling: "greedy"
     });
 
     directionsRenderer = new google.maps.DirectionsRenderer({
         map: map,
         suppressMarkers: true,
-        // MUITO IMPORTANTE: Impede a rota de "puxar" a câmera para o alto
         preserveViewport: true, 
-        polylineOptions: { strokeColor: "#3b82f6", strokeWeight: 8 }
+        polylineOptions: { strokeColor: "#1d4ed8", strokeWeight: 7 }
     });
-    // ... resto do seu initMap
+
+    marker = new google.maps.Marker({
+        map: map,
+        icon: {
+            path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+            scale: 6,
+            fillColor: "#3b82f6",
+            fillOpacity: 1,
+            strokeWeight: 2,
+            strokeColor: "white",
+            rotation: 0
+        }
+    });
 }
+
 async function iniciarNavegacao(sentido) {
     const nome = document.getElementById('nome_v').value.trim();
     const placa = document.getElementById('placa_v').value.trim();
-    
-    if(!nome || !placa) return alert("Preencha Nome e Placa.");
-
     let destCoord, labelDestino;
 
-    // 1. Busca de Destino (Lote ou Rua/Nº)
+    if(!nome || !placa) return alert("Preencha Nome e Placa.");
+
     if (sentido === 'ida') {
-        const loteDigitado = document.getElementById('lote_alvo').value.trim().toUpperCase();
+        const lote = document.getElementById('lote_alvo').value.trim().toUpperCase();
         const rua = document.getElementById('rua_alvo').value;
         const num = document.getElementById('num_alvo').value.trim();
 
-        if (loteDigitado && BANCO_COORDENADAS.LOTES?.[loteDigitado]) {
-            destCoord = { lat: BANCO_COORDENADAS.LOTES[loteDigitado][0], lng: BANCO_COORDENADAS.LOTES[loteDigitado][1] };
-            labelDestino = "LOTE " + loteDigitado;
-        } else if (rua && num && BANCO_COORDENADAS.RUAS?.[rua]?.[num]) {
+        // TENTA BUSCAR POR LOTE PRIMEIRO
+        if (lote && BANCO_COORDENADAS.LOTES?.[lote]) {
+            destCoord = { lat: BANCO_COORDENADAS.LOTES[lote][0], lng: BANCO_COORDENADAS.LOTES[lote][1] };
+            labelDestino = "LOTE " + lote;
+        } 
+        // SE NÃO TIVER LOTE, TENTA POR RUA E NÚMERO
+        else if (rua && num && BANCO_COORDENADAS.RUAS?.[rua]?.[num]) {
             destCoord = { lat: BANCO_COORDENADAS.RUAS[rua][num][0], lng: BANCO_COORDENADAS.RUAS[rua][num][1] };
             labelDestino = rua + ", " + num;
-        } else { 
-            return alert("Destino não encontrado no banco de coordenadas."); 
+        } 
+        else {
+            return alert("Destino não encontrado. Verifique o Lote ou Rua/Nº.");
         }
+        
+        localStorage.setItem('dados_visitante', JSON.stringify({ nome, placa, destino: labelDestino }));
     } else {
         destCoord = BANCO_COORDENADAS.PORTARIA;
-        labelDestino = "SAÍDA (PORTARIA)";
+        labelDestino = "SAÍDA/PORTARIA";
     }
 
-    // 2. O MERGULHO FORÇADO (Independente da Rota)
-    navigator.geolocation.getCurrentPosition(async (pos) => {
+    // GRAVA NO BANCO (SUPABASE)
+    const { data } = await supabaseClient.from('rastreamento').insert([{
+        nome: nome.toUpperCase(),
+        placa: placa.toUpperCase(),
+        lote_destino: labelDestino,
+        status_viagem: 'INICIANDO ROTA'
+    }]).select();
+    
+    if (data) idViagemSupabase = data[0].id;
+
+    solicitarWakeLock();
+
+    navigator.geolocation.getCurrentPosition((pos) => {
         const origin = { lat: pos.coords.latitude, lng: pos.coords.longitude };
         
-        // --- AQUI O MAPA DESCE PARA O CHÃO ---
-        map.setMapTypeId('hybrid'); 
-        map.setCenter(origin);      
-        map.setZoom(20); 
-        map.setTilt(45); // Visão 3D
-
-        // 3. Tenta a Rota, mas se falhar, o sistema continua
         directionsService.route({
             origin: origin,
             destination: destCoord,
@@ -437,24 +454,26 @@ async function iniciarNavegacao(sentido) {
             if (status === "OK") {
                 directionsRenderer.setDirections(result);
                 rotaPath = result.routes[0].overview_path;
+                
+                map.setCenter(origin);
+                map.setZoom(19);
+                
+                ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord);
             } else {
-                console.warn("Rota Google falhou (pode ser condomínio novo). Usando GPS puro.");
-                // Desenha uma linha reta simples apenas para dar uma direção
-                new google.maps.Polyline({
+                // LINHA RETA SE A ROTA FALHAR
+                const linhaManual = new google.maps.Polyline({
                     path: [origin, destCoord],
                     map: map,
                     strokeColor: "#3b82f6",
-                    strokeOpacity: 0.5,
-                    strokeWeight: 5,
-                    icons: [{icon: {path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW}, offset: '100%'}]
+                    strokeWeight: 8
                 });
+                rotaPath = [origin, destCoord];
+                map.setCenter(origin);
+                map.setZoom(19);
+                ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord);
             }
-
-            // 4. Inicia gravação e monitoramento
-            finalizarSetupNavegacao(nome, placa, labelDestino, sentido, destCoord);
         });
-
-    }, (err) => alert("GPS inativo."), { enableHighAccuracy: true });
+    }, (err) => alert("Erro GPS"), { enableHighAccuracy: true });
 }
 
 // Função para organizar o final do processo
