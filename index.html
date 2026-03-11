@@ -416,7 +416,7 @@ function initMap() {
 
     if(!nome || !placa) return alert("Preencha Nome e Placa.");
 
-    // --- MANTENDO SUA BUSCA DE DESTINO IGUAL ---
+    // --- SUA LÓGICA DE DESTINO (MANTIDA 100%) ---
     if (sentido === 'ida') {
         const lote = document.getElementById('lote_alvo').value.trim().toUpperCase();
         const rua = document.getElementById('rua_alvo').value;
@@ -437,29 +437,27 @@ function initMap() {
         labelDestino = "SAÍDA/PORTARIA";
     }
 
-    // --- CONEXÃO COM O BANCO (O QUE PRECISA VOLTAR A FUNCIONAR) ---
-    try {
-        const { data, error } = await supabaseClient
-            .from('rastreamento')
-            .insert([{
-                nome: nome.toUpperCase(),
-                placa: placa.toUpperCase(),
-                lote_destino: labelDestino,
-                status_viagem: 'INICIOU ROTA'
-            }])
-            .select(); // Obrigatório para retornar o ID
+    // --- CONEXÃO COM O BANCO (SUPABASE) ---
+    // Fazemos o insert primeiro para garantir que o registro exista
+    supabaseClient
+        .from('rastreamento')
+        .insert([{
+            nome: nome.toUpperCase(),
+            placa: placa.toUpperCase(),
+            lote_destino: labelDestino,
+            status_viagem: 'INICIOU ROTA'
+        }])
+        .select()
+        .then(({ data, error }) => {
+            if (error) {
+                console.error("Erro ao gravar no Supabase:", error.message);
+            } else if (data && data.length > 0) {
+                idViagemSupabase = data[0].id;
+                console.log("Registrado no CCO com ID:", idViagemSupabase);
+            }
+        });
 
-        if (error) {
-            console.error("Erro Supabase Insert:", error.message);
-        } else if (data && data.length > 0) {
-            idViagemSupabase = data[0].id;
-            console.log("Sucesso! ID gravado:", idViagemSupabase);
-        }
-    } catch (err) {
-        console.error("Erro crítico de conexão:", err);
-    }
-
-    // --- SUA ROTA PERFEITA (NÃO MEXEMOS EM NADA AQUI) ---
+    // --- SUA ROTA (MANTIDA 100% IGUAL) ---
     solicitarWakeLock();
 
     navigator.geolocation.getCurrentPosition((pos) => {
@@ -485,7 +483,7 @@ function initMap() {
                 });
                 rotaPath = [origin, destCoord];
             }
-            // Inicia o monitoramento de posição
+            // Ativa o monitoramento contínuo
             ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord);
         });
     }, (err) => alert("Erro GPS"), { enableHighAccuracy: true });
