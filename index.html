@@ -540,7 +540,7 @@ function ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord) {
 
 // CRIE ESTA VARIÁVEL FORA DA FUNÇÃO (no topo do script)
 let ultimaGravacaoBanco = 0; 
-const INTERVALO_BANCO = 15000; // 15 segundos (Ideal para não travar o CCO)
+const INTERVALO_BANCO = 15000; // 15 segundos
 
 async function ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord) {
     if(watchID) navigator.geolocation.clearWatch(watchID);
@@ -551,52 +551,53 @@ async function ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord
     solicitarWakeLock();
 
     watchID = navigator.geolocation.watchPosition(async (p) => {
-        const lat = p.coords.latitude;
-        const lng = p.coords.longitude;
+        const latAtual = p.coords.latitude;
+        const lngAtual = p.coords.longitude;
         const vel = p.coords.speed ? Math.round(p.coords.speed * 3.6) : 0;
-        const gPos = new google.maps.LatLng(lat, lng);
+        const gPos = new google.maps.LatLng(latAtual, lngAtual);
         const agora = Date.now();
 
-        // --- 1. ATUALIZAÇÃO VISUAL (FLUIDA - A cada segundo) ---
-        // Isso move a bolinha no celular do visitante sem travar nada
+        // 1. ATUALIZAÇÃO VISUAL NO CELULAR (Bolinha no mapa)
         if (marker) marker.setPosition(gPos);
         map.panTo(gPos); 
-        
         if (map.getZoom() < 17) map.setZoom(18);
 
-        // --- 2. TRAVA DE ENVIO PARA O SUPABASE (ESTRATÉGICA) ---
-        // Só entra aqui se já passaram 15 segundos desde o último envio
+        // 2. ENVIO PARA O SUPABASE (NOMES DE COLUNAS CORRIGIDOS)
         if (agora - ultimaGravacaoBanco >= INTERVALO_BANCO) {
-            ultimaGravacaoBanco = agora; // Reseta o cronômetro
+            ultimaGravacaoBanco = agora;
 
             const { error } = await supabaseClient
                 .from('rastreamento')
                 .insert([{
                     nome: nome.toUpperCase(),
                     placa: placa.toUpperCase(),
-                    lote_destino: labelDestino,
-                    tipo_usuario: 'visitante',
-                    latitude: lat,
-                    longitude: lng,
-                    velocidade: vel
+                    lote_destino: labelDestino.toUpperCase(),
+                    // CORREÇÃO AQUI: Nomes devem ser latitude e longitude para o CCO ler
+                    latitude: latAtual, 
+                    longitude: lngAtual,
+                    velocidade: vel,
+                    status_viagem: sentido === 'ida' ? 'ENTRANDO' : 'SAINDO'
                 }]);
 
-            if (error) console.error("Erro Supabase:", error.message);
-            console.log("Posição enviada ao CCO com sucesso.");
+            if (error) console.error("Erro ao gravar no banco:", error.message);
         }
 
-        // --- 3. VERIFICAÇÃO DE CHEGADA ---
+        // 3. VERIFICAÇÃO DE CHEGADA (25 METROS)
         const pontoDestino = new google.maps.LatLng(destCoord.lat, destCoord.lng);
         const dist = google.maps.geometry.spherical.computeDistanceBetween(gPos, pontoDestino);
         
         if (dist < 25) {
             navigator.geolocation.clearWatch(watchID);
-            if (wakeLock) {
-                await wakeLock.release();
-                wakeLock = null;
+            if (wakeLock) await wakeLock.release();
+            
+            if (sentido === 'ida') {
+                // Abre o alerta de chegada para voltar
+                alert("Você chegou ao destino!");
+                location.reload(); // Reinicia para opção de volta
+            } else {
+                alert("Monitoramento encerrado na portaria.");
+                location.reload();
             }
-            alert("Destino alcançado! O monitoramento foi encerrado.");
-            location.reload();
         }
     }, (err) => {
         console.error("Erro GPS:", err);
@@ -606,7 +607,6 @@ async function ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord
         timeout: 10000 
     });
 }
-
 async function solicitarWakeLock() {
     try {
         if ('wakeLock' in navigator) {
