@@ -354,6 +354,7 @@ const BANCO_COORDENADAS = {
     }
 };
 // --- CONFIGURAÇÕES DO SISTEMA ---
+// --- CONFIGURAÇÕES DO SISTEMA ---
 const SUPABASE_URL = 'https://ybadcbejraxpkmdjspcv.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InliYWRjYmVqcmF4cGttZGpzcGN2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI5ODEwNzAsImV4cCI6MjA4ODU1NzA3MH0.DpkEcK_ETkYdepGFyrcY7hitWCZGzyCq5J8rZpQTEO0';
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -371,60 +372,63 @@ let ultimaPos = { lat: 0, lng: 0 };
 function initMap() {
     map = new google.maps.Map(document.getElementById("map-visitante"), {
         center: BANCO_COORDENADAS.PORTARIA,
-        zoom: 18,
-        disableDefaultUI: true
+        zoom: 20, 
+        mapTypeId: 'hybrid',
+        disableDefaultUI: true,
+        gestureHandling: "greedy",
+        // Permite que o mapa chegue o mais perto possível do chão
+        maxZoom: 22, 
+        minZoom: 15
     });
-    directionsService = new google.maps.DirectionsService();
+
     directionsRenderer = new google.maps.DirectionsRenderer({
         map: map,
         suppressMarkers: true,
+        // MUITO IMPORTANTE: Impede a rota de "puxar" a câmera para o alto
+        preserveViewport: true, 
         polylineOptions: { strokeColor: "#3b82f6", strokeWeight: 8 }
     });
-    marker = new google.maps.Marker({
-        map: map,
-        icon: { path: google.maps.SymbolPath.CIRCLE, scale: 12, fillColor: "#3b82f6", fillOpacity: 1, strokeColor: "white", strokeWeight: 4 }
-    });
-
-    // Se já houver dados salvos, preenche automaticamente
-    const salvo = JSON.parse(localStorage.getItem('dados_visitante'));
-    if (salvo) {
-        document.getElementById('nome_v').value = salvo.nome;
-        document.getElementById('placa_v').value = salvo.placa;
-        document.getElementById('btn-saida-direta').style.display = 'block'; // Mostra botão de saída rápida
-    }
+    // ... resto do seu initMap
 }
-
 async function iniciarNavegacao(sentido) {
     const nome = document.getElementById('nome_v').value.trim();
     const placa = document.getElementById('placa_v').value.trim();
+    
+    if(!nome || !placa) return alert("Preencha Nome e Placa.");
+
     let destCoord, labelDestino;
 
+    // 1. Busca de Destino (Lote ou Rua/Nº)
     if (sentido === 'ida') {
-        const lote = document.getElementById('lote_alvo').value.trim().toUpperCase();
-        if (!BANCO_COORDENADAS.LOTES[lote]) return alert("Lote não encontrado.");
-        destCoord = { lat: BANCO_COORDENADAS.LOTES[lote][0], lng: BANCO_COORDENADAS.LOTES[lote][1] };
-        labelDestino = lote;
-        // Salva para a volta
-        localStorage.setItem('dados_visitante', JSON.stringify({ nome, placa, lote_origem: lote }));
+        const loteDigitado = document.getElementById('lote_alvo').value.trim().toUpperCase();
+        const rua = document.getElementById('rua_alvo').value;
+        const num = document.getElementById('num_alvo').value.trim();
+
+        if (loteDigitado && BANCO_COORDENADAS.LOTES?.[loteDigitado]) {
+            destCoord = { lat: BANCO_COORDENADAS.LOTES[loteDigitado][0], lng: BANCO_COORDENADAS.LOTES[loteDigitado][1] };
+            labelDestino = "LOTE " + loteDigitado;
+        } else if (rua && num && BANCO_COORDENADAS.RUAS?.[rua]?.[num]) {
+            destCoord = { lat: BANCO_COORDENADAS.RUAS[rua][num][0], lng: BANCO_COORDENADAS.RUAS[rua][num][1] };
+            labelDestino = rua + ", " + num;
+        } else { 
+            return alert("Destino não encontrado no banco de coordenadas."); 
+        }
     } else {
         destCoord = BANCO_COORDENADAS.PORTARIA;
-        labelDestino = "SAÍDA/PORTARIA";
+        labelDestino = "SAÍDA (PORTARIA)";
     }
 
-    // Criar registro no banco
-    const { data } = await supabaseClient.from('rastreamento').insert([{
-        nome: nome.toUpperCase(),
-        placa: placa.toUpperCase(),
-        lote_destino: labelDestino,
-        status_viagem: 'INICIANDO ROTA'
-    }]).select();
-    
-    if (data) idViagemSupabase = data[0].id;
-
-    solicitarWakeLock();
-
-    navigator.geolocation.getCurrentPosition((pos) => {
+    // 2. O MERGULHO FORÇADO (Independente da Rota)
+    navigator.geolocation.getCurrentPosition(async (pos) => {
         const origin = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        
+        // --- AQUI O MAPA DESCE PARA O CHÃO ---
+        map.setMapTypeId('hybrid'); 
+        map.setCenter(origin);      
+        map.setZoom(20); 
+        map.setTilt(45); // Visão 3D
+
+        // 3. Tenta a Rota, mas se falhar, o sistema continua
         directionsService.route({
             origin: origin,
             destination: destCoord,
@@ -433,12 +437,40 @@ async function iniciarNavegacao(sentido) {
             if (status === "OK") {
                 directionsRenderer.setDirections(result);
                 rotaPath = result.routes[0].overview_path;
-                ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord);
+            } else {
+                console.warn("Rota Google falhou (pode ser condomínio novo). Usando GPS puro.");
+                // Desenha uma linha reta simples apenas para dar uma direção
+                new google.maps.Polyline({
+                    path: [origin, destCoord],
+                    map: map,
+                    strokeColor: "#3b82f6",
+                    strokeOpacity: 0.5,
+                    strokeWeight: 5,
+                    icons: [{icon: {path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW}, offset: '100%'}]
+                });
             }
+
+            // 4. Inicia gravação e monitoramento
+            finalizarSetupNavegacao(nome, placa, labelDestino, sentido, destCoord);
         });
-    }, null, { enableHighAccuracy: true });
+
+    }, (err) => alert("GPS inativo."), { enableHighAccuracy: true });
 }
 
+// Função para organizar o final do processo
+async function finalizarSetupNavegacao(nome, placa, labelDestino, sentido, destCoord) {
+    const { data } = await supabaseClient.from('rastreamento').insert([{
+        nome: nome.toUpperCase(),
+        placa: placa.toUpperCase(),
+        lote_destino: labelDestino,
+        status_viagem: 'INICIANDO'
+    }]).select();
+    
+    if (data) idViagemSupabase = data[0].id;
+    
+    solicitarWakeLock();
+    ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord);
+}
 function ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord) {
     if (watchID) navigator.geolocation.clearWatch(watchID);
 
@@ -449,30 +481,28 @@ function ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord) {
         const gPos = new google.maps.LatLng(lat, lng);
         const agora = Date.now();
 
-        // 1. Atualização Visual
+        // --- TEMPO REAL FLUIDO NO MAPA ---
         marker.setPosition(gPos);
         map.panTo(gPos);
 
-        // 2. Lógica de Alertas
+        // --- LÓGICA DE ALERTAS ---
         let statusAlerta = sentido === 'ida' ? "EM ROTA" : "EM ROTA DE SAÍDA";
 
-        // Alerta Velocidade
         if (vel > 30) statusAlerta = "ALERTA: VELOCIDADE ALTA (" + vel + "km/h)";
 
-        // Alerta Parado
-        if (lat.toFixed(4) === ultimaPos.lat.toFixed(4)) {
-            segundosParado += 5; // watchPosition atualiza rápido
-            if (segundosParado >= 60) statusAlerta = "ALERTA: VEÍCULO PARADO +60s";
+        if (lat.toFixed(4) === ultimaPos.lat.toFixed(4) && lng.toFixed(4) === ultimaPos.lng.toFixed(4)) {
+            segundosParado += 10; // watchPosition dispara frequentemente
+            if (segundosParado >= 60) statusAlerta = "ALERTA: VEÍCULO PARADO";
         } else {
             segundosParado = 0;
             ultimaPos = { lat: lat.toFixed(4), lng: lng.toFixed(4) };
         }
 
-        // Alerta Fora de Rota (Simplificado: distância do centro da rota)
-        const distanceToRoute = google.maps.geometry.poly.isLocationOnEdge(gPos, new google.maps.Polyline({path: rotaPath}), 0.0005);
-        if (!distanceToRoute) statusAlerta = "ALERTA: FORA DA ROTA";
+        // Alerta Fora de Rota
+        const distanceToRoute = google.maps.geometry.poly.isLocationOnEdge(gPos, new google.maps.Polyline({path: rotaPath}), 0.0006);
+        if (!distanceToRoute && vel > 5) statusAlerta = "ALERTA: FORA DA ROTA";
 
-        // 3. Envio ao Supabase
+        // --- ENVIO AO BANCO (15s) ---
         if (agora - ultimaGravacaoBanco >= INTERVALO_BANCO) {
             ultimaGravacaoBanco = agora;
             await supabaseClient.from('rastreamento').update({
@@ -483,25 +513,24 @@ function ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord) {
             }).eq('id', idViagemSupabase);
         }
 
-        // 4. Verificação de Chegada
+        // --- CHEGADA ---
         const distFinal = google.maps.geometry.spherical.computeDistanceBetween(gPos, new google.maps.LatLng(destCoord.lat, destCoord.lng));
-        
         if (distFinal < 20) {
             navigator.geolocation.clearWatch(watchID);
             if (sentido === 'ida') {
-                alert("Você chegou ao seu destino: " + labelDestino);
-                location.reload(); // Recarrega e mostra o botão de saída
+                alert("Você chegou ao Destino: " + labelDestino);
+                location.reload(); 
             } else {
-                alert("Chegada na Portaria confirmada. Conexão encerrada.");
-                localStorage.clear(); // Limpa TUDO: precisa de novo QR Code
+                alert("Você chegou na Portaria. Conexão encerrada.");
+                localStorage.clear(); 
                 location.reload();
             }
         }
-    }, null, { enableHighAccuracy: true, maximumAge: 0 });
+    }, (err) => console.error(err), { enableHighAccuracy: true, maximumAge: 0 });
 }
 
 async function solicitarWakeLock() {
-    if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen');
+    try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch(e){}
 }
 
 window.onload = initMap;
