@@ -365,9 +365,9 @@ let idViagemSupabase = null;
 let ultimaGravacaoBanco = 0;
 const INTERVALO_BANCO = 15000;
 
-// Variáveis de Alerta (CORREÇÃO: Adicionadas para não travar o script)
+// Variáveis de Alerta
 let segundosParado = 0;
-let ultimaPos = { lat: 0, lng: 0 };
+let ultimaPos = { lat: "0.0000", lng: "0.0000" }; // Inicializado como string para comparação correta
 
 function initMap() {
     directionsService = new google.maps.DirectionsService();
@@ -418,7 +418,6 @@ async function iniciarNavegacao(sentido) {
 
     if(!nome || !placa) return alert("Preencha Nome e Placa.");
 
-    // --- BUSCA DO DESTINO (Rua/Lote) ---
     if (sentido === 'ida') {
         const lote = document.getElementById('lote_alvo').value.trim().toUpperCase();
         const rua = document.getElementById('rua_alvo').value;
@@ -439,7 +438,6 @@ async function iniciarNavegacao(sentido) {
         labelDestino = "SAÍDA/PORTARIA";
     }
 
-    // --- PASSO 1: GPS E ROTA (Garante que o mapa funcione primeiro) ---
     navigator.geolocation.getCurrentPosition(async (pos) => {
         const origin = { lat: pos.coords.latitude, lng: pos.coords.longitude };
         ultimaPos = { lat: origin.lat.toFixed(4), lng: origin.lng.toFixed(4) };
@@ -447,7 +445,7 @@ async function iniciarNavegacao(sentido) {
         map.setCenter(origin);
         map.setZoom(19);
 
-        // --- PASSO 2: GRAVAR NO BANCO (Insert com captura de ID) ---
+        // --- CONEXÃO COM BANCO ---
         try {
             const { data, error } = await supabaseClient.from('rastreamento').insert([{
                 nome: nome.toUpperCase(),
@@ -460,14 +458,10 @@ async function iniciarNavegacao(sentido) {
 
             if (data && data.length > 0) {
                 idViagemSupabase = data[0].id;
-                console.log("Conectado ao CCO. ID:", idViagemSupabase);
             }
-            if (error) console.error("Erro Supabase:", error);
-        } catch (e) {
-            console.error("Falha de conexão com banco:", e);
-        }
+        } catch (e) { console.error(e); }
 
-        // --- PASSO 3: TRAÇAR A ROTA ---
+        // --- ROTA (MANTIDA IGUAL) ---
         directionsService.route({
             origin: origin,
             destination: destCoord,
@@ -491,8 +485,6 @@ async function iniciarNavegacao(sentido) {
     }, (err) => alert("Erro GPS"), { enableHighAccuracy: true });
 }
 
-// A função finalizarSetupNavegacao foi removida pois o insert já acontece na iniciarNavegacao
-
 function ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord) {
     if (watchID) navigator.geolocation.clearWatch(watchID);
 
@@ -509,6 +501,7 @@ function ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord) {
         let statusAlerta = sentido === 'ida' ? "EM ROTA" : "EM ROTA DE SAÍDA";
         if (vel > 30) statusAlerta = "ALERTA: VELOCIDADE ALTA (" + vel + "km/h)";
 
+        // CORREÇÃO: Comparação de posição corrigida para funcionar com o Banco
         if (lat.toFixed(4) === ultimaPos.lat && lng.toFixed(4) === ultimaPos.lng) {
             segundosParado += 10;
             if (segundosParado >= 60) statusAlerta = "ALERTA: VEÍCULO PARADO";
@@ -520,6 +513,7 @@ function ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord) {
         const distanceToRoute = google.maps.geometry.poly.isLocationOnEdge(gPos, new google.maps.Polyline({path: rotaPath}), 0.0006);
         if (!distanceToRoute && vel > 5) statusAlerta = "ALERTA: FORA DA ROTA";
 
+        // --- ENVIO AO BANCO ---
         if (agora - ultimaGravacaoBanco >= INTERVALO_BANCO && idViagemSupabase) {
             ultimaGravacaoBanco = agora;
             await supabaseClient.from('rastreamento').update({
@@ -551,7 +545,7 @@ async function solicitarWakeLock() {
 
 window.onload = initMap;
 
-// Bloqueios de segurança mantidos conforme solicitado
+// Bloqueios de segurança mantidos
 document.addEventListener('contextmenu', event => event.preventDefault());
 document.onkeydown = function(e) {
     if (e.keyCode == 123 || (e.ctrlKey && e.shiftKey && (e.keyCode == 73 || e.keyCode == 74)) || (e.ctrlKey && e.keyCode == 85)) {
@@ -561,4 +555,3 @@ document.onkeydown = function(e) {
 </script>
 </body>
 </html>
-
