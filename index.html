@@ -354,17 +354,20 @@ const BANCO_COORDENADAS = {
     }
 };
 // --- CONFIGURAÇÕES DO SISTEMA ---
-// --- CONFIGURAÇÕES DO SISTEMA ---
 const SUPABASE_URL = 'https://ybadcbejraxpkmdjspcv.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InliYWRjYmVqcmF4cGttZGpzcGN2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI5ODEwNzAsImV4cCI6MjA4ODU1NzA3MH0.DpkEcK_ETkYdepGFyrcY7hitWCZGzyCq5J8rZpQTEO0';
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// 1. AS VARIÁVEIS TÊM QUE ESTAR AQUI NO TOPO
+// 1. VARIÁVEIS GLOBAIS
 let map, marker, directionsRenderer, directionsService, watchID, rotaPath = [];
 let wakeLock = null;
 let idViagemSupabase = null;
 let ultimaGravacaoBanco = 0;
 const INTERVALO_BANCO = 15000;
+
+// Variáveis de Alerta (CORREÇÃO: Adicionadas para não travar o script)
+let segundosParado = 0;
+let ultimaPos = { lat: 0, lng: 0 };
 
 function initMap() {
     directionsService = new google.maps.DirectionsService();
@@ -397,21 +400,17 @@ function initMap() {
         }
     });
 
-    // --- LÓGICA DE REAPARECIMENTO APÓS CHEGADA ---
     const salvo = JSON.parse(localStorage.getItem('dados_visitante'));
     if (salvo) {
-        // Se já existe nome/placa, preenche os campos e mostra o botão de saída
         document.getElementById('nome_v').value = salvo.nome;
         document.getElementById('placa_v').value = salvo.placa;
-        
         const btnSaida = document.getElementById('btn-saida-direta');
         if (btnSaida) btnSaida.style.display = 'block';
-        
-        // Opcional: Esconde os campos de destino já que ele já chegou
-        const areaDestino = document.querySelector('.area-destino'); // Ajuste o seletor se necessário
+        const areaDestino = document.querySelector('.area-destino');
         if (areaDestino) areaDestino.style.display = 'none';
     }
 }
+
 async function iniciarNavegacao(sentido) {
     const nome = document.getElementById('nome_v').value.trim();
     const placa = document.getElementById('placa_v').value.trim();
@@ -424,12 +423,10 @@ async function iniciarNavegacao(sentido) {
         const rua = document.getElementById('rua_alvo').value;
         const num = document.getElementById('num_alvo').value.trim();
 
-        // TENTA BUSCAR POR LOTE PRIMEIRO
         if (lote && BANCO_COORDENADAS.LOTES?.[lote]) {
             destCoord = { lat: BANCO_COORDENADAS.LOTES[lote][0], lng: BANCO_COORDENADAS.LOTES[lote][1] };
             labelDestino = "LOTE " + lote;
         } 
-        // SE NÃO TIVER LOTE, TENTA POR RUA E NÚMERO
         else if (rua && num && BANCO_COORDENADAS.RUAS?.[rua]?.[num]) {
             destCoord = { lat: BANCO_COORDENADAS.RUAS[rua][num][0], lng: BANCO_COORDENADAS.RUAS[rua][num][1] };
             labelDestino = rua + ", " + num;
@@ -437,27 +434,28 @@ async function iniciarNavegacao(sentido) {
         else {
             return alert("Destino não encontrado. Verifique o Lote ou Rua/Nº.");
         }
-        
         localStorage.setItem('dados_visitante', JSON.stringify({ nome, placa, destino: labelDestino }));
     } else {
         destCoord = BANCO_COORDENADAS.PORTARIA;
         labelDestino = "SAÍDA/PORTARIA";
     }
 
-    // GRAVA NO BANCO (SUPABASE)
-    const { data } = await supabaseClient.from('rastreamento').insert([{
+    // GRAVA NO BANCO (CORREÇÃO: Unificado aqui para garantir o ID)
+    const { data, error } = await supabaseClient.from('rastreamento').insert([{
         nome: nome.toUpperCase(),
         placa: placa.toUpperCase(),
         lote_destino: labelDestino,
         status_viagem: 'INICIANDO ROTA'
     }]).select();
     
+    if (error) console.error("Erro Supabase:", error);
     if (data) idViagemSupabase = data[0].id;
 
     solicitarWakeLock();
 
     navigator.geolocation.getCurrentPosition((pos) => {
         const origin = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        ultimaPos = { lat: origin.lat.toFixed(4), lng: origin.lng.toFixed(4) }; // Inicializa posição
         
         directionsService.route({
             origin: origin,
@@ -467,13 +465,10 @@ async function iniciarNavegacao(sentido) {
             if (status === "OK") {
                 directionsRenderer.setDirections(result);
                 rotaPath = result.routes[0].overview_path;
-                
                 map.setCenter(origin);
                 map.setZoom(19);
-                
                 ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord);
             } else {
-                // LINHA RETA SE A ROTA FALHAR
                 const linhaManual = new google.maps.Polyline({
                     path: [origin, destCoord],
                     map: map,
@@ -489,20 +484,8 @@ async function iniciarNavegacao(sentido) {
     }, (err) => alert("Erro GPS"), { enableHighAccuracy: true });
 }
 
-// Função para organizar o final do processo
-async function finalizarSetupNavegacao(nome, placa, labelDestino, sentido, destCoord) {
-    const { data } = await supabaseClient.from('rastreamento').insert([{
-        nome: nome.toUpperCase(),
-        placa: placa.toUpperCase(),
-        lote_destino: labelDestino,
-        status_viagem: 'INICIANDO'
-    }]).select();
-    
-    if (data) idViagemSupabase = data[0].id;
-    
-    solicitarWakeLock();
-    ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord);
-}
+// A função finalizarSetupNavegacao foi removida pois o insert já acontece na iniciarNavegacao
+
 function ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord) {
     if (watchID) navigator.geolocation.clearWatch(watchID);
 
@@ -513,29 +496,24 @@ function ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord) {
         const gPos = new google.maps.LatLng(lat, lng);
         const agora = Date.now();
 
-        // --- TEMPO REAL FLUIDO NO MAPA ---
         marker.setPosition(gPos);
         map.panTo(gPos);
 
-        // --- LÓGICA DE ALERTAS ---
         let statusAlerta = sentido === 'ida' ? "EM ROTA" : "EM ROTA DE SAÍDA";
-
         if (vel > 30) statusAlerta = "ALERTA: VELOCIDADE ALTA (" + vel + "km/h)";
 
-        if (lat.toFixed(4) === ultimaPos.lat.toFixed(4) && lng.toFixed(4) === ultimaPos.lng.toFixed(4)) {
-            segundosParado += 10; // watchPosition dispara frequentemente
+        if (lat.toFixed(4) === ultimaPos.lat && lng.toFixed(4) === ultimaPos.lng) {
+            segundosParado += 10;
             if (segundosParado >= 60) statusAlerta = "ALERTA: VEÍCULO PARADO";
         } else {
             segundosParado = 0;
             ultimaPos = { lat: lat.toFixed(4), lng: lng.toFixed(4) };
         }
 
-        // Alerta Fora de Rota
         const distanceToRoute = google.maps.geometry.poly.isLocationOnEdge(gPos, new google.maps.Polyline({path: rotaPath}), 0.0006);
         if (!distanceToRoute && vel > 5) statusAlerta = "ALERTA: FORA DA ROTA";
 
-        // --- ENVIO AO BANCO (15s) ---
-        if (agora - ultimaGravacaoBanco >= INTERVALO_BANCO) {
+        if (agora - ultimaGravacaoBanco >= INTERVALO_BANCO && idViagemSupabase) {
             ultimaGravacaoBanco = agora;
             await supabaseClient.from('rastreamento').update({
                 latitude: lat,
@@ -545,7 +523,6 @@ function ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord) {
             }).eq('id', idViagemSupabase);
         }
 
-        // --- CHEGADA ---
         const distFinal = google.maps.geometry.spherical.computeDistanceBetween(gPos, new google.maps.LatLng(destCoord.lat, destCoord.lng));
         if (distFinal < 20) {
             navigator.geolocation.clearWatch(watchID);
@@ -567,24 +544,13 @@ async function solicitarWakeLock() {
 
 window.onload = initMap;
 
-// 1. Bloqueia o Clique Direito (Menu de Contexto)
-    document.addEventListener('contextmenu', event => event.preventDefault());
-
-    // 2. Bloqueia Atalhos de Teclado (F12, Ctrl+Shift+I, Ctrl+U)
-    document.onkeydown = function(e) {
-        if (e.keyCode == 123) { // F12
-            return false;
-        }
-        if (e.ctrlKey && e.shiftKey && e.keyCode == 'I'.charCodeAt(0)) { // Ctrl+Shift+I
-            return false;
-        }
-        if (e.ctrlKey && e.shiftKey && e.keyCode == 'J'.charCodeAt(0)) { // Ctrl+Shift+J
-            return false;
-        }
-        if (e.ctrlKey && e.keyCode == 'U'.charCodeAt(0)) { // Ctrl+U (Ver código fonte)
-            return false;
-        }
-    };
+// Bloqueios de segurança mantidos conforme solicitado
+document.addEventListener('contextmenu', event => event.preventDefault());
+document.onkeydown = function(e) {
+    if (e.keyCode == 123 || (e.ctrlKey && e.shiftKey && (e.keyCode == 73 || e.keyCode == 74)) || (e.ctrlKey && e.keyCode == 85)) {
+        return false;
+    }
+};
 </script>
 </body>
 </html>
