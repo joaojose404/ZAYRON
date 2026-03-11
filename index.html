@@ -418,6 +418,7 @@ async function iniciarNavegacao(sentido) {
 
     if(!nome || !placa) return alert("Preencha Nome e Placa.");
 
+    // --- BUSCA DO DESTINO (Rua/Lote) ---
     if (sentido === 'ida') {
         const lote = document.getElementById('lote_alvo').value.trim().toUpperCase();
         const rua = document.getElementById('rua_alvo').value;
@@ -426,13 +427,11 @@ async function iniciarNavegacao(sentido) {
         if (lote && BANCO_COORDENADAS.LOTES?.[lote]) {
             destCoord = { lat: BANCO_COORDENADAS.LOTES[lote][0], lng: BANCO_COORDENADAS.LOTES[lote][1] };
             labelDestino = "LOTE " + lote;
-        } 
-        else if (rua && num && BANCO_COORDENADAS.RUAS?.[rua]?.[num]) {
+        } else if (rua && num && BANCO_COORDENADAS.RUAS?.[rua]?.[num]) {
             destCoord = { lat: BANCO_COORDENADAS.RUAS[rua][num][0], lng: BANCO_COORDENADAS.RUAS[rua][num][1] };
             labelDestino = rua + ", " + num;
-        } 
-        else {
-            return alert("Destino não encontrado. Verifique o Lote ou Rua/Nº.");
+        } else {
+            return alert("Destino não encontrado.");
         }
         localStorage.setItem('dados_visitante', JSON.stringify({ nome, placa, destino: labelDestino }));
     } else {
@@ -440,23 +439,35 @@ async function iniciarNavegacao(sentido) {
         labelDestino = "SAÍDA/PORTARIA";
     }
 
-    // GRAVA NO BANCO (CORREÇÃO: Unificado aqui para garantir o ID)
-    const { data, error } = await supabaseClient.from('rastreamento').insert([{
-        nome: nome.toUpperCase(),
-        placa: placa.toUpperCase(),
-        lote_destino: labelDestino,
-        status_viagem: 'INICIANDO ROTA'
-    }]).select();
-    
-    if (error) console.error("Erro Supabase:", error);
-    if (data) idViagemSupabase = data[0].id;
-
-    solicitarWakeLock();
-
-    navigator.geolocation.getCurrentPosition((pos) => {
+    // --- PASSO 1: GPS E ROTA (Garante que o mapa funcione primeiro) ---
+    navigator.geolocation.getCurrentPosition(async (pos) => {
         const origin = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        ultimaPos = { lat: origin.lat.toFixed(4), lng: origin.lng.toFixed(4) }; // Inicializa posição
+        ultimaPos = { lat: origin.lat.toFixed(4), lng: origin.lng.toFixed(4) };
         
+        map.setCenter(origin);
+        map.setZoom(19);
+
+        // --- PASSO 2: GRAVAR NO BANCO (Insert com captura de ID) ---
+        try {
+            const { data, error } = await supabaseClient.from('rastreamento').insert([{
+                nome: nome.toUpperCase(),
+                placa: placa.toUpperCase(),
+                lote_destino: labelDestino,
+                status_viagem: 'INICIOU ROTA',
+                latitude: origin.lat,
+                longitude: origin.lng
+            }]).select();
+
+            if (data && data.length > 0) {
+                idViagemSupabase = data[0].id;
+                console.log("Conectado ao CCO. ID:", idViagemSupabase);
+            }
+            if (error) console.error("Erro Supabase:", error);
+        } catch (e) {
+            console.error("Falha de conexão com banco:", e);
+        }
+
+        // --- PASSO 3: TRAÇAR A ROTA ---
         directionsService.route({
             origin: origin,
             destination: destCoord,
@@ -465,21 +476,17 @@ async function iniciarNavegacao(sentido) {
             if (status === "OK") {
                 directionsRenderer.setDirections(result);
                 rotaPath = result.routes[0].overview_path;
-                map.setCenter(origin);
-                map.setZoom(19);
-                ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord);
             } else {
-                const linhaManual = new google.maps.Polyline({
+                new google.maps.Polyline({
                     path: [origin, destCoord],
                     map: map,
-                    strokeColor: "#3b82f6",
+                    strokeColor: "#1d4ed8",
                     strokeWeight: 8
                 });
                 rotaPath = [origin, destCoord];
-                map.setCenter(origin);
-                map.setZoom(19);
-                ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord);
             }
+            solicitarWakeLock();
+            ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord);
         });
     }, (err) => alert("Erro GPS"), { enableHighAccuracy: true });
 }
@@ -554,3 +561,4 @@ document.onkeydown = function(e) {
 </script>
 </body>
 </html>
+
