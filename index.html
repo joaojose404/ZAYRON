@@ -356,13 +356,13 @@ const BANCO_COORDENADAS = {
 
 // --- CONFIGURAÇÃO SUPABASE ---
 // --- CONFIGURAÇÃO SUPABASE CORRIGIDA ---
-const SUPABASE_URL = 'https://ybadcbejraxpkmdjspcv.supabase.co';
+// Ajustado: Removido o duplo https e adicionado o ponto final correto
+const SUPABASE_URL = 'https://lsotfcirloamzhwgiplf.supabase.co'; 
 
-// REMOVI O "https://" QUE ESTAVA AQUI DENTRO:
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InliYWRjYmVqcmF4cGttZGpzcGN2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI5ODEwNzAsImV4cCI6MjA4ODU1NzA3MH0.DpkEcK_ETkYdepGFyrcY7hitWCZGzyCq5J8rZpQTEO0'; 
+// Ajustado: Adicionada a aspa simples no final da chave para fechar a linha
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxzb3RmY2lybG9hbXpod2dpcGxmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNDQ0MjIsImV4cCI6MjA4ODgyMDQyMn0.2PrghPM-3fTVDNg6shxjtaiq7yJAuqSGcxFXrfRozDo';
 
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
 let map, marker, directionsRenderer, directionsService, watchID, rotaPath = [];
 let wakeLock = null;
 
@@ -404,41 +404,52 @@ async function iniciarNavegacao(sentido) {
 
     if(!nome || !placa) return alert("Preencha Nome e Placa.");
 
-  let destCoord, labelDestino;
+    let destCoord, labelDestino;
 
     if (sentido === 'ida') {
         if (loteDigitado && BANCO_COORDENADAS.LOTES[loteDigitado]) {
             destCoord = { lat: BANCO_COORDENADAS.LOTES[loteDigitado][0], lng: BANCO_COORDENADAS.LOTES[loteDigitado][1] };
-            labelDestino = loteDigitado; // Pega o Lote atual
+            labelDestino = loteDigitado;
         } else if (rua && num && BANCO_COORDENADAS.RUAS[rua] && BANCO_COORDENADAS.RUAS[rua][num]) {
             destCoord = { lat: BANCO_COORDENADAS.RUAS[rua][num][0], lng: BANCO_COORDENADAS.RUAS[rua][num][1] };
-            labelDestino = rua + " " + num; // Pega a Rua e Número atuais
+            labelDestino = rua + " " + num;
         } else if (loteDigitado) {
              destCoord = BANCO_COORDENADAS.PORTARIA;
              labelDestino = loteDigitado;
         } else { return alert("Selecione um destino."); }
     } else { 
         destCoord = BANCO_COORDENADAS.PORTARIA; 
-        labelDestino = "SAÍDA";
+        labelDestino = "RETORNO PORTARIA"; // Identifica claramente no CCO que ele está saindo
     }
 
-    // --- O PONTO CHAVE PARA O RELATÓRIO ---
-    // Precisamos garantir que o INSERT aconteça com o labelDestino NOVO
+    // --- CORREÇÃO PARA O CCO APARECER SEMPRE ---
+    // Encerra qualquer viagem que tenha ficado "pendente" desta placa para o CCO aceitar a nova
+    await supabaseClient
+        .from('rastreamento')
+        .update({ status: 'CONCLUÍDO', saida: new Date().toISOString() })
+        .eq('placa', placa.toUpperCase())
+        .eq('status', 'EM ROTA');
+
+    // Agora cria o novo registro (O CCO verá como um novo card no topo)
     const { data, error } = await supabaseClient
         .from('rastreamento')
         .insert([{
             nome: nome.toUpperCase(),
             placa: placa.toUpperCase(),
-            lote_destino: labelDestino.toUpperCase(), // <--- ISSO VAI PARA O RELATÓRIO
+            lote_destino: labelDestino.toUpperCase(),
             entrada: new Date().toISOString(),
             status: 'EM ROTA'
         }])
         .select();
 
-    if (data) idViagemSupabase = data[0].id;
+    if (data && data.length > 0) {
+        idViagemSupabase = data[0].id;
+    }
 
     navigator.geolocation.getCurrentPosition((pos) => {
         const origin = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        
+        // Mantive sua configuração de mapa original
         map.setCenter(origin);
         map.setZoom(19);
 
@@ -451,12 +462,12 @@ async function iniciarNavegacao(sentido) {
                 directionsRenderer.setDirections(result);
                 rotaPath = result.routes[0].overview_path;
                 solicitarWakeLock();
+                // Passa os dados para o monitoramento
                 ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord);
             }
         });
     }, null, { enableHighAccuracy: true });
 }
-
 function ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord) {
     if(watchID) navigator.geolocation.clearWatch(watchID);
 
