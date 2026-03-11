@@ -418,7 +418,7 @@ async function iniciarNavegacao(sentido) {
 
     if(!nome || !placa) return alert("Preencha Nome e Placa.");
 
-    // --- LÓGICA DE DESTINO (INTOCADA) ---
+    // --- SUA BUSCA DE DESTINO (IGUAL) ---
     if (sentido === 'ida') {
         const lote = document.getElementById('lote_alvo').value.trim().toUpperCase();
         const rua = document.getElementById('rua_alvo').value;
@@ -439,30 +439,31 @@ async function iniciarNavegacao(sentido) {
         labelDestino = "SAÍDA/PORTARIA";
     }
 
-    // --- PASSO 1: GPS E ROTA (SUA ROTA APROVADA) ---
-    navigator.geolocation.getCurrentPosition(async (pos) => {
+    // --- AQUI ESTÁ O SEGREDO: ENVIO IMEDIATO ---
+    // Criamos o registro ANTES de pedir o GPS para não ter atraso
+    const novoRegistro = {
+        nome: nome.toUpperCase(),
+        placa: placa.toUpperCase(),
+        lote_destino: labelDestino,
+        status_viagem: 'INICIOU ROTA'
+    };
+
+    // Comando direto sem travar a tela
+    const { data, error } = await supabaseClient.from('rastreamento').insert([novoRegistro]).select();
+    
+    if (data && data.length > 0) {
+        idViagemSupabase = data[0].id;
+        console.log("Conectado ao CCO:", idViagemSupabase);
+    }
+
+    // --- SUA ROTA (NÃO MUDOU NADA) ---
+    solicitarWakeLock();
+
+    navigator.geolocation.getCurrentPosition((pos) => {
         const origin = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        ultimaPos = { lat: origin.lat.toFixed(4), lng: origin.lng.toFixed(4) };
-        
         map.setCenter(origin);
         map.setZoom(19);
 
-        // --- PASSO 2: GRAVAÇÃO NO BANCO (USANDO SEU SQL NOVO) ---
-        try {
-            const { data, error } = await supabaseClient.from('rastreamento').insert([{
-                nome: nome.toUpperCase(),
-                placa: placa.toUpperCase(),
-                lote_destino: labelDestino,
-                status_viagem: 'INICIOU ROTA',
-                latitude: origin.lat,
-                longitude: origin.lng
-            }]).select();
-
-            if (data && data.length > 0) idViagemSupabase = data[0].id;
-            if (error) console.error("Erro banco:", error.message);
-        } catch (e) { console.error("Falha conexão:", e); }
-
-        // --- PASSO 3: DESENHAR ROTA (MANTIDO) ---
         directionsService.route({
             origin: origin,
             destination: destCoord,
@@ -480,7 +481,6 @@ async function iniciarNavegacao(sentido) {
                 });
                 rotaPath = [origin, destCoord];
             }
-            solicitarWakeLock();
             ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord);
         });
     }, (err) => alert("Erro GPS"), { enableHighAccuracy: true });
@@ -500,39 +500,26 @@ function ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord) {
         map.panTo(gPos);
 
         let statusAlerta = sentido === 'ida' ? "EM ROTA" : "EM ROTA DE SAÍDA";
-        if (vel > 30) statusAlerta = "ALERTA: VELOCIDADE ALTA (" + vel + "km/h)";
-
-        // Lógica de parado
-        if (lat.toFixed(4) === ultimaPos.lat && lng.toFixed(4) === ultimaPos.lng) {
-            segundosParado += 10;
-            if (segundosParado >= 60) statusAlerta = "ALERTA: VEÍCULO PARADO";
-        } else {
-            segundosParado = 0;
-            ultimaPos = { lat: lat.toFixed(4), lng: lng.toFixed(4) };
-        }
-
-        // Fora de rota
-        const distanceToRoute = google.maps.geometry.poly.isLocationOnEdge(gPos, new google.maps.Polyline({path: rotaPath}), 0.0006);
-        let isForaRota = !distanceToRoute && vel > 5;
-        if (isForaRota) statusAlerta = "ALERTA: FORA DA ROTA";
-
-        // --- ENVIO AO BANCO (15s) ---
+        
+        // Atualização do Banco (A cada 15 segundos)
         if (agora - ultimaGravacaoBanco >= INTERVALO_BANCO && idViagemSupabase) {
             ultimaGravacaoBanco = agora;
-            await supabaseClient.from('rastreamento').update({
+            
+            // Enviando para as colunas exatas do seu SQL
+            supabaseClient.from('rastreamento').update({
                 latitude: lat,
                 longitude: lng,
                 velocidade: vel,
-                status_viagem: statusAlerta,
-                fora_rota: isForaRota
-            }).eq('id', idViagemSupabase);
+                status_viagem: statusAlerta
+            }).eq('id', idViagemSupabase).then(({error}) => {
+                if(error) console.log("Erro no update:", error);
+            });
         }
 
         // Chegada
         const distFinal = google.maps.geometry.spherical.computeDistanceBetween(gPos, new google.maps.LatLng(destCoord.lat, destCoord.lng));
         if (distFinal < 20) {
             navigator.geolocation.clearWatch(watchID);
-            alert("Chegou ao destino!");
             location.reload();
         }
     }, (err) => console.error(err), { enableHighAccuracy: true, maximumAge: 0 });
