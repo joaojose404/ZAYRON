@@ -367,13 +367,12 @@ let ultimaGravacaoBanco = 0;
 const INTERVALO_BANCO = 15000;
 
 function initMap() {
-    // Inicializa o serviço de rotas (SEM ISSO O MAPA SOME)
     directionsService = new google.maps.DirectionsService();
 
     map = new google.maps.Map(document.getElementById("map-visitante"), {
         center: BANCO_COORDENADAS.PORTARIA,
         zoom: 19,
-        mapTypeId: 'roadmap', // VOLTEI PARA ROADMAP PARA TESTAR A ROTA PRIMEIRO
+        mapTypeId: 'roadmap',
         disableDefaultUI: true,
         gestureHandling: "greedy"
     });
@@ -397,8 +396,22 @@ function initMap() {
             rotation: 0
         }
     });
-}
 
+    // --- LÓGICA DE REAPARECIMENTO APÓS CHEGADA ---
+    const salvo = JSON.parse(localStorage.getItem('dados_visitante'));
+    if (salvo) {
+        // Se já existe nome/placa, preenche os campos e mostra o botão de saída
+        document.getElementById('nome_v').value = salvo.nome;
+        document.getElementById('placa_v').value = salvo.placa;
+        
+        const btnSaida = document.getElementById('btn-saida-direta');
+        if (btnSaida) btnSaida.style.display = 'block';
+        
+        // Opcional: Esconde os campos de destino já que ele já chegou
+        const areaDestino = document.querySelector('.area-destino'); // Ajuste o seletor se necessário
+        if (areaDestino) areaDestino.style.display = 'none';
+    }
+}
 async function iniciarNavegacao(sentido) {
     const nome = document.getElementById('nome_v').value.trim();
     const placa = document.getElementById('placa_v').value.trim();
