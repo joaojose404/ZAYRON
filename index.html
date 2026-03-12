@@ -418,7 +418,7 @@ async function iniciarNavegacao(sentido) {
 
     if(!nome || !placa) return alert("Preencha Nome e Placa.");
 
-    // --- SUA ROTA (MANTIDA 100%) ---
+    // --- 1. DEFINIÇÃO DO DESTINO (IGUAL AO QUE VOCÊ APROVOU) ---
     if (sentido === 'ida') {
         const lote = document.getElementById('lote_alvo').value.trim().toUpperCase();
         const rua = document.getElementById('rua_alvo').value;
@@ -439,8 +439,7 @@ async function iniciarNavegacao(sentido) {
         labelDestino = "SAÍDA/PORTARIA";
     }
 
-    // --- CONEXÃO COM O BANCO (FORÇADA) ---
-    // Tentamos criar o registro. Se o banco estiver offline, a rota segue.
+    // --- 2. REGISTRO IMEDIATO NO BANCO (AGORA FORA DO GPS) ---
     try {
         const { data, error } = await supabaseClient
             .from('rastreamento')
@@ -452,20 +451,22 @@ async function iniciarNavegacao(sentido) {
             }])
             .select();
 
-        if (data && data.length > 0) {
+        if (error) {
+            console.error("Erro Supabase:", error.message);
+        } else if (data && data.length > 0) {
             idViagemSupabase = data[0].id;
-            console.log("Conectado ao CCO. ID:", idViagemSupabase);
+            console.log("Registrado com sucesso! ID:", idViagemSupabase);
         }
-        if (error) console.error("Erro Supabase:", error.message);
     } catch (e) {
-        console.error("Erro ao tentar conectar:", e);
+        console.error("Falha na tentativa de insert:", e);
     }
 
-    // --- CONTINUAÇÃO DA ROTA (SUA LÓGICA APROVADA) ---
+    // --- 3. EXECUÇÃO DA ROTA (SUA LÓGICA PERFEITA) ---
     solicitarWakeLock();
 
     navigator.geolocation.getCurrentPosition((pos) => {
         const origin = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        
         map.setCenter(origin);
         map.setZoom(19);
 
@@ -478,17 +479,18 @@ async function iniciarNavegacao(sentido) {
                 directionsRenderer.setDirections(result);
                 rotaPath = result.routes[0].overview_path;
             } else {
+                // Polilinha manual caso o Google falhe no condomínio
                 new google.maps.Polyline({
                     path: [origin, destCoord],
                     map: map,
                     strokeColor: "#1d4ed8",
-                    strokeWeight: 8
+                    strokeWeight: 7
                 });
                 rotaPath = [origin, destCoord];
             }
             ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord);
         });
-    }, (err) => alert("Erro GPS"), { enableHighAccuracy: true });
+    }, (err) => alert("Erro ao obter GPS"), { enableHighAccuracy: true });
 }
 function ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord) {
     if (watchID) navigator.geolocation.clearWatch(watchID);
