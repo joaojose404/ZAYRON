@@ -2,7 +2,7 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>ZAYRON CCO - ALTA PERFORMANCE</title>
+    <title>ZAYRON CCO</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body { margin: 0; display: flex; height: 100vh; background: #0f172a; color: white; font-family: sans-serif; }
@@ -15,7 +15,7 @@
 <body>
     <div id="sidebar">
         <div class="header">ZAYRON MONITORAMENTO</div>
-        <div id="status" style="text-align: center; color: #94a3b8; margin-bottom: 10px;">Iniciando sistema...</div>
+        <div id="status" style="text-align: center; color: #94a3b8; margin-bottom: 10px;">Conectando...</div>
         <div id="lista-visitantes"></div>
     </div>
     <div id="map"></div>
@@ -26,24 +26,22 @@
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
         let markers = {};
-        const NEON_URL = "https://ep-super-violet-acvz7izl.sa-east-1.aws.neon.tech/v1/execute";
-        const KEY = "npg_FRN3O7oVTmPs"; // Sua chave nova e correta
+        
+        // O SEGREDO: Colocar a API KEY direto na URL para evitar o erro de CORS
+        const NEON_URL = "https://ep-super-violet-acvz7izl.sa-east-1.aws.neon.tech/v1/execute?apikey=npg_FRN3O7oVTmPs";
 
         async function atualizar() {
             try {
+                // Requisição Simples (sem headers customizados que travam no CORS)
                 const res = await fetch(NEON_URL, {
                     method: 'POST',
-                    headers: { 
-                        'Authorization': `Bearer ${KEY}`,
-                        'Content-Type': 'application/json' 
-                    },
                     body: JSON.stringify({ sql: "SELECT * FROM monitoramento_zayron" })
                 });
-                
+
                 const data = await res.json();
                 const rows = data.rows || [];
                 
-                document.getElementById('status').innerText = `Veículos ativos: ${rows.length}`;
+                document.getElementById('status').innerText = `Ativos: ${rows.length}`;
                 const lista = document.getElementById('lista-visitantes');
                 lista.innerHTML = "";
 
@@ -54,13 +52,14 @@
                     } else {
                         markers[p.placa].setLatLng(pos);
                     }
-                    lista.innerHTML += `<div class="card"><b>${p.nome}</b><br>${p.placa} - ${p.velocidade}km/h</div>`;
+                    lista.innerHTML += `<div class="card"><b>${p.nome}</b><br>${p.placa}</div>`;
                 });
             } catch (e) {
-                document.getElementById('status').innerText = "Erro de Conexão";
-                console.error(e);
+                document.getElementById('status').innerText = "Erro de Sinal";
+                console.error("Erro:", e);
             }
         }
+
         setInterval(atualizar, 3000);
         atualizar();
     </script>
