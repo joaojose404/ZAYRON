@@ -1,100 +1,248 @@
-// Objeto global para armazenar quando cada veículo começou a ficar parado
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>ZAYRON CCO ALVORADA - GOOGLE MAPS</title>
+    <style>
+        body { margin: 0; display: flex; font-family: sans-serif; height: 100vh; background: #0f172a; color: white; overflow: hidden; }
+        #sidebar { width: 350px; background: #1e293b; display: flex; flex-direction: column; border-right: 2px solid #334155; z-index: 10; }
+        .header { background: #059669; padding: 15px; text-align: center; font-weight: bold; font-size: 18px; text-transform: uppercase; }
+        .stats { display: flex; background: #0f172a; padding: 10px; gap: 10px; }
+        .stat-box { text-align: center; flex: 1; background: #1e293b; padding: 10px; border-radius: 8px; border-bottom: 3px solid #059669; }
+        .stat-box span { display: block; font-size: 20px; font-weight: bold; }
+        #conteudo-sidebar { flex: 1; overflow-y: auto; padding: 10px; }
+        .secao-titulo { background: #0f172a; padding: 8px; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #94a3b8; margin-top: 10px; border-radius: 4px; letter-spacing: 1px; }
+        
+        .card { background: #334155; padding: 15px; border-radius: 10px; margin-bottom: 12px; border-left: 5px solid #059669; cursor: pointer; position: relative; transition: 0.3s; }
+        .card.alerta { border-left-color: #ef4444 !important; background: #451a1a !important; animation: pulse-red 1s infinite; }
+        .card.parado-alerta { border-left-color: #f59e0b !important; background: #45301a !important; animation: pulse-orange 1.5s infinite; }
+
+        @keyframes pulse-red { 0% { box-shadow: inset 0 0 0px rgba(239, 68, 68, 0); } 50% { box-shadow: inset 0 0 15px rgba(239, 68, 68, 0.6); } 100% { box-shadow: inset 0 0 0px rgba(239, 68, 68, 0); } }
+        @keyframes pulse-orange { 0% { box-shadow: inset 0 0 0px rgba(245, 158, 11, 0); } 50% { box-shadow: inset 0 0 15px rgba(245, 158, 11, 0.6); } 100% { box-shadow: inset 0 0 0px rgba(245, 158, 11, 0); } }
+
+        .status-badge { font-size: 10px; padding: 4px 10px; border-radius: 4px; font-weight: bold; float: right; text-transform: uppercase; background: #059669; }
+        .btn-imprimir { width: 90%; margin: 10px auto; padding: 12px; background: #059669; border: none; color: white; border-radius: 8px; cursor: pointer; font-weight: bold; display: block; font-size: 14px; }
+        .btn-relatorio-laranja { width: 100%; margin-top: 10px; padding: 10px; background: #f59e0b; border: none; color: white; border-radius: 5px; cursor: pointer; font-weight: bold; text-transform: uppercase; font-size: 12px; }
+        .btn-excluir-cinza { width: 100%; margin-top: 8px; padding: 10px; background: #475569; border: none; color: white; border-radius: 5px; cursor: pointer; font-weight: bold; text-transform: uppercase; font-size: 12px; }
+
+        #map { flex: 1; height: 100%; }
+        #modal-relatorio { display: none; position: fixed; z-index: 9999; left: 360px; top: 20px; background: #1e293b; padding: 20px; border-radius: 10px; border: 2px solid #fbbf24; width: 320px; box-shadow: 0 0 30px rgba(0,0,0,0.7); }
+    </style>
+</head>
+<body>
+
+<audio id="alarmeSonoro" loop><source src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" type="audio/ogg"></audio>
+
+<div id="modal-relatorio">
+    <h3 id="rel-nome" style="margin-top:0; color:#fbbf24">Relatório de Percurso</h3>
+    <div id="rel-dados" style="font-size:13px; line-height:1.6"></div>
+    <button class="btn-excluir-cinza" onclick="fecharRelatorio()">FECHAR</button>
+</div>
+
+<div id="sidebar">
+    <div class="header">ALVORADA SHIELD CCO</div>
+    <button class="btn-imprimir" onclick="gerarRelatorioGeral()">📋 RELATÓRIO DO DIA</button>
+
+    <div class="stats">
+        <div class="stat-box"> <span id="cont-v">0</span> <small>VISITANTES</small> </div>
+        <div class="stat-box"> <span id="cont-r">0</span> <small>RONDAS</small> </div>
+    </div>
+    
+    <div id="conteudo-sidebar">
+        <div id="lista-visitantes"></div>
+        <div class="secao-titulo">Vigilantes em Campo</div>
+        <div id="lista-rondas"></div>
+    </div>
+</div>
+
+<div id="map"></div>
+
+<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyA0rPJ_LsiYW8IcU1imTvWRXPExGNKmC6M&callback=initMap" async defer></script>
+
+<script>
+// 1. CONFIGURAÇÕES INICIAIS
+firebase.initializeApp({ apiKey: "AIzaSyA0rPJ_LsiYW8IcU1imTvWRXPExGNKmC6M", databaseURL: "https://gps-alvorada-default-rtdb.firebaseio.com" });
+const db = firebase.database();
+
+let map, markerRastro;
+let markersV = {}, markersR = {}, polylineRastro = null;
 let cronometroParada = {}; 
 
+// 2. INICIALIZAR GOOGLE MAPS
+function initMap() {
+    map = new google.maps.Map(document.getElementById("map"), {
+        center: { lat: -23.201919, lng: -47.029214 },
+        zoom: 16,
+        styles: [ { "featureType": "all", "elementType": "all", "stylers": [ { "invert_lightness": true }, { "saturation": 10 }, { "lightness": 30 }, { "gamma": 0.5 }, { "hue": "#435158" } ] } ]
+    });
+}
+
+function gerenciarAlarme(ligar) {
+    const som = document.getElementById('alarmeSonoro');
+    if (ligar) { som.play().catch(() => {}); } else { som.pause(); som.currentTime = 0; }
+}
+
+// 3. RASTRO E HISTÓRICO
+window.verRelatorio = (id, nome) => {
+    db.ref('historico_rastro').once('value', (snap) => {
+        const historico = snap.val();
+        if (!historico) return alert("Sem dados.");
+
+        let viagens = Object.keys(historico).map(key => ({key, ...historico[key]}))
+            .filter(v => (v.id_ativo === id || v.key === id));
+
+        if (viagens.length === 0) return alert("Rastro não encontrado.");
+        viagens.sort((a,b) => (b.timestamp_inicio || 0) - (a.timestamp_inicio || 0));
+        const viagemAtual = viagens[0];
+        const pontosRaw = viagemAtual.pontos || viagemAtual;
+
+        let pArray = Object.values(pontosRaw).filter(p => typeof p === 'object').sort((a, b) => a.timestamp - b.timestamp);
+        let coords = [], tParado = 0;
+        
+        pArray.forEach((p, i) => {
+            if (p.lat && p.lng) coords.push({ lat: p.lat, lng: p.lng });
+            if (i > 0) {
+                let diff = (p.timestamp - pArray[i-1].timestamp) / 60000;
+                if (p.velocidade < 5 && diff > 1.5) tParado += diff;
+            }
+        });
+
+        if (polylineRastro) polylineRastro.setMap(null);
+        polylineRastro = new google.maps.Polyline({ path: coords, strokeColor: '#fbbf24', strokeWeight: 5, map: map });
+        
+        const bounds = new google.maps.LatLngBounds();
+        coords.forEach(c => bounds.extend(c));
+        map.fitBounds(bounds);
+        
+        document.getElementById('rel-nome').innerText = nome;
+        document.getElementById('rel-dados').innerHTML = `<p><b>Início:</b> ${new Date(pArray[0].timestamp).toLocaleTimeString()}</p><p><b>Tempo Parado:</b> ~${Math.round(tParado)} min</p>`;
+        document.getElementById('modal-relatorio').style.display = 'block';
+    });
+};
+
+window.fecharRelatorio = () => { document.getElementById('modal-relatorio').style.display = 'none'; if (polylineRastro) polylineRastro.setMap(null); };
+
+// 4. MONITORAMENTO VISITANTES (COM LÓGICA DE 60s)
 db.ref('monitoramento').on('value', (snap) => {
     const data = snap.val();
-    const lista = document.getElementById('lista-visitantes'); 
-    lista.innerHTML = "";
-    let alertaGeral = false;
+    const lista = document.getElementById('lista-visitantes'); lista.innerHTML = "";
     const AGORA = Date.now();
+    let alertaGeral = false;
 
-    if (!data) { 
-        document.getElementById('cont-v').innerText = "0"; 
-        gerenciarAlarme(false); 
-        return; 
-    }
-
+    if (!data) { document.getElementById('cont-v').innerText = "0"; gerenciarAlarme(false); return; }
     document.getElementById('cont-v').innerText = Object.keys(data).length;
-    
+
     Object.keys(data).forEach(id => {
         const info = data[id];
         const vPos = { lat: info.lat, lng: info.lng };
         
-        // --- LÓGICA DE FILTRO DE 60 SEGUNDOS ---
+        // Lógica de Parada
         const velocidadeBaixa = (info.velocidade < 2);
-
         if (velocidadeBaixa) {
-            // Se ele acabou de parar, registra o horário do início da parada
-            if (!cronometroParada[id]) {
-                cronometroParada[id] = AGORA;
-            }
+            if (!cronometroParada[id]) cronometroParada[id] = AGORA;
         } else {
-            // Se ele se moveu, limpa o cronômetro dele
             delete cronometroParada[id];
         }
 
-        // Só considera "Realmente Parado" se o tempo decorrido for > 60.000ms (60s)
         const tempoParadoMs = cronometroParada[id] ? (AGORA - cronometroParada[id]) : 0;
-        const estaParadoALERTA = velocidadeBaixa && (tempoParadoMs > 60000);
+        const estaParadoReal = velocidadeBaixa && (tempoParadoMs > 60000);
 
-        if (estaParadoALERTA || info.status === "fora_da_rota") {
-            alertaGeral = true;
-        }
+        if (estaParadoReal || info.status === "fora_da_rota") alertaGeral = true;
 
-        // Gerenciar Marcador Google
+        // Marcador Google
         if (!markersV[id]) {
-            markersV[id] = new google.maps.Marker({
-                position: vPos,
-                map: map,
-                icon: {
-                    path: google.maps.SymbolPath.CIRCLE,
-                    scale: 8,
-                    fillColor: estaParadoALERTA ? "#f59e0b" : "#10b981",
-                    fillOpacity: 1,
-                    strokeWeight: 2,
-                    strokeColor: "white"
-                }
-            });
+            markersV[id] = new google.maps.Marker({ position: vPos, map: map, icon: { path: google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: estaParadoReal ? '#f59e0b' : '#10b981', fillOpacity: 1, strokeColor: 'white', strokeWeight: 2 }});
         } else {
             markersV[id].setPosition(vPos);
-            markersV[id].setOptions({
-                icon: {
-                    path: google.maps.SymbolPath.CIRCLE,
-                    scale: 8,
-                    fillColor: estaParadoALERTA ? "#f59e0b" : "#10b981",
-                    fillOpacity: 1,
-                    strokeWeight: 2,
-                    strokeColor: "white"
-                }
-            });
+            markersV[id].setIcon({ path: google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: estaParadoReal ? '#f59e0b' : '#10b981', fillOpacity: 1, strokeColor: 'white', strokeWeight: 2 });
         }
 
         const card = document.createElement('div');
-        card.className = `card ${estaParadoALERTA ? 'parado-alerta' : ''}`;
+        card.className = `card ${estaParadoReal ? 'parado-alerta' : ''} ${info.status === 'fora_da_rota' ? 'alerta' : ''}`;
         
-        // Mostra contagem regressiva ou tempo parado no Card para o operador ver
         let infoTempo = "";
-        if (velocidadeBaixa && !estaParadoALERTA) {
-            const faltam = Math.ceil((60000 - tempoParadoMs) / 1000);
-            infoTempo = `<br><small style="color:#94a3b8">Verificando parada: ${faltam}s...</small>`;
-        } else if (estaParadoALERTA) {
-            const total = Math.round(tempoParadoMs / 60000);
-            infoTempo = `<br><small style="color:#fbbf24">⚠️ PARADO HÁ ${total} MIN</small>`;
+        if (velocidadeBaixa && !estaParadoReal) {
+            infoTempo = `<br><small style="color:#94a3b8">Validando parada: ${Math.ceil((60000 - tempoParadoMs)/1000)}s</small>`;
         }
 
         card.innerHTML = `
-            <span class="status-badge" style="background:${estaParadoALERTA ? '#f59e0b' : '#059669'}">
-                ${estaParadoALERTA ? 'PARADO' : 'EM ROTA'}
-            </span>
+            <span class="status-badge" style="background:${estaParadoReal ? '#f59e0b' : '#059669'}">${estaParadoReal ? 'PARADO' : 'EM ROTA'}</span>
             <h3 style="margin:0;">${info.visitante}</h3>
             <p style="margin:8px 0; font-size:13px;">🚗 PLACA: <b>${info.placa}</b> | 🚀 VEL: <b>${info.velocidade} km/h</b></p>
             <p style="margin:0; font-size:14px; font-weight:bold;">📍 ${info.lote_destino}${infoTempo}</p>
             <button class="btn-relatorio-laranja" onclick="event.stopPropagation(); verRelatorio('${id}', '${info.visitante}')">📊 VER RASTRO</button>
         `;
-        
         card.onclick = () => map.panTo(vPos);
         lista.appendChild(card);
     });
-
     gerenciarAlarme(alertaGeral);
 });
+
+// 5. MONITORAMENTO RONDAS
+db.ref('rondas_ativas').on('value', (snap) => {
+    const data = snap.val();
+    const lista = document.getElementById('lista-rondas'); lista.innerHTML = "";
+    if (!data) { document.getElementById('cont-r').innerText = "0"; return; }
+    document.getElementById('cont-r').innerText = Object.keys(data).length;
+
+    Object.keys(data).forEach(id => {
+        const r = data[id];
+        const rPos = { lat: r.lat, lng: r.lng };
+        if (!markersR[id]) {
+            markersR[id] = new google.maps.Marker({ position: rPos, map: map, label: "🛡️" });
+        } else {
+            markersR[id].setPosition(rPos);
+        }
+        const card = document.createElement('div');
+        card.className = 'card'; card.style.borderLeftColor = '#3b82f6';
+        card.innerHTML = `
+            <h3 style="margin:0; text-transform:uppercase;">🛡️ ${r.vigilante}</h3>
+            <p style="margin:10px 0; font-size:13px;">Status: <b>${r.status}</b></p>
+            <button class="btn-excluir-cinza" style="background:#ef4444" onclick="event.stopPropagation(); db.ref('rondas_ativas/${id}').remove()">ENCERRAR</button>
+        `;
+        card.onclick = () => map.panTo(rPos);
+        lista.appendChild(card);
+    });
+});
+
+// 6. RELATÓRIO GERAL (MESMA LÓGICA QUE JÁ FUNCIONAVA)
+async function gerarRelatorioGeral() {
+    const snapHist = await db.ref('historico_rastro').once('value');
+    const historico = snapHist.val();
+    if (!historico) return alert("Nenhum dado.");
+    let html = `<html><head><title>Relatório</title><style>body{font-family:sans-serif;padding:20px} table{width:100%;border-collapse:collapse} th,td{border:1px solid #ddd;padding:10px;text-align:left} th{background:#059669;color:white}</style></head><body><h2>📋 RELATÓRIO DE ACESSOS</h2><table><thead><tr><th>Visitante</th><th>Destino</th><th>Entrada</th><th>Saída</th><th>Vel. Máx</th><th>Parado</th></tr></thead><tbody>`;
+    const listaFinal = [];
+    Object.keys(historico).forEach(key => {
+        const data = historico[key];
+        const pontosRaw = data.pontos ? data.pontos : data;
+        if (typeof pontosRaw !== 'object') return;
+        let todosPontos = Object.values(pontosRaw).filter(x => x.timestamp).sort((a, b) => a.timestamp - b.timestamp);
+        if (todosPontos.length === 0) return;
+        let vMx = 0, tP = 0;
+        todosPontos.forEach((x, i) => {
+            if (x.velocidade > vMx) vMx = x.velocidade;
+            if (i > 0) {
+                let d = (x.timestamp - todosPontos[i - 1].timestamp) / 60000;
+                if (x.velocidade < 5 && d > 1.5) tP += d;
+            }
+        });
+        listaFinal.push({
+            nome: todosPontos[0].visitante || key,
+            destino: todosPontos[0].lote_destino || "---",
+            entrada: new Date(todosPontos[0].timestamp).toLocaleString(),
+            saida: new Date(todosPontos[todosPontos.length-1].timestamp).toLocaleString(),
+            vel: Math.round(vMx),
+            parado: Math.round(tP)
+        });
+    });
+    listaFinal.forEach(v => {
+        html += `<tr><td>${v.nome}</td><td>${v.destino}</td><td>${v.entrada}</td><td>${v.saida}</td><td>${v.vel} km/h</td><td>${v.parado} min</td></tr>`;
+    });
+    html += `</tbody></table></body></html>`;
+    const win = window.open('', '_blank'); win.document.write(html); win.document.close();
+}
+</script>
+</body>
+</html>
