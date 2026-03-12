@@ -1,83 +1,201 @@
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ZAYRON - ALVORADA VISITANTES - NAVEGAÇÃO</title>
-    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDFeB-Ta5pWxexdOEijfP3zWv_JsyNQ9zY&libraries=geometry"></script>
-    <style>
-        body { margin: 0; background: #001529; color: white; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
-        #map-visitante { flex: 1; width: 100%; }
-        .controles { background: #1e293b; padding: 15px; border-top: 4px solid #3b82f6; z-index: 1000; }
-        input, select { width: 100%; padding: 12px; margin-bottom: 8px; border-radius: 8px; border: none; background: #0f172a; color: white; font-size: 16px; box-sizing: border-box; }
-        .linha-dupla { display: grid; grid-template-columns: 2fr 1fr; gap: 8px; }
-        .btn-group { display: flex; gap: 10px; }
-        button { flex: 1; padding: 18px; border: none; border-radius: 10px; font-weight: bold; color: white; font-size: 14px; text-transform: uppercase; cursor: pointer; transition: 0.2s; }
-        .btn-ida { background: #059669; }
-        .btn-volta { background: #7c3aed; }
-        #status-txt { text-align: center; margin-top: 12px; padding: 10px; border-radius: 8px; font-size: 16px; font-weight: bold; transition: 0.3s; background: #0f172a; }
-        .cor-verde { background: #059669 !important; }
-        .cor-vermelha { background: #d32f2f !important; animation: blink 1s infinite; }
-        @keyframes blink { 0% {opacity: 1} 50% {opacity: 0.6} 100% {opacity: 1} }
-    </style>
-</head>
-<body>
 
+<meta charset="UTF-8">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+<title>ZAYRON - ALVORADA VISITANTES - NAVEGAÇÃO</title>
+
+<!-- Google Maps -->
+<script defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAn7IcmNp_y0vcpZGcTorSYcIV5soYwrrU&libraries=geometry"></script>
+
+<!-- Banco de coordenadas -->
+<script src="banco_coordenadas.js"></script>
+
+<!-- Supabase -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+
+body{
+margin:0;
+background:#001529;
+color:white;
+font-family:sans-serif;
+display:flex;
+flex-direction:column;
+height:100vh;
+overflow:hidden;
+}
+
+#map-visitante{
+flex:1;
+width:100%;
+}
+
+.controles{
+background:#1e293b;
+padding:15px;
+border-top:4px solid #3b82f6;
+z-index:1000;
+}
+
+input, select{
+width:100%;
+padding:12px;
+margin-bottom:8px;
+border-radius:8px;
+border:none;
+background:#0f172a;
+color:white;
+font-size:16px;
+box-sizing:border-box;
+}
+
+.linha-dupla{
+display:grid;
+grid-template-columns:2fr 1fr;
+gap:8px;
+}
+
+.btn-group{
+display:flex;
+gap:10px;
+}
+
+button{
+flex:1;
+padding:18px;
+border:none;
+border-radius:10px;
+font-weight:bold;
+color:white;
+font-size:14px;
+text-transform:uppercase;
+cursor:pointer;
+transition:0.2s;
+}
+
+.btn-ida{
+background:#059669;
+}
+
+.btn-volta{
+background:#7c3aed;
+}
+
+#status-txt{
+text-align:center;
+margin-top:12px;
+padding:10px;
+border-radius:8px;
+font-size:16px;
+font-weight:bold;
+transition:0.3s;
+background:#0f172a;
+}
+
+.cor-verde{
+background:#059669 !important;
+}
+
+.cor-vermelha{
+background:#d32f2f !important;
+animation:blink 1s infinite;
+}
+
+@keyframes blink{
+0%{opacity:1}
+50%{opacity:0.6}
+100%{opacity:1}
+}
+
+</style>
+
+</head>
+
+<body>
 <div id="map-visitante"></div>
 
 <div class="controles">
-    <input type="text" id="nome_v" placeholder="Nome Completo">
-    <input type="text" id="placa_v" placeholder="Placa do Veículo">
-    
-    <div class="linha-dupla">
-        <select id="rua_alvo">
-            <option value="">Selecione a Rua...</option>
-           <option value="AV. CÂNDIDO PORTINARI">Av. Cândido Portinari</option>
-    <option value="AV. PABLO PICASSO">Av. Pablo Picasso</option>
-    <option value="RUA ALDEMIR MARTINS">Rua Aldemir Martins</option>
-    <option value="RUA ALFREDO VOLPI">Rua Alfredo Volpi</option>
-    <option value="RUA ANITA MALFATTI">Rua Anita Malfatti</option>
-    <option value="RUA CICERO DIAS">Rua Cicero Dias</option>
-    <option value="RUA IBERÊ CAMARGO">Rua Iberê Camargo</option>
-    <option value="RUA TOMIE OHTAKE">Rua Tomie Ohtake</option>
-    <option value="RUA MANABU MABE">Rua Manabu Mabe</option>
-    <option value="RUA CARYBÉ">Rua Carybé</option>
-    <option value="RUA OSCAR NIEMEYER">Rua Oscar Niemeyer</option>
-    <option value="VICENTE VAN GOGH">Rua Vicente Van Gogh</option>
-    <option value="RUA REMBRANDT">Rua Rembrandt</option>
-    <option value="RUA CAMILLE PISSARRO">Rua Camille Pissaro</option>
-    <option value="RUA PAUL CÉZANNE">Rua Paul Cézanne </option>
-    <option value="RUA CLAUDE MONET">Rua Claude Monet</option>
-   <option value="RUA CLAUDE MONET">Rua Claude Monet</option>
-    <option value="RUA HENRI ROUSSEAU">Rua Henri Rousseau</option>
-    <option value="RUA PAUL GAUGUIN">Rua Paul Gauguin</option>
-    <option value="RUA HENRI MATISSE">Rua Henri Matisse</option>
-    <option value="RUA FRANCISCO GOYA">Rua Francisco Goya</option>
-    <option value="RUA CARAVAGGIO">Rua Caravaggio</option>
-    <option value="RUA LEONARDO DA VINCI">Rua Leonardo da Vinci</option>
-    <option value="RUA SANDRO BOTTICELLI">Rua Sandro Botticelli</option>
-    <option value="RUA EMILIANO CAVALCANTI">Rua Emiliano Cavalcanti</option>
-    <option value="RUA ALMEIDA JUNIOR">Rua Almeida Junior</option>
-    <option value="RUA LASAR SEGALL">Rua Lasar Segall</option>
-    <option value="RUA RAMON CASAS">Rua Ramon Casas</option>
-    <option value="RUA SALVADOR DALÍ">Rua Salvador Dalí</option>
-    <option value="RUA JOAN MIRÓ">Rua Joan Miró</option>
-    <option value="RUA MARCELO GRASSMANN">Rua Marcelo Grassmann</option>
-        </select>
-        <input type="text" id="num_alvo" placeholder="Nº">
-    </div>
-    
-    <input type="text" id="lote_alvo" placeholder="Ou digite Quadra/Lote">
-    
-    <div class="btn-group">
-        <button class="btn-ida" onclick="iniciarNavegacao('ida')">Ir para Destino</button>
-        <button class="btn-volta" onclick="iniciarNavegacao('volta')">Sair (Portaria)</button>
-    </div>
-    <div id="status-txt">AGUARDANDO INÍCIO</div>
+
+<input type="text" id="nome_v" placeholder="Nome Completo">
+
+<input type="text" id="placa_v" placeholder="Placa do Veículo">
+
+<div class="linha-dupla">
+
+<select id="rua_alvo">
+
+<option value="">Selecione a Rua...</option>
+
+<option value="AV. CÂNDIDO PORTINARI">Av. Cândido Portinari</option>
+<option value="AV. PABLO PICASSO">Av. Pablo Picasso</option>
+<option value="RUA ALDEMIR MARTINS">Rua Aldemir Martins</option>
+<option value="RUA ALFREDO VOLPI">Rua Alfredo Volpi</option>
+<option value="RUA ANITA MALFATTI">Rua Anita Malfatti</option>
+<option value="RUA CICERO DIAS">Rua Cicero Dias</option>
+<option value="RUA IBERÊ CAMARGO">Rua Iberê Camargo</option>
+<option value="RUA TOMIE OHTAKE">Rua Tomie Ohtake</option>
+<option value="RUA MANABU MABE">Rua Manabu Mabe</option>
+<option value="RUA CARYBÉ">Rua Carybé</option>
+<option value="RUA OSCAR NIEMEYER">Rua Oscar Niemeyer</option>
+
+<option value="RUA VICENTE VAN GOGH">Rua Vicente Van Gogh</option>
+
+<option value="RUA REMBRANDT">Rua Rembrandt</option>
+<option value="RUA CAMILLE PISSARRO">Rua Camille Pissarro</option>
+<option value="RUA PAUL CÉZANNE">Rua Paul Cézanne</option>
+<option value="RUA CLAUDE MONET">Rua Claude Monet</option>
+<option value="RUA HENRI ROUSSEAU">Rua Henri Rousseau</option>
+<option value="RUA PAUL GAUGUIN">Rua Paul Gauguin</option>
+<option value="RUA HENRI MATISSE">Rua Henri Matisse</option>
+<option value="RUA FRANCISCO GOYA">Rua Francisco Goya</option>
+<option value="RUA CARAVAGGIO">Rua Caravaggio</option>
+<option value="RUA LEONARDO DA VINCI">Rua Leonardo da Vinci</option>
+<option value="RUA SANDRO BOTTICELLI">Rua Sandro Botticelli</option>
+<option value="RUA EMILIANO CAVALCANTI">Rua Emiliano Cavalcanti</option>
+<option value="RUA ALMEIDA JUNIOR">Rua Almeida Junior</option>
+<option value="RUA LASAR SEGALL">Rua Lasar Segall</option>
+<option value="RUA RAMON CASAS">Rua Ramon Casas</option>
+<option value="RUA SALVADOR DALÍ">Rua Salvador Dalí</option>
+<option value="RUA JOAN MIRÓ">Rua Joan Miró</option>
+<option value="RUA MARCELO GRASSMANN">Rua Marcelo Grassmann</option>
+
+</select>
+
+<input type="text" id="num_alvo" placeholder="Nº">
+
 </div>
 
-<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+<input type="text" id="lote_alvo" placeholder="Ou digite Quadra/Lote">
+
+<div class="btn-group">
+
+<button class="btn-ida" onclick="iniciarNavegacao('ida')">
+Ir para Destino
+</button>
+
+<button class="btn-volta" onclick="iniciarNavegacao('volta')">
+Sair (Portaria)
+</button>
+
+</div>
+
+<div id="status-txt">
+AGUARDANDO INÍCIO
+</div>
+
+</div>
+
+<div id="status-destino"
+style="padding:10px;background:#1e293b;color:#10b981;font-weight:bold;text-align:center;">
+
+Destino: Selecione um lote
+
+</div>
 
 <script>
 const BANCO_COORDENADAS = {
@@ -345,100 +463,412 @@ const BANCO_COORDENADAS = {
 	
 	
     }
-};
-// 1. CONFIGURAÇÃO DO BANCO NEON (Otimizada para evitar erro de CORS)
-// A Key vai direto na URL para o navegador não bloquear o envio
-const NEON_CONFIG = {
-    endpoint: "https://ep-super-violet-acvz7izl.sa-east-1.aws.neon.tech/v1/execute?apikey=npg_FRN3O7oVTmPs"
-};
+	};
+	
+// --- CONFIGURAÇÕES DO SISTEMA ---
 
-// 2. TELA ACESA (Wake Lock) - Essencial para o motorista não perder a conexão
+const SUPABASE_URL = "https://lsotfcirloamzhwgiplf.supabase.co";
+
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxzb3RmY2lybG9hbXpod2dpcGxmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNDQ0MjIsImV4cCI6MjA4ODgyMDQyMn0.2PrghPM-3fTVDNg6shxjtaiq7yJAuqSGcxFXrfRozDo";
+
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let map;
+let marker;
+let directionsRenderer;
+let directionsService;
+let geocoder;
+let watchID;
+
+let rotaPath = [];
 let wakeLock = null;
-async function solicitarWakeLock() {
-    try {
-        if ('wakeLock' in navigator) {
-            wakeLock = await navigator.wakeLock.request('screen');
-            console.log("Monitoramento Ativo: Tela não irá apagar.");
-        }
-    } catch (err) {
-        console.error("Erro Wake Lock:", err);
-    }
-}
 
-let map, marker;
+let idViagemSupabase = null;
+let ultimaGravacaoBanco = 0;
 
-// 3. INICIALIZAÇÃO DO MAPA (Visual do motorista)
+const INTERVALO_BANCO = 15000;
+
+let segundosParado = 0;
+
+let ultimaPos = {
+    lat: 0,
+    lng: 0
+};
+
+
+// --- INICIAR MAPA ---
+
 function initMap() {
-    const mapElement = document.getElementById("map-visitante");
-    if (!mapElement) return;
 
-    map = new google.maps.Map(mapElement, {
-        center: { lat: -23.2019, lng: -47.0292 },
-        zoom: 18,
-        disableDefaultUI: true,
-        gestureHandling: "greedy"
-    });
+   map = new google.maps.Map(document.getElementById("map-visitante"), {
+    center: BANCO_COORDENADAS.PORTARIA,
+    zoom: 19,
+    tilt: 45,
+    heading: 0,
+    mapTypeId: "roadmap",
+    disableDefaultUI: true
+});
+
+   directionsService = new google.maps.DirectionsService();
+
+geocoder = new google.maps.Geocoder();
+
+directionsRenderer = new google.maps.DirectionsRenderer({
+    map: map,
+    suppressMarkers: true,
+    polylineOptions: {
+        strokeColor: "#3b82f6",
+        strokeWeight: 8
+    }
+});
 
     marker = new google.maps.Marker({
         map: map,
-        icon: { 
-            path: google.maps.SymbolPath.CIRCLE, 
-            scale: 10, 
-            fillColor: "#3b82f6", 
-            fillOpacity: 1, 
-            strokeColor: "white", 
-            strokeWeight: 3 
+        icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: 12,
+            fillColor: "#3b82f6",
+            fillOpacity: 1,
+            strokeColor: "white",
+            strokeWeight: 4
         }
     });
+
+    const salvo = JSON.parse(localStorage.getItem("dados_visitante"));
+
+    if (salvo) {
+
+        document.getElementById("nome_v").value = salvo.nome;
+        document.getElementById("placa_v").value = salvo.placa;
+
+        document.getElementById("btn-saida-direta").style.display = "block";
+
+    }
 }
 
-// 4. INICIAR MONITORAMENTO (Foco em Performance para 1500 pessoas)
-async function iniciarNavegacao() {
-    const nome = document.getElementById('nome_v').value.trim();
-    const placa = document.getElementById('placa_v').value.trim().toUpperCase();
-    
-    if(!nome || !placa) return alert("Preencha Nome e Placa para iniciar.");
 
-    // Ativa o WakeLock e oculta o formulário de login (opcional)
+// --- INICIAR NAVEGAÇÃO ---
+
+async function iniciarNavegacao(sentido) {
+
+    const nome = document.getElementById("nome_v").value.trim();
+    const placa = document.getElementById("placa_v").value.trim();
+
+    if (!nome || !placa) {
+        alert("Preencha nome e placa.");
+        return;
+    }
+
+    let destCoord;
+    let labelDestino;
+
+    if (sentido === "ida") {
+
+        const lote = document.getElementById("lote_alvo").value.trim().toUpperCase();
+        const rua = document.getElementById("rua_alvo").value;
+        const numero = document.getElementById("num_alvo").value.trim();
+
+        // PRIORIDADE 1: BUSCA POR RUA + NÚMERO DENTRO DO BANCO_COORDENADAS.RUAS
+        if (rua && numero) {
+
+            if (
+                BANCO_COORDENADAS.RUAS[rua] &&
+                BANCO_COORDENADAS.RUAS[rua][numero]
+            ) {
+
+                destCoord = {
+                    lat: BANCO_COORDENADAS.RUAS[rua][numero][0],
+                    lng: BANCO_COORDENADAS.RUAS[rua][numero][1]
+                };
+
+                labelDestino = rua + " " + numero;
+
+                localStorage.setItem("dados_visitante", JSON.stringify({
+                    nome,
+                    placa,
+                    rua_origem: rua,
+                    numero_origem: numero
+                }));
+
+            } else {
+                alert("Endereço não encontrado para esta rua e número.");
+                return;
+            }
+
+        }
+
+        // PRIORIDADE 2: BUSCA POR QUADRA/LOTE
+        else if (lote) {
+
+            if (!BANCO_COORDENADAS.LOTES[lote]) {
+                alert("Lote não encontrado.");
+                return;
+            }
+
+            destCoord = {
+                lat: BANCO_COORDENADAS.LOTES[lote][0],
+                lng: BANCO_COORDENADAS.LOTES[lote][1]
+            };
+
+            labelDestino = lote;
+
+            localStorage.setItem("dados_visitante", JSON.stringify({
+                nome,
+                placa,
+                lote_origem: lote
+            }));
+
+        }
+
+        // SE NÃO INFORMAR NADA
+        else {
+            alert("Digite Rua + Número ou Quadra/Lote.");
+            return;
+        }
+
+    } else {
+
+        destCoord = BANCO_COORDENADAS.PORTARIA;
+        labelDestino = "PORTARIA";
+
+    }
+
+    try {
+
+        const { data, error } = await supabaseClient
+            .from("rastreamento")
+            .insert([{
+                nome: nome.toUpperCase(),
+                placa: placa.toUpperCase(),
+                lote_destino: labelDestino,
+                status_viagem: "INICIANDO ROTA"
+            }])
+            .select()
+            .single();
+
+        if (error) {
+            console.error("Erro Supabase:", error);
+            alert("Erro ao iniciar rastreamento: " + error.message);
+            return;
+        }
+
+        if (!data) {
+            alert("Erro ao iniciar rastreamento.");
+            return;
+        }
+
+        idViagemSupabase = data.id;
+
+        console.log("Viagem criada:", idViagemSupabase);
+
+    } catch (err) {
+
+        console.error(err);
+        alert("Erro inesperado ao iniciar rastreamento.");
+        return;
+
+    }
+
     solicitarWakeLock();
-    document.getElementById('login-box').style.display = 'none'; 
 
-    navigator.geolocation.watchPosition(async (p) => {
-        const lat = p.coords.latitude;
-        const lng = p.coords.longitude;
-        const vel = p.coords.speed ? Math.round(p.coords.speed * 3.6) : 0;
+    navigator.geolocation.getCurrentPosition((pos) => {
 
-        // Atualiza o mapa local do motorista
-        const pos = { lat, lng };
-        if (marker) marker.setPosition(pos);
-        if (map) map.setCenter(pos);
-
-        // SQL DE ALTA CARGA (UPSERT)
-        const sqlQuery = {
-            sql: "INSERT INTO monitoramento_zayron (placa, nome, lat, lng, velocidade) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (placa) DO UPDATE SET lat = EXCLUDED.lat, lng = EXCLUDED.lng, velocidade = EXCLUDED.velocidade, ultima_atualizacao = NOW();",
-            parameters: [placa, nome.toUpperCase(), lat, lng, vel]
+        const origin = {
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude
         };
 
-        try {
-            // Fetch sem headers customizados para garantir que 1500 pessoas enviem sem erro de CORS
-            await fetch(NEON_CONFIG.endpoint, {
-                method: 'POST',
-                body: JSON.stringify(sqlQuery)
-            });
-            console.log("Zayron: Localização sincronizada.");
-        } catch (e) { 
-            console.error("Erro na nuvem:", e); 
-        }
+        directionsService.route({
+            origin: origin,
+            destination: destCoord,
+            travelMode: google.maps.TravelMode.DRIVING
+        }, (result, status) => {
+
+            if (status === "OK") {
+
+                directionsRenderer.setDirections(result);
+                rotaPath = result.routes[0].overview_path;
+
+                ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord);
+
+            } else {
+                alert("Não foi possível calcular a rota.");
+            }
+
+        });
+
     }, (erro) => {
-        console.error("GPS OFF");
-    }, { 
-        enableHighAccuracy: true, 
-        maximumAge: 1000, // Aceita cache de 1 seg para economizar bateria
-        timeout: 15000 
+        console.error("Erro ao obter localização:", erro);
+        alert("Não foi possível obter sua localização.");
+    }, { enableHighAccuracy: true });
+
+}
+
+
+// --- MONITORAMENTO GPS ---
+
+function ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord) {
+
+    if (watchID) navigator.geolocation.clearWatch(watchID);
+
+    watchID = navigator.geolocation.watchPosition(async (p) => {
+
+        const lat = p.coords.latitude;
+        const lng = p.coords.longitude;
+
+        const vel = p.coords.speed ? Math.round(p.coords.speed * 3.6) : 0;
+
+        const gPos = new google.maps.LatLng(lat, lng);
+
+        const agora = Date.now();
+
+      marker.setPosition(gPos);
+
+map.panTo(gPos);
+map.setZoom(19);
+map.setTilt(45);
+// desloca o mapa para que o carro fique mais abaixo na tela
+const offsetLat = lat - 0.00015;
+
+map.panTo({
+    lat: offsetLat,
+    lng: lng
+});
+
+        let statusAlerta = sentido === "ida" ? "EM ROTA" : "EM ROTA SAIDA";
+
+        if (vel > 30) {
+
+            statusAlerta = "ALERTA VELOCIDADE " + vel + "km/h";
+
+        }
+
+        if (lat.toFixed(4) === ultimaPos.lat && lng.toFixed(4) === ultimaPos.lng) {
+
+            segundosParado += 5;
+
+            if (segundosParado >= 60) {
+
+                statusAlerta = "VEICULO PARADO +60s";
+
+            }
+
+        } else {
+
+            segundosParado = 0;
+
+            ultimaPos = {
+                lat: lat.toFixed(4),
+                lng: lng.toFixed(4)
+            };
+
+        }
+
+        const onRoute = google.maps.geometry.poly.isLocationOnEdge(
+            gPos,
+            new google.maps.Polyline({ path: rotaPath }),
+            0.0005
+        );
+
+        if (!onRoute) {
+
+            statusAlerta = "FORA DA ROTA";
+
+        }
+
+        if (idViagemSupabase && agora - ultimaGravacaoBanco >= INTERVALO_BANCO) {
+
+            ultimaGravacaoBanco = agora;
+
+            const { error } = await supabaseClient
+                .from("rastreamento")
+                .update({
+                    latitude: lat,
+                    longitude: lng,
+                    velocidade: vel,
+                    status_viagem: statusAlerta
+                })
+                .eq("id", idViagemSupabase);
+
+            if (error) {
+
+                console.error("Erro update:", error);
+
+            }
+
+        }
+
+        const distFinal = google.maps.geometry.spherical.computeDistanceBetween(
+            gPos,
+            new google.maps.LatLng(destCoord.lat, destCoord.lng)
+        );
+
+        if (distFinal < 20) {
+
+            navigator.geolocation.clearWatch(watchID);
+
+            if (sentido === "ida") {
+
+                alert("Chegada no destino " + labelDestino);
+                location.reload();
+
+            } else {
+
+                alert("Chegada na portaria confirmada.");
+                localStorage.clear();
+                location.reload();
+
+            }
+
+        }
+
+    }, null, {
+        enableHighAccuracy: true,
+        maximumAge: 0
     });
+
+}
+
+
+// --- WAKELOCK (TELA NÃO DESLIGA) ---
+
+async function solicitarWakeLock() {
+
+    if ("wakeLock" in navigator) {
+
+        try {
+
+            wakeLock = await navigator.wakeLock.request("screen");
+
+        } catch (err) {
+
+            console.log("WakeLock não suportado");
+
+        }
+
+    }
+
 }
 
 window.onload = initMap;
+
+
+// --- BLOQUEIO INSPEÇÃO ---
+
+document.addEventListener("contextmenu", event => event.preventDefault());
+
+document.onkeydown = function(e) {
+
+    if (e.keyCode == 123) return false;
+
+    if (e.ctrlKey && e.shiftKey && e.keyCode == "I".charCodeAt(0)) return false;
+
+    if (e.ctrlKey && e.shiftKey && e.keyCode == "J".charCodeAt(0)) return false;
+
+    if (e.ctrlKey && e.keyCode == "U".charCodeAt(0)) return false;
+
+};
+
 </script>
 </body>
 </html>
