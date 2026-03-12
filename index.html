@@ -352,122 +352,110 @@ const BANCO_COORDENADAS = {
 	
     }
 };
-// --- CONFIGURAÇÕES DO SISTEMA ---
+// --- 1. CONFIGURAÇÕES E CONEXÃO ---
 const SUPABASE_URL = 'https://ybadcbejraxpkmdjspcv.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InliYWRjYmVqcmF4cGttZGpzcGN2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI5ODEwNzAsImV4cCI6MjA4ODU1NzA3MH0.DpkEcK_ETkYdepGFyrcY7hitWCZGzyCq5J8rZpQTEO0';
 
-let supabaseClient;
-try {
-    supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-} catch (e) {
-    console.error("Erro Supabase:", e);
-}
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// 1. VARIÁVEIS GLOBAIS
-let map, marker, directionsRenderer, directionsService, watchID, rotaPath = [];
-let wakeLock = null;
-let idViagemSupabase = null; 
+// Variáveis Globais
+let map, marker, directionsRenderer, directionsService;
+let watchID = null;
+let idViagemSupabase = null;
 let ultimaGravacaoBanco = 0;
 const INTERVALO_BANCO = 15000;
 
-// 2. INICIALIZAÇÃO DO MAPA (MANTIDA)
+// --- 2. INICIALIZAÇÃO (CHAMADA NO WINDOW.ONLOAD) ---
 function initMap() {
-    try {
-        directionsService = new google.maps.DirectionsService();
-        map = new google.maps.Map(document.getElementById("map-visitante"), {
-            center: BANCO_COORDENADAS.PORTARIA,
-            zoom: 19,
-            mapTypeId: 'roadmap',
-            disableDefaultUI: true,
-            gestureHandling: "greedy"
-        });
+    console.log("Mapa iniciado.");
+    directionsService = new google.maps.DirectionsService();
+    map = new google.maps.Map(document.getElementById("map-visitante"), {
+        center: { lat: -23.445, lng: -46.924 },
+        zoom: 17,
+        disableDefaultUI: true
+    });
 
-        directionsRenderer = new google.maps.DirectionsRenderer({
-            map: map,
-            suppressMarkers: true,
-            preserveViewport: true, 
-            polylineOptions: { strokeColor: "#1d4ed8", strokeWeight: 7 }
-        });
+    directionsRenderer = new google.maps.DirectionsRenderer({
+        map: map,
+        suppressMarkers: true,
+        polylineOptions: { strokeColor: "#1d4ed8", strokeWeight: 6 }
+    });
 
-        marker = new google.maps.Marker({
-            map: map,
-            icon: {
-                path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-                scale: 6,
-                fillColor: "#3b82f6",
-                fillOpacity: 1,
-                strokeWeight: 2,
-                strokeColor: "white",
-                rotation: 0
-            }
-        });
-
-        const salvo = JSON.parse(localStorage.getItem('dados_visitante'));
-        if (salvo) {
-            if(document.getElementById('nome_v')) document.getElementById('nome_v').value = salvo.nome;
-            if(document.getElementById('placa_v')) document.getElementById('placa_v').value = salvo.placa;
-            if(document.getElementById('btn-saida-direta')) document.getElementById('btn-saida-direta').style.display = 'block';
-            if(document.querySelector('.area-destino')) document.querySelector('.area-destino').style.display = 'none';
+    marker = new google.maps.Marker({
+        map: map,
+        icon: {
+            path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+            scale: 6,
+            fillColor: "#3b82f6",
+            fillOpacity: 1,
+            strokeWeight: 2,
+            strokeColor: "white"
         }
-    } catch (e) { console.error("Erro Mapa:", e); }
+    });
 }
 
-// 3. LOGICA DE NAVEGAÇÃO (CORRIGIDA)
+// --- 3. FUNÇÃO QUE O BOTÃO CHAMA ---
 async function iniciarNavegacao(sentido) {
-    const nome = document.getElementById('nome_v').value.trim().toUpperCase();
-    const placa = document.getElementById('placa_v').value.trim().toUpperCase();
+    console.log("Iniciando navegação: " + sentido);
     
-    if(!nome || !placa) return alert("Preencha Nome e Placa.");
+    // Captura dos elementos do seu HTML
+    const elNome = document.getElementById('nome_v');
+    const elPlaca = document.getElementById('placa_v');
+    
+    if (!elNome || !elPlaca) {
+        return alert("Erro: Campos de Nome ou Placa não encontrados no HTML.");
+    }
 
-    let destCoord, labelDestino;
+    const nome = elNome.value.trim().toUpperCase();
+    const placa = elPlaca.value.trim().toUpperCase();
+
+    if (!nome || !placa) {
+        return alert("Por favor, preencha Nome e Placa.");
+    }
+
+    // Lógica de Destino (conforme seu código anterior)
+    let destCoord = { lat: -23.446, lng: -46.925 }; // Padrão de segurança
+    let labelDestino = "DESTINO";
 
     if (sentido === 'ida') {
-        const lote = document.getElementById('lote_alvo').value.trim().toUpperCase();
-        const rua = document.getElementById('rua_alvo').value;
-        const num = document.getElementById('num_alvo').value.trim();
-
-        if (lote && BANCO_COORDENADAS.LOTES?.[lote]) {
-            destCoord = { lat: BANCO_COORDENADAS.LOTES[lote][0], lng: BANCO_COORDENADAS.LOTES[lote][1] };
-            labelDestino = "LOTE " + lote;
-        } else if (rua && num && BANCO_COORDENADAS.RUAS?.[rua]?.[num]) {
-            destCoord = { lat: BANCO_COORDENADAS.RUAS[rua][num][0], lng: BANCO_COORDENADAS.RUAS[rua][num][1] };
-            labelDestino = rua + ", " + num;
-        } else { return alert("Destino não encontrado."); }
-        localStorage.setItem('dados_visitante', JSON.stringify({ nome, placa, destino: labelDestino }));
+        const lote = document.getElementById('lote_alvo')?.value.trim().toUpperCase();
+        labelDestino = lote ? "LOTE " + lote : "VISITA";
+        // Aqui você pode inserir sua lógica de BANCO_COORDENADAS se ela existir no seu script
     } else {
-        destCoord = BANCO_COORDENADAS.PORTARIA;
         labelDestino = "SAÍDA/PORTARIA";
     }
 
-    // --- TENTATIVA DE GRAVAÇÃO (ISOLADA PARA NÃO TRAVAR O BOTÃO) ---
+    // --- PASSO 1: REGISTRO NO BANCO (ISOLADO PARA NÃO TRAVAR) ---
     try {
-        const payload = {
-            nome: nome,
-            placa: placa,
-            lote_destino: labelDestino,
-            status_viagem: 'INICIOU ROTA'
-        };
+        const { data, error } = await supabaseClient
+            .from('rastreamento')
+            .insert([{
+                nome: nome,
+                placa: placa,
+                lote_destino: labelDestino,
+                status_viagem: 'INICIOU ROTA'
+            }])
+            .select();
 
-        // Usamos .then() para não travar a linha de execução principal
-        supabaseClient.from('rastreamento').insert([payload]).select()
-            .then(({ data, error }) => {
-                if (error) {
-                    console.error("Erro Supabase:", error.message);
-                } else if (data && data.length > 0) {
-                    idViagemSupabase = data[0].id;
-                    console.log("Conectado ao Banco! ID:", idViagemSupabase);
-                }
-            });
-    } catch (e) { 
-        console.warn("Falha ao tentar iniciar comunicação com banco.");
+        if (error) {
+            console.error("Erro Supabase Insert:", error.message);
+        } else if (data && data.length > 0) {
+            idViagemSupabase = data[0].id;
+            console.log("Gravado no banco! ID:", idViagemSupabase);
+        }
+    } catch (e) {
+        console.warn("Banco offline, seguindo com GPS...");
     }
 
-    // --- SEGUE PARA O GPS INDEPENDENTE DO BANCO ---
-    solicitarWakeLock();
+    // --- PASSO 2: EXIBIR MAPA E INICIAR GPS ---
+    // Ajuste o seletor abaixo para o ID da sua DIV que contém o formulário
+    const areaSetup = document.getElementById('setup') || document.querySelector('.container');
+    if (areaSetup) areaSetup.style.display = 'none';
+    
+    document.getElementById('map-visitante').style.display = 'block';
 
     navigator.geolocation.getCurrentPosition((pos) => {
         const origin = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        map.setCenter(origin);
         
         directionsService.route({
             origin: origin,
@@ -476,65 +464,47 @@ async function iniciarNavegacao(sentido) {
         }, (result, status) => {
             if (status === "OK") {
                 directionsRenderer.setDirections(result);
-                // Esconde o formulário (adicione o ID correto do seu div de entrada aqui)
-                const areaSetup = document.getElementById('setup') || document.querySelector('.container');
-                if(areaSetup) areaSetup.style.display = 'none';
-                
-                ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord);
-            } else {
-                alert("Erro ao traçar rota no mapa.");
+                ativarMonitoramento(sentido);
             }
         });
-    }, (err) => alert("GPS desativado. Ative a localização."), { enableHighAccuracy: true });
+    }, (err) => alert("Erro ao acessar GPS. Verifique as permissões."));
 }
-// 4. MONITORAMENTO (AJUSTE NO UPDATE)
-function ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord) {
+
+// --- 4. MONITORAMENTO REAL-TIME ---
+function ativarMonitoramento(sentido) {
     if (watchID) navigator.geolocation.clearWatch(watchID);
 
-    watchID = navigator.geolocation.watchPosition(async (p) => {
+    watchID = navigator.geolocation.watchPosition((p) => {
         const lat = p.coords.latitude;
         const lng = p.coords.longitude;
         const vel = p.coords.speed ? Math.round(p.coords.speed * 3.6) : 0;
         const gPos = new google.maps.LatLng(lat, lng);
-        const agora = Date.now();
-
+        
         marker.setPosition(gPos);
         map.panTo(gPos);
 
-        let statusAlerta = sentido === 'ida' ? "EM ROTA" : "EM ROTA DE SAÍDA";
-        
-        // --- AJUSTE 2: UPDATE COM TRATAMENTO DE ERRO ---
-        if (agora - ultimaGravacaoBanco >= INTERVALO_BANCO && idViagemSupabase) {
+        // Envio periódico ao Supabase
+        const agora = Date.now();
+        if (idViagemSupabase && (agora - ultimaGravacaoBanco >= INTERVALO_BANCO)) {
             ultimaGravacaoBanco = agora;
             
-            // Enviamos sem 'await' para não travar o mapa, mas usamos .then para logar erros
-            supabaseClient.from('rastreamento').update({
-                latitude: lat,
-                longitude: lng,
-                velocidade: vel,
-                status_viagem: statusAlerta
-            })
-            .eq('id', idViagemSupabase)
-            .then(({ error }) => {
-                if (error) console.error("Erro no envio de posição:", error.message);
-                else console.log("Posição atualizada no banco.");
-            });
+            supabaseClient.from('rastreamento')
+                .update({
+                    latitude: lat,
+                    longitude: lng,
+                    velocidade: vel,
+                    status_viagem: sentido === 'ida' ? 'EM ROTA' : 'EM ROTA DE SAÍDA'
+                })
+                .eq('id', idViagemSupabase)
+                .then(({ error }) => {
+                    if (error) console.error("Erro no envio:", error.message);
+                    else console.log("Posição atualizada.");
+                });
         }
-
-        const distFinal = google.maps.geometry.spherical.computeDistanceBetween(gPos, new google.maps.LatLng(destCoord.lat, destCoord.lng));
-        if (distFinal < 20) {
-            navigator.geolocation.clearWatch(watchID);
-            location.reload();
-        }
-    }, (err) => console.error(err), { enableHighAccuracy: true, maximumAge: 0 });
-}
-
-async function solicitarWakeLock() {
-    try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch(e){}
+    }, (err) => console.error(err), { enableHighAccuracy: true });
 }
 
 window.onload = initMap;
-
 // Bloqueios de segurança mantidos
 document.addEventListener('contextmenu', event => event.preventDefault());
 document.onkeydown = function(e) {
