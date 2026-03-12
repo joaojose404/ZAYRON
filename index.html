@@ -418,7 +418,7 @@ async function iniciarNavegacao(sentido) {
 
     if(!nome || !placa) return alert("Preencha Nome e Placa.");
 
-    // --- SUA BUSCA DE DESTINO (IGUAL) ---
+    // --- SUA ROTA (MANTIDA 100%) ---
     if (sentido === 'ida') {
         const lote = document.getElementById('lote_alvo').value.trim().toUpperCase();
         const rua = document.getElementById('rua_alvo').value;
@@ -439,24 +439,29 @@ async function iniciarNavegacao(sentido) {
         labelDestino = "SAÍDA/PORTARIA";
     }
 
-    // --- AQUI ESTÁ O SEGREDO: ENVIO IMEDIATO ---
-    // Criamos o registro ANTES de pedir o GPS para não ter atraso
-    const novoRegistro = {
-        nome: nome.toUpperCase(),
-        placa: placa.toUpperCase(),
-        lote_destino: labelDestino,
-        status_viagem: 'INICIOU ROTA'
-    };
+    // --- CONEXÃO COM O BANCO (FORÇADA) ---
+    // Tentamos criar o registro. Se o banco estiver offline, a rota segue.
+    try {
+        const { data, error } = await supabaseClient
+            .from('rastreamento')
+            .insert([{
+                nome: nome.toUpperCase(),
+                placa: placa.toUpperCase(),
+                lote_destino: labelDestino,
+                status_viagem: 'INICIOU ROTA'
+            }])
+            .select();
 
-    // Comando direto sem travar a tela
-    const { data, error } = await supabaseClient.from('rastreamento').insert([novoRegistro]).select();
-    
-    if (data && data.length > 0) {
-        idViagemSupabase = data[0].id;
-        console.log("Conectado ao CCO:", idViagemSupabase);
+        if (data && data.length > 0) {
+            idViagemSupabase = data[0].id;
+            console.log("Conectado ao CCO. ID:", idViagemSupabase);
+        }
+        if (error) console.error("Erro Supabase:", error.message);
+    } catch (e) {
+        console.error("Erro ao tentar conectar:", e);
     }
 
-    // --- SUA ROTA (NÃO MUDOU NADA) ---
+    // --- CONTINUAÇÃO DA ROTA (SUA LÓGICA APROVADA) ---
     solicitarWakeLock();
 
     navigator.geolocation.getCurrentPosition((pos) => {
@@ -485,7 +490,6 @@ async function iniciarNavegacao(sentido) {
         });
     }, (err) => alert("Erro GPS"), { enableHighAccuracy: true });
 }
-
 function ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord) {
     if (watchID) navigator.geolocation.clearWatch(watchID);
 
