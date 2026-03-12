@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>ZAYRON - ALVORADA VISITANTES - NAVEGAÇÃO</title>
     <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAn7IcmNp_y0vcpZGcTorSYcIV5soYwrrU&libraries=geometry"></script>
-
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="banco_coordenadas.js"></script> 
 
     <style>
@@ -412,7 +412,7 @@ function initMap() {
     } catch (e) { console.error("Erro Mapa:", e); }
 }
 
-// 3. LOGICA DE NAVEGAÇÃO (AJUSTE NO INSERT)
+// 3. LOGICA DE NAVEGAÇÃO (CORRIGIDA)
 async function iniciarNavegacao(sentido) {
     const nome = document.getElementById('nome_v').value.trim().toUpperCase();
     const placa = document.getElementById('placa_v').value.trim().toUpperCase();
@@ -439,28 +439,30 @@ async function iniciarNavegacao(sentido) {
         labelDestino = "SAÍDA/PORTARIA";
     }
 
-    // --- AJUSTE 1: INSERT COM SELECT OBRIGATÓRIO ---
+    // --- TENTATIVA DE GRAVAÇÃO (ISOLADA PARA NÃO TRAVAR O BOTÃO) ---
     try {
-        const { data, error } = await supabaseClient
-            .from('rastreamento')
-            .insert([{
-                nome: nome,
-                placa: placa,
-                lote_destino: labelDestino,
-                status_viagem: 'INICIOU ROTA'
-            }])
-            .select(); // IMPORTANTE: Sem isso o JS não recebe o ID de volta
+        const payload = {
+            nome: nome,
+            placa: placa,
+            lote_destino: labelDestino,
+            status_viagem: 'INICIOU ROTA'
+        };
 
-        if (data && data.length > 0) {
-            idViagemSupabase = data[0].id;
-            console.log("Banco Conectado! ID:", idViagemSupabase);
-        }
-        if (error) throw error;
+        // Usamos .then() para não travar a linha de execução principal
+        supabaseClient.from('rastreamento').insert([payload]).select()
+            .then(({ data, error }) => {
+                if (error) {
+                    console.error("Erro Supabase:", error.message);
+                } else if (data && data.length > 0) {
+                    idViagemSupabase = data[0].id;
+                    console.log("Conectado ao Banco! ID:", idViagemSupabase);
+                }
+            });
     } catch (e) { 
-        console.error("Erro ao registrar no banco:", e.message);
-        // Opcional: alert("Aviso: Dados não estão sendo salvos no CCO.");
+        console.warn("Falha ao tentar iniciar comunicação com banco.");
     }
 
+    // --- SEGUE PARA O GPS INDEPENDENTE DO BANCO ---
     solicitarWakeLock();
 
     navigator.geolocation.getCurrentPosition((pos) => {
@@ -472,12 +474,19 @@ async function iniciarNavegacao(sentido) {
             destination: destCoord,
             travelMode: google.maps.TravelMode.DRIVING
         }, (result, status) => {
-            if (status === "OK") directionsRenderer.setDirections(result);
-            ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord);
+            if (status === "OK") {
+                directionsRenderer.setDirections(result);
+                // Esconde o formulário (adicione o ID correto do seu div de entrada aqui)
+                const areaSetup = document.getElementById('setup') || document.querySelector('.container');
+                if(areaSetup) areaSetup.style.display = 'none';
+                
+                ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord);
+            } else {
+                alert("Erro ao traçar rota no mapa.");
+            }
         });
-    }, (err) => alert("Erro GPS"), { enableHighAccuracy: true });
+    }, (err) => alert("GPS desativado. Ative a localização."), { enableHighAccuracy: true });
 }
-
 // 4. MONITORAMENTO (AJUSTE NO UPDATE)
 function ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord) {
     if (watchID) navigator.geolocation.clearWatch(watchID);
@@ -536,3 +545,4 @@ document.onkeydown = function(e) {
 </script>
 </body>
 </html>
+
