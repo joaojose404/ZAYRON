@@ -4,10 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>ZAYRON - ALVORADA VISITANTES - NAVEGAÇÃO</title>
-    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAn7IcmNp_y0vcpZGcTorSYcIV5soYwrrU&libraries=geometry"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="banco_coordenadas.js"></script> 
-
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDFeB-Ta5pWxexdOEijfP3zWv_JsyNQ9zY&libraries=geometry"></script>
     <style>
         body { margin: 0; background: #001529; color: white; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
         #map-visitante { flex: 1; width: 100%; }
@@ -77,9 +74,6 @@
         <button class="btn-volta" onclick="iniciarNavegacao('volta')">Sair (Portaria)</button>
     </div>
     <div id="status-txt">AGUARDANDO INÍCIO</div>
-</div>
-<div id="status-destino" style="padding: 10px; background: #1e293b; color: #10b981; font-weight: bold; text-align: center;">
-    Destino: Selecione um lote
 </div>
 
 <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
@@ -352,111 +346,82 @@ const BANCO_COORDENADAS = {
 	
     }
 };
-// --- 1. CONFIGURAÇÕES E CONEXÃO ---
-const SUPABASE_URL = 'https://ybadcbejraxpkmdjspcv.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InliYWRjYmVqcmF4cGttZGpzcGN2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI5ODEwNzAsImV4cCI6MjA4ODU1NzA3MH0.DpkEcK_ETkYdepGFyrcY7hitWCZGzyCq5J8rZpQTEO0';
 
-const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-// Variáveis Globais
-let map, marker, directionsRenderer, directionsService;
-let watchID = null;
-let idViagemSupabase = null;
-let ultimaGravacaoBanco = 0;
-const INTERVALO_BANCO = 15000;
-
-// --- 2. INICIALIZAÇÃO (CHAMADA NO WINDOW.ONLOAD) ---
-function initMap() {
-    console.log("Mapa iniciado.");
-    directionsService = new google.maps.DirectionsService();
-    map = new google.maps.Map(document.getElementById("map-visitante"), {
-        center: { lat: -23.445, lng: -46.924 },
-        zoom: 17,
-        disableDefaultUI: true
-    });
-
-    directionsRenderer = new google.maps.DirectionsRenderer({
-        map: map,
-        suppressMarkers: true,
-        polylineOptions: { strokeColor: "#1d4ed8", strokeWeight: 6 }
-    });
-
-    marker = new google.maps.Marker({
-        map: map,
-        icon: {
-            path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-            scale: 6,
-            fillColor: "#3b82f6",
-            fillOpacity: 1,
-            strokeWeight: 2,
-            strokeColor: "white"
+// --- NOVA FUNÇÃO: IMPEDE QUE O CELULAR APAGUE DURANTE O TRAJETO ---
+let wakeLock = null;
+async function solicitarWakeLock() {
+    try {
+        if ('wakeLock' in navigator) {
+            wakeLock = await navigator.wakeLock.request('screen');
+            console.log("Wake Lock Ativo");
         }
+    } catch (err) {
+        console.error("Erro Wake Lock:", err);
+    }
+}
+
+firebase.initializeApp({ 
+    apiKey: "AIzaSyA0rPJ_LsiYW8IcU1imTvWRXPExGNKmC6M", 
+    databaseURL: "https://gps-alvorada-default-rtdb.firebaseio.com" 
+});
+const db = firebase.database();
+
+let map, marker, directionsRenderer, directionsService, watchID, rotaPath = [];
+const somAlerta = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
+
+function initMap() {
+    map = new google.maps.Map(document.getElementById("map-visitante"), {
+        center: BANCO_COORDENADAS.PORTARIA,
+        zoom: 18,
+        disableDefaultUI: true,
+        gestureHandling: "greedy",
+        styles: [{ featureType: "poi", elementType: "labels", stylers: [{ visibility: "off" }] }]
+    });
+    directionsService = new google.maps.DirectionsService();
+    directionsRenderer = new google.maps.DirectionsRenderer({
+        map: map, 
+        suppressMarkers: true, 
+        preserveViewport: false,
+        polylineOptions: { strokeColor: "#3b82f6", strokeWeight: 8 }
+    });
+    marker = new google.maps.Marker({ 
+        map: map, 
+        icon: { path: google.maps.SymbolPath.CIRCLE, scale: 12, fillColor: "#3b82f6", fillOpacity: 1, strokeColor: "white", strokeWeight: 4 } 
     });
 }
 
-// --- 3. FUNÇÃO QUE O BOTÃO CHAMA ---
-async function iniciarNavegacao(sentido) {
-    console.log("Iniciando navegação: " + sentido);
-    
-    // Captura dos elementos do seu HTML
-    const elNome = document.getElementById('nome_v');
-    const elPlaca = document.getElementById('placa_v');
-    
-    if (!elNome || !elPlaca) {
-        return alert("Erro: Campos de Nome ou Placa não encontrados no HTML.");
-    }
+function iniciarNavegacao(sentido) {
+    const nome = document.getElementById('nome_v').value.trim();
+    const placa = document.getElementById('placa_v').value.trim();
+    const loteDigitado = document.getElementById('lote_alvo').value.trim().toUpperCase();
+    const rua = document.getElementById('rua_alvo').value;
+    const num = document.getElementById('num_alvo').value.trim();
 
-    const nome = elNome.value.trim().toUpperCase();
-    const placa = elPlaca.value.trim().toUpperCase();
+    if(!nome || !placa) return alert("Preencha Nome e Placa.");
 
-    if (!nome || !placa) {
-        return alert("Por favor, preencha Nome e Placa.");
-    }
-
-    // Lógica de Destino (conforme seu código anterior)
-    let destCoord = { lat: -23.446, lng: -46.925 }; // Padrão de segurança
-    let labelDestino = "DESTINO";
+    let destCoord, labelDestino;
 
     if (sentido === 'ida') {
-        const lote = document.getElementById('lote_alvo')?.value.trim().toUpperCase();
-        labelDestino = lote ? "LOTE " + lote : "VISITA";
-        // Aqui você pode inserir sua lógica de BANCO_COORDENADAS se ela existir no seu script
-    } else {
-        labelDestino = "SAÍDA/PORTARIA";
+        if (loteDigitado && BANCO_COORDENADAS.LOTES[loteDigitado]) {
+            destCoord = { lat: BANCO_COORDENADAS.LOTES[loteDigitado][0], lng: BANCO_COORDENADAS.LOTES[loteDigitado][1] };
+            labelDestino = loteDigitado;
+        } else if (rua && num && BANCO_COORDENADAS.RUAS[rua] && BANCO_COORDENADAS.RUAS[rua][num]) {
+            destCoord = { lat: BANCO_COORDENADAS.RUAS[rua][num][0], lng: BANCO_COORDENADAS.RUAS[rua][num][1] };
+            labelDestino = num;
+        } else if (loteDigitado) {
+             destCoord = BANCO_COORDENADAS.PORTARIA;
+             labelDestino = loteDigitado;
+        } else { return alert("Selecione um destino."); }
+    } else { 
+        destCoord = BANCO_COORDENADAS.PORTARIA; 
+        labelDestino = "SAÍDA";
     }
-
-    // --- PASSO 1: REGISTRO NO BANCO (ISOLADO PARA NÃO TRAVAR) ---
-    try {
-        const { data, error } = await supabaseClient
-            .from('rastreamento')
-            .insert([{
-                nome: nome,
-                placa: placa,
-                lote_destino: labelDestino,
-                status_viagem: 'INICIOU ROTA'
-            }])
-            .select();
-
-        if (error) {
-            console.error("Erro Supabase Insert:", error.message);
-        } else if (data && data.length > 0) {
-            idViagemSupabase = data[0].id;
-            console.log("Gravado no banco! ID:", idViagemSupabase);
-        }
-    } catch (e) {
-        console.warn("Banco offline, seguindo com GPS...");
-    }
-
-    // --- PASSO 2: EXIBIR MAPA E INICIAR GPS ---
-    // Ajuste o seletor abaixo para o ID da sua DIV que contém o formulário
-    const areaSetup = document.getElementById('setup') || document.querySelector('.container');
-    if (areaSetup) areaSetup.style.display = 'none';
-    
-    document.getElementById('map-visitante').style.display = 'block';
 
     navigator.geolocation.getCurrentPosition((pos) => {
         const origin = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        
+        map.setCenter(origin);
+        map.setZoom(19);
+
         directionsService.route({
             origin: origin,
             destination: destCoord,
@@ -464,55 +429,94 @@ async function iniciarNavegacao(sentido) {
         }, (result, status) => {
             if (status === "OK") {
                 directionsRenderer.setDirections(result);
-                ativarMonitoramento(sentido);
+                rotaPath = result.routes[0].overview_path;
+                
+                // Ativa o bloqueio de tela
+                solicitarWakeLock();
+                
+                ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord);
             }
         });
-    }, (err) => alert("Erro ao acessar GPS. Verifique as permissões."));
+    }, null, { enableHighAccuracy: true });
 }
 
-// --- 4. MONITORAMENTO REAL-TIME ---
-function ativarMonitoramento(sentido) {
-    if (watchID) navigator.geolocation.clearWatch(watchID);
+function ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord) {
+    const idVig = "VIS_" + placa.replace(/[^A-Z0-9]/gi, '').toUpperCase(); 
+    const hEntrada = new Date().toLocaleTimeString('pt-BR');
+
+    if(watchID) navigator.geolocation.clearWatch(watchID);
 
     watchID = navigator.geolocation.watchPosition((p) => {
         const lat = p.coords.latitude;
         const lng = p.coords.longitude;
         const vel = p.coords.speed ? Math.round(p.coords.speed * 3.6) : 0;
         const gPos = new google.maps.LatLng(lat, lng);
-        
-        marker.setPosition(gPos);
-        map.panTo(gPos);
 
-        // Envio periódico ao Supabase
-        const agora = Date.now();
-        if (idViagemSupabase && (agora - ultimaGravacaoBanco >= INTERVALO_BANCO)) {
-            ultimaGravacaoBanco = agora;
+        if (marker) marker.setPosition(gPos);
+        if (map) map.setOptions({ center: gPos, zoom: 19, tilt: 45 });
+
+       // ENVIO PARA O CCO (REAL-TIME)
+        db.ref('monitoramento/' + idVig).set({
+            visitante: nome.toUpperCase(),
+            placa: placa.toUpperCase(),
+            lote_destino: labelDestino.toUpperCase(),
+            lat: lat,
+            lng: lng,
+            pos: { lat: lat, lng: lng },
+            velocidade: vel, // <--- GARANTA QUE ESTA LINHA EXISTE
+            status: vel > 35 ? "EXCESSO VELOCIDADE" : "EM ROTA",
+            timestamp: Date.now()
+        });
+        // 2. HISTÓRICO (Com placa e lote para o relatório)
+        db.ref('historico_rastro/' + idVig).push({
+            visitante: nome.toUpperCase(),
+            placa: placa.toUpperCase(),
+            lote_destino: labelDestino.toUpperCase(),
+            lat: lat,
+            lng: lng,
+            velocidade: vel,
+            timestamp: Date.now()
+        });
+
+        // 3. CHEGADA AO DESTINO
+        if (destCoord && destCoord.lat) {
+            const dist = google.maps.geometry.spherical.computeDistanceBetween(
+                gPos, 
+                new google.maps.LatLng(destCoord.lat, destCoord.lng)
+            );
             
-            supabaseClient.from('rastreamento')
-                .update({
-                    latitude: lat,
-                    longitude: lng,
-                    velocidade: vel,
-                    status_viagem: sentido === 'ida' ? 'EM ROTA' : 'EM ROTA DE SAÍDA'
-                })
-                .eq('id', idViagemSupabase)
-                .then(({ error }) => {
-                    if (error) console.error("Erro no envio:", error.message);
-                    else console.log("Posição atualizada.");
+            if (dist < 15) {
+                db.ref('monitoramento/' + idVig).remove().then(() => {
+                    if (wakeLock) wakeLock.release();
+                    navigator.geolocation.clearWatch(watchID);
+                    alert("Destino alcançado! Monitoramento encerrado.");
+                    location.reload();
                 });
+            }
         }
-    }, (err) => console.error(err), { enableHighAccuracy: true });
-}
 
+    }, (err) => { console.error("Erro GPS:", err); }, 
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 });
+}
 window.onload = initMap;
-// Bloqueios de segurança mantidos
-document.addEventListener('contextmenu', event => event.preventDefault());
-document.onkeydown = function(e) {
-    if (e.keyCode == 123 || (e.ctrlKey && e.shiftKey && (e.keyCode == 73 || e.keyCode == 74)) || (e.ctrlKey && e.keyCode == 85)) {
-        return false;
-    }
-};
+// 1. Bloqueia o Clique Direito (Menu de Contexto)
+    document.addEventListener('contextmenu', event => event.preventDefault());
+
+    // 2. Bloqueia Atalhos de Teclado (F12, Ctrl+Shift+I, Ctrl+U)
+    document.onkeydown = function(e) {
+        if (e.keyCode == 123) { // F12
+            return false;
+        }
+        if (e.ctrlKey && e.shiftKey && e.keyCode == 'I'.charCodeAt(0)) { // Ctrl+Shift+I
+            return false;
+        }
+        if (e.ctrlKey && e.shiftKey && e.keyCode == 'J'.charCodeAt(0)) { // Ctrl+Shift+J
+            return false;
+        }
+        if (e.ctrlKey && e.keyCode == 'U'.charCodeAt(0)) { // Ctrl+U (Ver código fonte)
+            return false;
+        }
+    };
 </script>
 </body>
 </html>
-
