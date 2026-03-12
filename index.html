@@ -346,8 +346,14 @@ const BANCO_COORDENADAS = {
 	
     }
 };
+// 1. CONFIGURAÇÃO DO BANCO NEON (Substituindo o MongoDB travado)
+// Use o link que começa com https:// que você pegou no modal do Neon
+const NEON_CONFIG = {
+    endpoint: "https://ep-super-violet-acvz7izl-pooler.sa-east-1.aws.neon.tech/v1/execute",
+    apiKey: "npg_BqKFt3I5hiLv" 
+};
 
-// --- NOVA FUNÇÃO: IMPEDE QUE O CELULAR APAGUE DURANTE O TRAJETO ---
+// 2. TELA ACESA (Wake Lock) - Mantido para o celular não apagar
 let wakeLock = null;
 async function solicitarWakeLock() {
     try {
@@ -360,163 +366,99 @@ async function solicitarWakeLock() {
     }
 }
 
-firebase.initializeApp({ 
-    apiKey: "AIzaSyA0rPJ_LsiYW8IcU1imTvWRXPExGNKmC6M", 
-    databaseURL: "https://gps-alvorada-default-rtdb.firebaseio.com" 
-});
-const db = firebase.database();
+let map, marker;
 
-let map, marker, directionsRenderer, directionsService, watchID, rotaPath = [];
-const somAlerta = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
-
+// 3. INICIALIZAÇÃO DO MAPA (Google Maps mantido para visual do motorista)
 function initMap() {
-    map = new google.maps.Map(document.getElementById("map-visitante"), {
-        center: BANCO_COORDENADAS.PORTARIA,
+    const mapElement = document.getElementById("map-visitante");
+    if (!mapElement) {
+        console.error("ERRO: O ID 'map-visitante' não existe no seu HTML!");
+        return;
+    }
+
+    map = new google.maps.Map(mapElement, {
+        center: { lat: -23.2019, lng: -47.0292 },
         zoom: 18,
         disableDefaultUI: true,
         gestureHandling: "greedy",
-        styles: [{ featureType: "poi", elementType: "labels", stylers: [{ visibility: "off" }] }]
+        styles: [ { "featureType": "all", "elementType": "labels", "stylers": [{ "visibility": "on" }] } ]
     });
-    directionsService = new google.maps.DirectionsService();
-    directionsRenderer = new google.maps.DirectionsRenderer({
-        map: map, 
-        suppressMarkers: true, 
-        preserveViewport: false,
-        polylineOptions: { strokeColor: "#3b82f6", strokeWeight: 8 }
-    });
-    marker = new google.maps.Marker({ 
-        map: map, 
-        icon: { path: google.maps.SymbolPath.CIRCLE, scale: 12, fillColor: "#3b82f6", fillOpacity: 1, strokeColor: "white", strokeWeight: 4 } 
+
+    marker = new google.maps.Marker({
+        map: map,
+        icon: { 
+            path: google.maps.SymbolPath.CIRCLE, 
+            scale: 10, 
+            fillColor: "#3b82f6", 
+            fillOpacity: 1, 
+            strokeColor: "white", 
+            strokeWeight: 3 
+        }
     });
 }
 
-function iniciarNavegacao(sentido) {
+// 4. INICIAR NAVEGAÇÃO E MONITORAMENTO (Foco em Performance para 1500 pessoas)
+async function iniciarNavegacao() {
     const nome = document.getElementById('nome_v').value.trim();
-    const placa = document.getElementById('placa_v').value.trim();
-    const loteDigitado = document.getElementById('lote_alvo').value.trim().toUpperCase();
-    const rua = document.getElementById('rua_alvo').value;
-    const num = document.getElementById('num_alvo').value.trim();
-
+    const placa = document.getElementById('placa_v').value.trim().toUpperCase();
+    
     if(!nome || !placa) return alert("Preencha Nome e Placa.");
 
-    let destCoord, labelDestino;
+    // Ativa o WakeLock ao iniciar
+    solicitarWakeLock();
 
-    if (sentido === 'ida') {
-        if (loteDigitado && BANCO_COORDENADAS.LOTES[loteDigitado]) {
-            destCoord = { lat: BANCO_COORDENADAS.LOTES[loteDigitado][0], lng: BANCO_COORDENADAS.LOTES[loteDigitado][1] };
-            labelDestino = loteDigitado;
-        } else if (rua && num && BANCO_COORDENADAS.RUAS[rua] && BANCO_COORDENADAS.RUAS[rua][num]) {
-            destCoord = { lat: BANCO_COORDENADAS.RUAS[rua][num][0], lng: BANCO_COORDENADAS.RUAS[rua][num][1] };
-            labelDestino = num;
-        } else if (loteDigitado) {
-             destCoord = BANCO_COORDENADAS.PORTARIA;
-             labelDestino = loteDigitado;
-        } else { return alert("Selecione um destino."); }
-    } else { 
-        destCoord = BANCO_COORDENADAS.PORTARIA; 
-        labelDestino = "SAÍDA";
-    }
-
-    navigator.geolocation.getCurrentPosition((pos) => {
-        const origin = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        map.setCenter(origin);
-        map.setZoom(19);
-
-        directionsService.route({
-            origin: origin,
-            destination: destCoord,
-            travelMode: google.maps.TravelMode.DRIVING
-        }, (result, status) => {
-            if (status === "OK") {
-                directionsRenderer.setDirections(result);
-                rotaPath = result.routes[0].overview_path;
-                
-                // Ativa o bloqueio de tela
-                solicitarWakeLock();
-                
-                ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord);
-            }
-        });
-    }, null, { enableHighAccuracy: true });
-}
-
-function ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord) {
-    const idVig = "VIS_" + placa.replace(/[^A-Z0-9]/gi, '').toUpperCase(); 
-    const hEntrada = new Date().toLocaleTimeString('pt-BR');
-
-    if(watchID) navigator.geolocation.clearWatch(watchID);
-
-    watchID = navigator.geolocation.watchPosition((p) => {
+    // Inicia o rastreio em tempo real
+    navigator.geolocation.watchPosition(async (p) => {
         const lat = p.coords.latitude;
         const lng = p.coords.longitude;
         const vel = p.coords.speed ? Math.round(p.coords.speed * 3.6) : 0;
-        const gPos = new google.maps.LatLng(lat, lng);
 
-        if (marker) marker.setPosition(gPos);
-        if (map) map.setOptions({ center: gPos, zoom: 19, tilt: 45 });
+        // Atualiza visualmente para o motorista
+        const pos = { lat, lng };
+        if (marker) marker.setPosition(pos);
+        if (map) map.setCenter(pos);
 
-       // ENVIO PARA O CCO (REAL-TIME)
-        db.ref('monitoramento/' + idVig).set({
-            visitante: nome.toUpperCase(),
-            placa: placa.toUpperCase(),
-            lote_destino: labelDestino.toUpperCase(),
-            lat: lat,
-            lng: lng,
-            pos: { lat: lat, lng: lng },
-            velocidade: vel, // <--- GARANTA QUE ESTA LINHA EXISTE
-            status: vel > 35 ? "EXCESSO VELOCIDADE" : "EM ROTA",
-            timestamp: Date.now()
-        });
-        // 2. HISTÓRICO (Com placa e lote para o relatório)
-        db.ref('historico_rastro/' + idVig).push({
-            visitante: nome.toUpperCase(),
-            placa: placa.toUpperCase(),
-            lote_destino: labelDestino.toUpperCase(),
-            lat: lat,
-            lng: lng,
-            velocidade: vel,
-            timestamp: Date.now()
-        });
+        // SQL DE ALTA CARGA PARA O NEON (UPSERT)
+        // Se a placa já existe, ele apenas atualiza a posição (ideal para 1500 usuários)
+        const sqlQuery = {
+            sql: `
+                INSERT INTO monitoramento_zayron (placa, nome, lat, lng, velocidade)
+                VALUES ($1, $2, $3, $4, $5)
+                ON CONFLICT (placa) 
+                DO UPDATE SET 
+                    lat = EXCLUDED.lat, 
+                    lng = EXCLUDED.lng, 
+                    velocidade = EXCLUDED.velocidade, 
+                    ultima_atualizacao = NOW();
+            `,
+            parameters: [placa, nome.toUpperCase(), lat, lng, vel]
+        };
 
-        // 3. CHEGADA AO DESTINO
-        if (destCoord && destCoord.lat) {
-            const dist = google.maps.geometry.spherical.computeDistanceBetween(
-                gPos, 
-                new google.maps.LatLng(destCoord.lat, destCoord.lng)
-            );
-            
-            if (dist < 15) {
-                db.ref('monitoramento/' + idVig).remove().then(() => {
-                    if (wakeLock) wakeLock.release();
-                    navigator.geolocation.clearWatch(watchID);
-                    alert("Destino alcançado! Monitoramento encerrado.");
-                    location.reload();
-                });
-            }
+        try {
+            await fetch(NEON_CONFIG.endpoint, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${NEON_CONFIG.apiKey}`
+                },
+                body: JSON.stringify(sqlQuery)
+            });
+            console.log("GPS enviado ao Neon com sucesso!");
+        } catch (e) { 
+            console.error("Erro de conexão Neon:", e); 
         }
-
-    }, (err) => { console.error("Erro GPS:", err); }, 
-    { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 });
+    }, (erro) => {
+        console.error("Erro de GPS:", erro);
+        alert("Ative o GPS do seu aparelho.");
+    }, { 
+        enableHighAccuracy: true, 
+        maximumAge: 0, 
+        timeout: 10000 
+    });
 }
-window.onload = initMap;
-// 1. Bloqueia o Clique Direito (Menu de Contexto)
-    document.addEventListener('contextmenu', event => event.preventDefault());
 
-    // 2. Bloqueia Atalhos de Teclado (F12, Ctrl+Shift+I, Ctrl+U)
-    document.onkeydown = function(e) {
-        if (e.keyCode == 123) { // F12
-            return false;
-        }
-        if (e.ctrlKey && e.shiftKey && e.keyCode == 'I'.charCodeAt(0)) { // Ctrl+Shift+I
-            return false;
-        }
-        if (e.ctrlKey && e.shiftKey && e.keyCode == 'J'.charCodeAt(0)) { // Ctrl+Shift+J
-            return false;
-        }
-        if (e.ctrlKey && e.keyCode == 'U'.charCodeAt(0)) { // Ctrl+U (Ver código fonte)
-            return false;
-        }
-    };
+// Vincula o carregamento
+window.onload = initMap;
 </script>
 </body>
 </html>
