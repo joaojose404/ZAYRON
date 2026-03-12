@@ -8,81 +8,61 @@
         body { margin: 0; display: flex; height: 100vh; background: #0f172a; color: white; font-family: sans-serif; }
         #sidebar { width: 320px; background: #1e293b; padding: 15px; border-right: 2px solid #334155; overflow-y: auto; }
         #map { flex: 1; background: #000; }
-        .card { background: #334155; padding: 12px; margin-bottom: 8px; border-radius: 8px; border-left: 5px solid #059669; font-size: 13px; }
-        .header { font-size: 18px; font-weight: bold; color: #059669; margin-bottom: 20px; text-align: center; }
+        .card { background: #334155; padding: 12px; margin-bottom: 8px; border-radius: 8px; border-left: 5px solid #059669; }
+        .header { font-size: 18px; font-weight: bold; color: #059669; text-align: center; margin-bottom: 20px; }
     </style>
 </head>
 <body>
+    <div id="sidebar">
+        <div class="header">ZAYRON MONITORAMENTO</div>
+        <div id="status" style="text-align: center; color: #94a3b8; margin-bottom: 10px;">Iniciando sistema...</div>
+        <div id="lista-visitantes"></div>
+    </div>
+    <div id="map"></div>
 
-<div id="sidebar">
-    <div class="header">ZAYRON MONITORAMENTO</div>
-    <div id="status" style="text-align: center; margin-bottom: 15px; color: #94a3b8;">Conectando ao Neon...</div>
-    <div id="lista-visitantes"></div>
-</div>
-<div id="map"></div>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        const map = L.map('map').setView([-23.2019, -47.0292], 16);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script>
-    const map = L.map('map').setView([-23.2019, -47.0292], 16);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+        let markers = {};
+        const NEON_URL = "https://ep-super-violet-acvz7izl.sa-east-1.aws.neon.tech/v1/execute";
+        const KEY = "npg_FRN3O7oVTmPs"; // Sua chave nova e correta
 
-    let markers = {};
-    // URL ATUALIZADA COM A NOVA KEY QUE VOCÊ PASSOU
-    const NEON_URL = "https://ep-super-violet-acvz7izl.sa-east-1.aws.neon.tech/v1/execute";
-    const NEW_KEY = "npg_FRN3O7oVTmPs";
-
-    async function atualizarCCO() {
-        try {
-            const res = await fetch(NEON_URL, {
-                method: 'POST',
-                headers: { 
-                    'Authorization': `Bearer ${NEW_KEY}`,
-                    'Content-Type': 'application/json' 
-                },
-                body: JSON.stringify({ sql: "SELECT * FROM monitoramento_zayron" })
-            });
-
-            const data = await res.json();
-            
-            if (data.error) {
-                console.error("Erro no Neon:", data.error);
-                return;
-            }
-
-            const rows = data.rows || [];
-            document.getElementById('status').innerText = `Ativos agora: ${rows.length}`;
-
-            const listaHTML = document.getElementById('lista-visitantes');
-            listaHTML.innerHTML = "";
-
-            rows.forEach(p => {
-                const pos = [p.lat, p.lng];
+        async function atualizar() {
+            try {
+                const res = await fetch(NEON_URL, {
+                    method: 'POST',
+                    headers: { 
+                        'Authorization': `Bearer ${KEY}`,
+                        'Content-Type': 'application/json' 
+                    },
+                    body: JSON.stringify({ sql: "SELECT * FROM monitoramento_zayron" })
+                });
                 
-                // 1. Atualiza Marcador no Mapa
-                if (!markers[p.placa]) {
-                    markers[p.placa] = L.marker(pos).addTo(map).bindPopup(`<b>${p.nome}</b><br>${p.placa}`);
-                } else {
-                    markers[p.placa].setLatLng(pos);
-                }
+                const data = await res.json();
+                const rows = data.rows || [];
+                
+                document.getElementById('status').innerText = `Veículos ativos: ${rows.length}`;
+                const lista = document.getElementById('lista-visitantes');
+                lista.innerHTML = "";
 
-                // 2. Cria Card na Lateral
-                listaHTML.innerHTML += `
-                    <div class="card">
-                        <b>${p.nome}</b><br>
-                        Placa: ${p.placa} | Vel: ${p.velocidade} km/h
-                    </div>
-                `;
-            });
-
-        } catch (err) {
-            console.error("Erro de conexão:", err);
-            document.getElementById('status').innerText = "Erro de Sinal";
+                rows.forEach(p => {
+                    const pos = [p.lat, p.lng];
+                    if (!markers[p.placa]) {
+                        markers[p.placa] = L.marker(pos).addTo(map).bindPopup(p.nome);
+                    } else {
+                        markers[p.placa].setLatLng(pos);
+                    }
+                    lista.innerHTML += `<div class="card"><b>${p.nome}</b><br>${p.placa} - ${p.velocidade}km/h</div>`;
+                });
+            } catch (e) {
+                document.getElementById('status').innerText = "Erro de Conexão";
+                console.error(e);
+            }
         }
-    }
-
-    // Atualiza a cada 3 segundos (Ideal para 1500 pessoas)
-    setInterval(atualizarCCO, 3000);
-    atualizarCCO();
-</script>
+        setInterval(atualizar, 3000);
+        atualizar();
+    </script>
 </body>
 </html>
