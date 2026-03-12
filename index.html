@@ -439,7 +439,8 @@ async function iniciarNavegacao(sentido) {
         labelDestino = "SAÍDA/PORTARIA";
     }
 
-    // --- 2. REGISTRO IMEDIATO NO BANCO (AGORA FORA DO GPS) ---
+    // --- 2. COMUNICAÇÃO IMEDIATA COM O BANCO (SEM ESPERAR GPS) ---
+    // Tentamos gravar o nome e placa primeiro
     try {
         const { data, error } = await supabaseClient
             .from('rastreamento')
@@ -451,14 +452,13 @@ async function iniciarNavegacao(sentido) {
             }])
             .select();
 
-        if (error) {
-            console.error("Erro Supabase:", error.message);
-        } else if (data && data.length > 0) {
+        if (data && data.length > 0) {
             idViagemSupabase = data[0].id;
-            console.log("Registrado com sucesso! ID:", idViagemSupabase);
+            console.log("Conectado ao Banco. ID:", idViagemSupabase);
         }
+        if (error) console.error("Erro Supabase:", error.message);
     } catch (e) {
-        console.error("Falha na tentativa de insert:", e);
+        console.error("Erro de conexão com banco:", e);
     }
 
     // --- 3. EXECUÇÃO DA ROTA (SUA LÓGICA PERFEITA) ---
@@ -479,7 +479,7 @@ async function iniciarNavegacao(sentido) {
                 directionsRenderer.setDirections(result);
                 rotaPath = result.routes[0].overview_path;
             } else {
-                // Polilinha manual caso o Google falhe no condomínio
+                // Desenha a linha manual caso o Google falhe internamente
                 new google.maps.Polyline({
                     path: [origin, destCoord],
                     map: map,
@@ -488,6 +488,7 @@ async function iniciarNavegacao(sentido) {
                 });
                 rotaPath = [origin, destCoord];
             }
+            // Inicia o envio de coordenadas para o ID que criamos acima
             ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord);
         });
     }, (err) => alert("Erro ao obter GPS"), { enableHighAccuracy: true });
