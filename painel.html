@@ -27,21 +27,29 @@
 
         let markers = {};
         
-        // O SEGREDO: Colocar a API KEY direto na URL para evitar o erro de CORS
+        // Usando a Key direto na URL para evitar erros de cabeçalho
         const NEON_URL = "https://ep-super-violet-acvz7izl.sa-east-1.aws.neon.tech/v1/execute?apikey=npg_FRN3O7oVTmPs";
 
         async function atualizar() {
             try {
-                // Requisição Simples (sem headers customizados que travam no CORS)
                 const res = await fetch(NEON_URL, {
                     method: 'POST',
-                    body: JSON.stringify({ sql: "SELECT * FROM monitoramento_zayron" })
+                    // Importante: Neon exige que o corpo seja exatamente assim
+                    body: JSON.stringify({ 
+                        sql: "SELECT * FROM monitoramento_zayron;" 
+                    })
                 });
 
                 const data = await res.json();
-                const rows = data.rows || [];
                 
-                document.getElementById('status').innerText = `Ativos: ${rows.length}`;
+                if (data.error) {
+                    console.error("Erro no SQL:", data.error);
+                    return;
+                }
+
+                const rows = data.rows || [];
+                document.getElementById('status').innerText = `Veículos ativos: ${rows.length}`;
+                
                 const lista = document.getElementById('lista-visitantes');
                 lista.innerHTML = "";
 
@@ -52,10 +60,10 @@
                     } else {
                         markers[p.placa].setLatLng(pos);
                     }
-                    lista.innerHTML += `<div class="card"><b>${p.nome}</b><br>${p.placa}</div>`;
+                    lista.innerHTML += `<div class="card"><b>${p.nome}</b><br>${p.placa} - ${p.velocidade}km/h</div>`;
                 });
             } catch (e) {
-                document.getElementById('status').innerText = "Erro de Sinal";
+                document.getElementById('status').innerText = "Sincronizando...";
                 console.error("Erro:", e);
             }
         }
