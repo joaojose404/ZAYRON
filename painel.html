@@ -50,9 +50,7 @@ const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let map, markers = {}, audioCtx = null;
 let nomesEncerrados = new Set(JSON.parse(localStorage.getItem('alvorada_encerrados')) || []);
-let offsetTempo = 0;
 
-// FUNÇÃO DO BIP RESTAURADA
 function dispararSom() {
     try {
         if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -66,9 +64,13 @@ function dispararSom() {
     } catch(e) {}
 }
 
-async function sincronizarRelogio() {
-    const { data } = await supabaseClient.from('rastreamento').select('created_at').limit(1).order('created_at', {ascending: false});
-    if (data && data.length > 0) offsetTempo = new Date(data[0].created_at).getTime() - Date.now();
+// AJUSTE DE HORA AUTOMÁTICO (CORRIGINDO O ATRASO DE 3 HORAS)
+function ajustarHoraLocal(dataString) {
+    let d = new Date(dataString);
+    if (isNaN(d.getTime())) return new Date();
+    // Força o fuso de Brasília (UTC-3) caso o servidor envie em UTC
+    const offsetMonitor = 3 * 60 * 60 * 1000; 
+    return new Date(d.getTime() - offsetMonitor);
 }
 
 function initMap() {
@@ -90,7 +92,7 @@ async function atualizar() {
         const contVis = document.getElementById('container-visitantes');
         const contRon = document.getElementById('container-rondas');
         const ultimoPonto = {};
-        const agoraSincronizado = Date.now() + offsetTempo;
+        const agora = new Date();
 
         data.forEach(p => {
             const n = p.nome?.toUpperCase().trim();
@@ -106,15 +108,16 @@ async function atualizar() {
             const u = ultimoPonto[nome];
             const lat = parseFloat(u.latitude), lng = parseFloat(u.longitude);
             const vel = Math.round(u.velocidade || 0);
-            const diffSegundos = Math.max(0, Math.floor((agoraSincronizado - new Date(u.created_at).getTime()) / 1000));
-            const statusV = (u.status_viagem || "").toUpperCase();
             
+            const horaPontoAjustada = ajustarHoraLocal(u.created_at);
+            const diffSegundos = Math.max(0, Math.floor((agora - horaPontoAjustada) / 1000));
+            
+            const statusV = (u.status_viagem || "").toUpperCase();
             const infracaoRota = statusV.includes("FORA DA ROTA");
             const infracaoVel = vel > 30;
-            const infracaoParado = (diffSegundos > 60 && vel < 5);
+            const infracaoParado = (diffSegundos > 180 && vel < 5);
             const infracaoGeral = infracaoRota || infracaoVel || infracaoParado;
 
-            // Se houver qualquer infração, ativa o BIP
             if (infracaoGeral) bipAtivo = true;
 
             const corSetor = (u.lote_destino || "").toUpperCase().includes("RONDA") ? '#3b82f6' : '#10b981';
@@ -125,17 +128,9 @@ async function atualizar() {
                 markers[nome].setPosition({lat, lng});
             } else {
                 markers[nome] = new google.maps.Marker({
-                    position: {lat, lng}, 
-                    map: map, 
-                    label: { 
-                        text: nome, color: corSetor, fontSize: "13px", fontWeight: "900",
-                        strokeColor: "black", strokeWeight: 3
-                    },
-                    icon: { 
-                        path: google.maps.SymbolPath.CIRCLE, fillColor: corSetor, fillOpacity: 1, 
-                        scale: 8, strokeColor: 'white', strokeWeight: 2, 
-                        labelOrigin: new google.maps.Point(0, -2.5) 
-                    }
+                    position: {lat, lng}, map: map, 
+                    label: { text: nome, color: corSetor, fontSize: "13px", fontWeight: "900", strokeColor: "black", strokeWeight: 3 },
+                    icon: { path: google.maps.SymbolPath.CIRCLE, fillColor: corSetor, fillOpacity: 1, scale: 8, strokeColor: 'white', strokeWeight: 2, labelOrigin: new google.maps.Point(0, -2.5) }
                 });
             }
 
@@ -150,7 +145,7 @@ async function atualizar() {
                         <span class="badge ${infracaoRota ? 'bg-alerta' : 'bg-ok'}">${infracaoRota ? '⚠️ FORA ROTA' : '✓ NA ROTA'}</span>
                     </div>
                     <div style="font-size:12px; margin-top:8px; font-weight:bold;">
-                        ${infracaoParado ? `🛑 PARADO: ${diffSegundos}s` : `⏱️ Ativo: ${diffSegundos}s`}
+                        ${diffSegundos > 60 ? `⏱️ Visto há: ${Math.floor(diffSegundos/60)}m ${diffSegundos%60}s` : `⏱️ Ativo agora`}
                     </div>
                     <div style="font-size:11px; color:#94a3b8; margin-top:5px;">PLACA: ${u.placa} | DESTINO: ${u.lote_destino}</div>
                     <button class="btn-encerrar" onclick="event.stopPropagation(); encerrar('${nome}')">FINALIZAR</button>
@@ -183,26 +178,29 @@ async function gerarRelatoriosSeparados() {
     const resumo = {};
     data.forEach(p => {
         const id = p.nome + "_" + p.placa;
-        if (!resumo[id]) resumo[id] = { nome: p.nome, placa: p.placa, lote: p.lote_destino, entrada: p.created_at, vMax: 0, rotaInfra: false, paradoInfra: false, uS: p.created_at };
+        const hAjustada = ajustarHoraLocal(p.created_at);
+        if (!resumo[id]) resumo[id] = { nome: p.nome, placa: p.placa, lote: p.lote_destino, entrada: hAjustada, vMax: 0, rotaInfra: false, paradoInfra: false, uS: hAjustada };
         const r = resumo[id];
         if (p.velocidade > r.vMax) r.vMax = p.velocidade;
         if (p.status_viagem?.toUpperCase().includes("FORA")) r.rotaInfra = true;
-        if (p.velocidade < 5 && (new Date(p.created_at) - new Date(r.uS))/1000 > 60) r.paradoInfra = true;
-        r.uS = p.created_at;
+        const intervalo = (hAjustada - r.uS) / 1000;
+        if (p.velocidade < 5 && intervalo > 180) r.paradoInfra = true;
+        r.uS = hAjustada;
     });
     const { jsPDF } = window.jspdf;
     const exp = (t, l, c) => {
         if (l.length === 0) return;
-        const doc = new jsPDF('l'); doc.text(t + " - " + dataF, 14, 15);
+        const doc = new jsPDF('l'); 
+        doc.text(t + " - " + dataF, 14, 15);
         const rows = l.map(r => {
             let inf = [];
             if (r.vMax > 30) inf.push("VELOCIDADE");
             if (r.rotaInfra) inf.push("ROTA");
             if (r.paradoInfra) inf.push("PARADO");
-            return [r.nome, r.placa, r.lote, new Date(r.entrada).toLocaleTimeString(), new Date(r.uS).toLocaleTimeString(), Math.round(r.vMax)+"km/h", r.rotaInfra ? "SIM" : "NÃO", inf.length > 0 ? inf.join(" / ") : "OK"];
+            return [r.nome, r.placa, r.lote, r.entrada.toLocaleTimeString('pt-BR'), r.uS.toLocaleTimeString('pt-BR'), Math.round(r.vMax)+"km/h", r.rotaInfra ? "SIM" : "NÃO", inf.length > 0 ? inf.join(" / ") : "OK"];
         });
         doc.autoTable({ head: [['NOME', 'PLACA', 'DESTINO', 'INÍCIO', 'FIM', 'V.MÁX', 'FORA ROTA', 'INFRAÇÃO']], body: rows, startY: 20, headStyles: { fillColor: c } });
-        doc.save(t + ".pdf");
+        doc.save(t + "_" + dataF + ".pdf");
     };
     const list = Object.values(resumo);
     exp("VISITANTES", list.filter(x => !(x.lote||"").includes("RONDA")), [16, 185, 129]);
@@ -210,7 +208,7 @@ async function gerarRelatoriosSeparados() {
 }
 
 document.getElementById('data-filtro').valueAsDate = new Date();
-window.onload = async () => { initMap(); await sincronizarRelogio(); atualizar(); setInterval(atualizar, 5000); };
+window.onload = () => { initMap(); atualizar(); setInterval(atualizar, 5000); };
 </script>
 </body>
 </html>
