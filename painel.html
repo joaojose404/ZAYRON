@@ -64,13 +64,10 @@ function dispararSom() {
     } catch(e) {}
 }
 
-// AJUSTE DE HORA AUTOMÁTICO (CORRIGINDO O ATRASO DE 3 HORAS)
 function ajustarHoraLocal(dataString) {
     let d = new Date(dataString);
-    if (isNaN(d.getTime())) return new Date();
-    // Força o fuso de Brasília (UTC-3) caso o servidor envie em UTC
-    const offsetMonitor = 3 * 60 * 60 * 1000; 
-    return new Date(d.getTime() - offsetMonitor);
+    d.setHours(d.getHours() - 3);
+    return d;
 }
 
 function initMap() {
@@ -110,12 +107,12 @@ async function atualizar() {
             const vel = Math.round(u.velocidade || 0);
             
             const horaPontoAjustada = ajustarHoraLocal(u.created_at);
-            const diffSegundos = Math.max(0, Math.floor((agora - horaPontoAjustada) / 1000));
+            const diffSegundos = Math.floor((agora.getTime() - horaPontoAjustada.getTime()) / 1000);
             
             const statusV = (u.status_viagem || "").toUpperCase();
             const infracaoRota = statusV.includes("FORA DA ROTA");
             const infracaoVel = vel > 30;
-            const infracaoParado = (diffSegundos > 180 && vel < 5);
+            const infracaoParado = (vel < 5 && diffSegundos >= 180);
             const infracaoGeral = infracaoRota || infracaoVel || infracaoParado;
 
             if (infracaoGeral) bipAtivo = true;
@@ -175,18 +172,29 @@ async function gerarRelatoriosSeparados() {
     if (!dataF) return alert("Selecione a data!");
     const { data } = await supabaseClient.from('rastreamento').select('*').gte('created_at', `${dataF}T00:00:00.000Z`).lte('created_at', `${dataF}T23:59:59.999Z`).order('created_at', { ascending: true });
     if (!data || data.length === 0) return alert("Sem dados.");
+    
     const resumo = {};
+    const agora = new Date();
+
     data.forEach(p => {
         const id = p.nome + "_" + p.placa;
         const hAjustada = ajustarHoraLocal(p.created_at);
-        if (!resumo[id]) resumo[id] = { nome: p.nome, placa: p.placa, lote: p.lote_destino, entrada: hAjustada, vMax: 0, rotaInfra: false, paradoInfra: false, uS: hAjustada };
+        if (!resumo[id]) resumo[id] = { nome: p.nome, placa: p.placa, lote: p.lote_destino, entrada: hAjustada, vMax: 0, rotaInfra: false, paradoInfra: false, uS: hAjustada, velFinal: 0 };
+        
         const r = resumo[id];
         if (p.velocidade > r.vMax) r.vMax = p.velocidade;
         if (p.status_viagem?.toUpperCase().includes("FORA")) r.rotaInfra = true;
-        const intervalo = (hAjustada - r.uS) / 1000;
-        if (p.velocidade < 5 && intervalo > 180) r.paradoInfra = true;
+        
         r.uS = hAjustada;
+        r.velFinal = p.velocidade;
     });
+
+    // Validar se o motorista terminou o dia parado (INFRAÇÃO NO PDF)
+    Object.values(resumo).forEach(r => {
+        const diffFinal = Math.floor((agora.getTime() - r.uS.getTime()) / 1000);
+        if (r.velFinal < 5 && diffFinal >= 180) r.paradoInfra = true;
+    });
+
     const { jsPDF } = window.jspdf;
     const exp = (t, l, c) => {
         if (l.length === 0) return;
