@@ -2,74 +2,171 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>ZAYRON CCO</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <title>ZAYRONALVORADA - CCO</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAn7IcmNp_y0vcpZGcTorSYcIV5soYwrrU&libraries=geometry"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        body { margin: 0; display: flex; height: 100vh; background: #0f172a; color: white; font-family: sans-serif; }
-        #sidebar { width: 320px; background: #1e293b; padding: 15px; border-right: 2px solid #334155; overflow-y: auto; }
-        #map { flex: 1; background: #000; }
-        .card { background: #334155; padding: 12px; margin-bottom: 8px; border-radius: 8px; border-left: 5px solid #059669; }
-        .header { font-size: 18px; font-weight: bold; color: #059669; text-align: center; margin-bottom: 20px; }
+        :root { --visitante: #10b981; --ronda: #3b82f6; --alerta: #ef4444; --bg: #0f172a; --card: #1e293b; }
+        body { margin: 0; display: flex; font-family: 'Segoe UI', sans-serif; height: 100vh; background: var(--bg); color: white; overflow: hidden; }
+        #sidebar { width: 420px; background: var(--card); display: flex; flex-direction: column; border-right: 1px solid #334155; z-index: 1000; }
+        .header { background: #059669; padding: 20px; text-align: center; font-weight: 800; text-transform: uppercase; font-size: 20px; }
+        #lista-scroll { flex: 1; overflow-y: auto; padding: 15px; background: #111827; }
+        .titulo-secao { font-size: 11px; color: #64748b; font-weight: bold; margin: 20px 0 10px 0; border-bottom: 1px solid #1e293b; padding-bottom: 5px; display: block; }
+        .card { background: #1e293b; padding: 15px; margin-bottom: 12px; border-radius: 10px; border-left: 6px solid #ccc; cursor: pointer; position: relative; }
+        .status-badge { font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: bold; text-transform: uppercase; margin-bottom: 5px; display: inline-block; }
+        .btn-pdf { margin: 10px; padding: 12px; background: #059669; color: white; border: none; cursor: pointer; border-radius: 6px; font-weight: bold; }
+        .btn-encerrar { margin-top: 10px; padding: 6px 12px; background: #334155; color: #cbd5e1; border: none; border-radius: 4px; font-size: 11px; cursor: pointer; width: 100%; }
+        #map { flex: 1; height: 100%; }
     </style>
 </head>
 <body>
     <div id="sidebar">
-        <div class="header">ZAYRON MONITORAMENTO</div>
-        <div id="status" style="text-align: center; color: #94a3b8; margin-bottom: 10px;">Conectando...</div>
-        <div id="lista-visitantes"></div>
+        <div class="header">ZAYRONALVORADA</div>
+        <div style="padding:15px; background:#0f172a;">
+            <input type="date" id="data-filtro" style="width:100%; padding:8px; border-radius:4px; background:#1e293b; color:white; border:1px solid #334155;">
+        </div>
+        <button class="btn-pdf" onclick="gerarRelatoriosSeparados()">GERAR RELATÓRIOS SEPARADOS</button>
+        <div id="lista-scroll">
+            <span class="titulo-secao">RONDAS ATIVAS</span>
+            <div id="container-rondas"></div>
+            <span class="titulo-secao">VISITANTES ATIVOS</span>
+            <div id="container-visitantes"></div>
+        </div>
     </div>
     <div id="map"></div>
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script>
-        const map = L.map('map').setView([-23.2019, -47.0292], 16);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+<script>
+const SUPABASE_URL = 'https://lsotfcirloamzhwgiplf.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxzb3RmY2lybG9hbXpod2dpcGxmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNDQ0MjIsImV4cCI6MjA4ODgyMDQyMn0.2PrghPM-3fTVDNg6shxjtaiq7yJAuqSGcxFXrfRozDo';
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        let markers = {};
-        
-        // Usando a Key direto na URL para evitar erros de cabeçalho
-        const NEON_URL = "https://ep-super-violet-acvz7izl.sa-east-1.aws.neon.tech/v1/execute?apikey=npg_FRN3O7oVTmPs";
+let map;
+let markers = {};
+let nomesEncerrados = new Set(JSON.parse(localStorage.getItem('alvorada_encerrados')) || []);
 
-        async function atualizar() {
-            try {
-                const res = await fetch(NEON_URL, {
-                    method: 'POST',
-                    // Importante: Neon exige que o corpo seja exatamente assim
-                    body: JSON.stringify({ 
-                        sql: "SELECT * FROM monitoramento_zayron;" 
-                    })
+function initMap() {
+    map = new google.maps.Map(document.getElementById("map"), {
+        center: { lat: -23.201919, lng: -47.029214 }, zoom: 17, disableDefaultUI: true, zoomControl: true
+    });
+}
+
+// FUNÇÃO DE ATUALIZAÇÃO REESCRITA PARA MOSTRAR AS JANELAS
+async function atualizar() {
+    const { data, error } = await supabaseClient
+        .from('rastreamento')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(100);
+
+    if (error || !data) return;
+
+    const contVis = document.getElementById('container-visitantes');
+    const contRon = document.getElementById('container-rondas');
+    
+    const ultimoPonto = {};
+    data.forEach(p => {
+        if (!p.nome) return;
+        const n = p.nome.toUpperCase().trim();
+        if (!nomesEncerrados.has(n) && !ultimoPonto[n]) ultimoPonto[n] = p;
+    });
+
+    let hVis = "", hRon = "";
+
+    Object.keys(ultimoPonto).forEach(nome => {
+        const u = ultimoPonto[nome];
+        const lat = parseFloat(u.latitude);
+        const lng = parseFloat(u.longitude);
+        const dest = (u.lote_destino || "").toUpperCase();
+        const isRonda = dest.includes("RONDA") || (u.tipo_usuario || "").toLowerCase().includes("ronda");
+        const cor = isRonda ? '#3b82f6' : '#10b981';
+
+        if (!isNaN(lat) && !isNaN(lng)) {
+            if (markers[nome]) {
+                markers[nome].setPosition({lat, lng});
+            } else {
+                markers[nome] = new google.maps.Marker({
+                    position: {lat, lng}, map: map,
+                    icon: { path: google.maps.SymbolPath.CIRCLE, fillColor: cor, fillOpacity: 1, strokeWeight: 2, strokeColor: 'white', scale: 9 }
                 });
-
-                const data = await res.json();
-                
-                if (data.error) {
-                    console.error("Erro no SQL:", data.error);
-                    return;
-                }
-
-                const rows = data.rows || [];
-                document.getElementById('status').innerText = `Veículos ativos: ${rows.length}`;
-                
-                const lista = document.getElementById('lista-visitantes');
-                lista.innerHTML = "";
-
-                rows.forEach(p => {
-                    const pos = [p.lat, p.lng];
-                    if (!markers[p.placa]) {
-                        markers[p.placa] = L.marker(pos).addTo(map).bindPopup(p.nome);
-                    } else {
-                        markers[p.placa].setLatLng(pos);
-                    }
-                    lista.innerHTML += `<div class="card"><b>${p.nome}</b><br>${p.placa} - ${p.velocidade}km/h</div>`;
-                });
-            } catch (e) {
-                document.getElementById('status').innerText = "Sincronizando...";
-                console.error("Erro:", e);
             }
         }
 
-        setInterval(atualizar, 3000);
+        const card = `
+            <div class="card" style="border-left-color: ${cor}" onclick="map.setCenter({lat:${lat}, lng:${lng}}); map.setZoom(19)">
+                <div class="status-badge" style="background:${cor}">${isRonda ? 'RONDA' : 'VISITANTE'}</div><br>
+                <b>${nome}</b><br>
+                <small>PLACA: ${u.placa || '---'} | DESTINO: ${u.lote_destino || '---'}</small>
+                <button class="btn-encerrar" onclick="event.stopPropagation(); encerrar('${nome}')">Finalizar</button>
+            </div>`;
+        
+        if (isRonda) hRon += card; else hVis += card;
+    });
+
+    contVis.innerHTML = hVis || "Nenhum visitante ativo";
+    contRon.innerHTML = hRon || "Nenhuma ronda ativa";
+}
+
+function encerrar(nome) {
+    if (confirm("Encerrar " + nome + "?")) {
+        nomesEncerrados.add(nome.toUpperCase());
+        localStorage.setItem('alvorada_encerrados', JSON.stringify(Array.from(nomesEncerrados)));
+        if (markers[nome]) { markers[nome].setMap(null); delete markers[nome]; }
         atualizar();
-    </script>
+    }
+}
+
+// SEU RELATÓRIO ORIGINAL (MANTIDO EXATAMENTE COMO ESTAVA)
+async function gerarRelatoriosSeparados() {
+    const dataF = document.getElementById('data-filtro').value;
+    if (!dataF) return alert("Selecione uma data.");
+
+    const { data, error } = await supabaseClient
+        .from('rastreamento')
+        .select('*')
+        .gte('created_at', `${dataF}T00:00:00.000Z`)
+        .lte('created_at', `${dataF}T23:59:59.999Z`)
+        .order('created_at', { ascending: true });
+
+    if (error || !data || data.length === 0) return alert("Nenhum dado encontrado.");
+
+    const resumo = {};
+    data.forEach(p => {
+        if (!p.nome || !p.placa) return;
+        const n = p.nome.toUpperCase();
+        const placa = p.placa.toUpperCase();
+        const lote = (p.lote_destino || 'NÃO INFORMADO').toUpperCase();
+        const idUnicaViagem = n + "_" + placa + "_" + lote;
+        const isR = lote === 'EM RONDA' || (p.tipo_usuario || '').toLowerCase().includes('ronda');
+
+        if (!resumo[idUnicaViagem]) {
+            resumo[idUnicaViagem] = {
+                nome: n, placa: placa, lote: lote,
+                entrada: p.created_at, vMax: 0, tP: 0,
+                tipo: isR ? 'RONDA' : 'VISITANTE', uS: p.created_at
+            };
+        }
+        if ((p.velocidade || 0) > resumo[idUnicaViagem].vMax) resumo[idUnicaViagem].vMax = p.velocidade;
+        resumo[idUnicaViagem].uS = p.created_at;
+    });
+
+    const { jsPDF } = window.jspdf;
+    const exportar = (titulo, lista, cor) => {
+        const doc = new jsPDF('l');
+        doc.text(titulo + " - " + dataF, 14, 15);
+        const rows = lista.map(r => [r.nome, r.placa, r.lote, new Date(r.entrada).toLocaleTimeString(), new Date(r.uS).toLocaleTimeString(), r.vMax + " km/h"]);
+        doc.autoTable({ head: [['NOME', 'PLACA', 'DESTINO', 'ENTRADA', 'SAÍDA', 'VEL. MÁX']], body: rows, startY: 25, headStyles: { fillColor: cor } });
+        doc.save(`${titulo}_${dataF}.pdf`);
+    };
+
+    const lista = Object.values(resumo);
+    exportar("Visitantes", lista.filter(x => x.tipo === 'VISITANTE'), [16, 185, 129]);
+    exportar("Rondas", lista.filter(x => x.tipo === 'RONDA'), [59, 130, 246]);
+}
+
+document.getElementById('data-filtro').valueAsDate = new Date();
+window.onload = () => { initMap(); atualizar(); setInterval(atualizar, 5000); };
+</script>
 </body>
 </html>
