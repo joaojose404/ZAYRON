@@ -48,9 +48,23 @@ const SUPABASE_URL = 'https://lsotfcirloamzhwgiplf.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxzb3RmY2lybG9hbXpod2dpcGxmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNDQ0MjIsImV4cCI6MjA4ODgyMDQyMn0.2PrghPM-3fTVDNg6shxjtaiq7yJAuqSGcxFXrfRozDo';
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-let map, markers = {};
+let map, markers = {}, audioCtx = null;
 let nomesEncerrados = new Set(JSON.parse(localStorage.getItem('alvorada_encerrados')) || []);
 let offsetTempo = 0;
+
+// FUNÇÃO DO BIP RESTAURADA
+function dispararSom() {
+    try {
+        if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if(audioCtx.state === 'suspended') audioCtx.resume();
+        let o = audioCtx.createOscillator(); let g = audioCtx.createGain();
+        o.connect(g); g.connect(audioCtx.destination);
+        o.type = 'square'; o.frequency.value = 520;
+        g.gain.setValueAtTime(0.1, audioCtx.currentTime);
+        g.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.5);
+        o.start(); o.stop(audioCtx.currentTime + 0.5);
+    } catch(e) {}
+}
 
 async function sincronizarRelogio() {
     const { data } = await supabaseClient.from('rastreamento').select('created_at').limit(1).order('created_at', {ascending: false});
@@ -86,6 +100,7 @@ async function atualizar() {
 
         let hVis = "", hRon = "";
         let nomesAtivos = new Set();
+        let bipAtivo = false;
 
         Object.keys(ultimoPonto).forEach(nome => {
             const u = ultimoPonto[nome];
@@ -99,6 +114,9 @@ async function atualizar() {
             const infracaoParado = (diffSegundos > 60 && vel < 5);
             const infracaoGeral = infracaoRota || infracaoVel || infracaoParado;
 
+            // Se houver qualquer infração, ativa o BIP
+            if (infracaoGeral) bipAtivo = true;
+
             const corSetor = (u.lote_destino || "").toUpperCase().includes("RONDA") ? '#3b82f6' : '#10b981';
             const movimento = statusV.includes("INICIO") ? "ENTRANDO" : (statusV.includes("SAIDA") ? "SAINDO" : "EM CURSO");
             nomesAtivos.add(nome);
@@ -110,20 +128,12 @@ async function atualizar() {
                     position: {lat, lng}, 
                     map: map, 
                     label: { 
-                        text: nome, 
-                        color: corSetor, // COR IGUAL AO PONTO
-                        fontSize: "13px", 
-                        fontWeight: "900",
-                        strokeColor: "black", // CONTORNO PARA DAR VISIBILIDADE
-                        strokeWeight: 3
+                        text: nome, color: corSetor, fontSize: "13px", fontWeight: "900",
+                        strokeColor: "black", strokeWeight: 3
                     },
                     icon: { 
-                        path: google.maps.SymbolPath.CIRCLE, 
-                        fillColor: corSetor, 
-                        fillOpacity: 1, 
-                        scale: 8, 
-                        strokeColor: 'white', 
-                        strokeWeight: 2, 
+                        path: google.maps.SymbolPath.CIRCLE, fillColor: corSetor, fillOpacity: 1, 
+                        scale: 8, strokeColor: 'white', strokeWeight: 2, 
                         labelOrigin: new google.maps.Point(0, -2.5) 
                     }
                 });
@@ -147,6 +157,8 @@ async function atualizar() {
                 </div>`;
             if (corSetor === '#3b82f6') hRon += card; else hVis += card;
         });
+
+        if (bipAtivo) dispararSom();
 
         Object.keys(markers).forEach(m => { if(!nomesAtivos.has(m)){ markers[m].setMap(null); delete markers[m]; } });
         contVis.innerHTML = hVis || "<small>Sem visitantes</small>";
