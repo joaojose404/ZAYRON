@@ -8,15 +8,15 @@
     <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAn7IcmNp_y0vcpZGcTorSYcIV5soYwrrU&libraries=geometry"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        :root { --visitante: #10b981; --ronda: #3b82f6; --alerta: #ef4444; --bg: #0f172a; --card: #1e293b; }
+        :root { --visitante: #10b981; --ronda: #3b82f6; --bg: #0f172a; --card: #1e293b; }
         body { margin: 0; display: flex; font-family: 'Segoe UI', sans-serif; height: 100vh; background: var(--bg); color: white; overflow: hidden; }
         #sidebar { width: 420px; background: var(--card); display: flex; flex-direction: column; border-right: 1px solid #334155; z-index: 1000; }
         .header { background: #059669; padding: 20px; text-align: center; font-weight: 800; text-transform: uppercase; font-size: 20px; }
         #lista-scroll { flex: 1; overflow-y: auto; padding: 15px; background: #111827; }
         .titulo-secao { font-size: 11px; color: #64748b; font-weight: bold; margin: 20px 0 10px 0; border-bottom: 1px solid #1e293b; padding-bottom: 5px; display: block; }
-        .card { background: #1e293b; padding: 15px; margin-bottom: 12px; border-radius: 10px; border-left: 6px solid #ccc; cursor: pointer; position: relative; }
-        .status-badge { font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: bold; text-transform: uppercase; margin-bottom: 5px; display: inline-block; }
+        .card { background: #1e293b; padding: 15px; margin-bottom: 12px; border-radius: 10px; border-left: 6px solid #ccc; cursor: pointer; }
         .btn-pdf { margin: 10px; padding: 12px; background: #059669; color: white; border: none; cursor: pointer; border-radius: 6px; font-weight: bold; }
+        .btn-reset { margin: 0 10px 10px 10px; padding: 8px; background: #eab308; color: #000; border: none; cursor: pointer; border-radius: 6px; font-weight: bold; font-size: 11px; }
         .btn-encerrar { margin-top: 10px; padding: 6px 12px; background: #334155; color: #cbd5e1; border: none; border-radius: 4px; font-size: 11px; cursor: pointer; width: 100%; }
         #map { flex: 1; height: 100%; }
     </style>
@@ -28,6 +28,7 @@
             <input type="date" id="data-filtro" style="width:100%; padding:8px; border-radius:4px; background:#1e293b; color:white; border:1px solid #334155;">
         </div>
         <button class="btn-pdf" onclick="gerarRelatoriosSeparados()">GERAR RELATÓRIOS SEPARADOS</button>
+        <button class="btn-reset" onclick="limparCache()">🔄 LIMPAR LISTA / RESETAR ATIVOS</button>
         <div id="lista-scroll">
             <span class="titulo-secao">RONDAS ATIVAS</span>
             <div id="container-rondas"></div>
@@ -42,8 +43,7 @@ const SUPABASE_URL = 'https://lsotfcirloamzhwgiplf.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxzb3RmY2lybG9hbXpod2dpcGxmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNDQ0MjIsImV4cCI6MjA4ODgyMDQyMn0.2PrghPM-3fTVDNg6shxjtaiq7yJAuqSGcxFXrfRozDo';
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-let map;
-let markers = {};
+let map, markers = {};
 let nomesEncerrados = new Set(JSON.parse(localStorage.getItem('alvorada_encerrados')) || []);
 
 function initMap() {
@@ -52,117 +52,96 @@ function initMap() {
     });
 }
 
-// FUNÇÃO DE ATUALIZAÇÃO REESCRITA PARA MOSTRAR AS JANELAS
-async function atualizar() {
-    const { data, error } = await supabaseClient
-        .from('rastreamento')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(100);
-
-    if (error || !data) return;
-
-    const contVis = document.getElementById('container-visitantes');
-    const contRon = document.getElementById('container-rondas');
-    
-    const ultimoPonto = {};
-    data.forEach(p => {
-        if (!p.nome) return;
-        const n = p.nome.toUpperCase().trim();
-        if (!nomesEncerrados.has(n) && !ultimoPonto[n]) ultimoPonto[n] = p;
-    });
-
-    let hVis = "", hRon = "";
-
-    Object.keys(ultimoPonto).forEach(nome => {
-        const u = ultimoPonto[nome];
-        const lat = parseFloat(u.latitude);
-        const lng = parseFloat(u.longitude);
-        const dest = (u.lote_destino || "").toUpperCase();
-        const isRonda = dest.includes("RONDA") || (u.tipo_usuario || "").toLowerCase().includes("ronda");
-        const cor = isRonda ? '#3b82f6' : '#10b981';
-
-        if (!isNaN(lat) && !isNaN(lng)) {
-            if (markers[nome]) {
-                markers[nome].setPosition({lat, lng});
-            } else {
-                markers[nome] = new google.maps.Marker({
-                    position: {lat, lng}, map: map,
-                    icon: { path: google.maps.SymbolPath.CIRCLE, fillColor: cor, fillOpacity: 1, strokeWeight: 2, strokeColor: 'white', scale: 9 }
-                });
-            }
-        }
-
-        const card = `
-            <div class="card" style="border-left-color: ${cor}" onclick="map.setCenter({lat:${lat}, lng:${lng}}); map.setZoom(19)">
-                <div class="status-badge" style="background:${cor}">${isRonda ? 'RONDA' : 'VISITANTE'}</div><br>
-                <b>${nome}</b><br>
-                <small>PLACA: ${u.placa || '---'} | DESTINO: ${u.lote_destino || '---'}</small>
-                <button class="btn-encerrar" onclick="event.stopPropagation(); encerrar('${nome}')">Finalizar</button>
-            </div>`;
-        
-        if (isRonda) hRon += card; else hVis += card;
-    });
-
-    contVis.innerHTML = hVis || "Nenhum visitante ativo";
-    contRon.innerHTML = hRon || "Nenhuma ronda ativa";
-}
-
-function encerrar(nome) {
-    if (confirm("Encerrar " + nome + "?")) {
-        nomesEncerrados.add(nome.toUpperCase());
-        localStorage.setItem('alvorada_encerrados', JSON.stringify(Array.from(nomesEncerrados)));
-        if (markers[nome]) { markers[nome].setMap(null); delete markers[nome]; }
+function limparCache() {
+    if(confirm("Isso fará todos os motoristas voltarem para a tela. Confirmar?")) {
+        localStorage.removeItem('alvorada_encerrados');
+        nomesEncerrados = new Set();
         atualizar();
     }
 }
 
-// SEU RELATÓRIO ORIGINAL (MANTIDO EXATAMENTE COMO ESTAVA)
+async function atualizar() {
+    try {
+        const { data, error } = await supabaseClient.from('rastreamento').select('*').order('created_at', { ascending: false }).limit(200);
+        if (error || !data) return;
+
+        const contVis = document.getElementById('container-visitantes');
+        const contRon = document.getElementById('container-rondas');
+        const ultimoPonto = {};
+
+        data.forEach(p => {
+            if (!p.nome) return;
+            const n = p.nome.toUpperCase().trim();
+            if (!nomesEncerrados.has(n) && !ultimoPonto[n]) ultimoPonto[n] = p;
+        });
+
+        let hVis = "", hRon = "";
+        Object.keys(ultimoPonto).forEach(nome => {
+            const u = ultimoPonto[nome];
+            const lat = parseFloat(u.latitude), lng = parseFloat(u.longitude);
+            const dest = (u.lote_destino || "").toUpperCase();
+            const isRonda = dest.includes("RONDA") || (u.tipo_usuario || "").toLowerCase().includes("ronda");
+            const cor = isRonda ? '#3b82f6' : '#10b981';
+
+            if (!isNaN(lat) && !isNaN(lng)) {
+                if (markers[nome]) markers[nome].setPosition({lat, lng});
+                else markers[nome] = new google.maps.Marker({ position: {lat, lng}, map, icon: { path: google.maps.SymbolPath.CIRCLE, fillColor: cor, fillOpacity: 1, scale: 9, strokeWeight: 2, strokeColor: 'white' }});
+            }
+
+            const card = `<div class="card" style="border-left-color:${cor}" onclick="map.setCenter({lat:${lat}, lng:${lng}}); map.setZoom(19)">
+                <div style="font-size:10px; font-weight:bold; color:${cor}">${isRonda ? '🛡️ RONDA' : '🚗 VISITANTE'}</div>
+                <b>${nome}</b><br><small>PLACA: ${u.placa || '---'}</small><br><small>DESTINO: ${dest || '---'}</small>
+                <button class="btn-encerrar" onclick="event.stopPropagation(); encerrar('${nome}')">FINALIZAR</button></div>`;
+            if (isRonda) hRon += card; else hVis += card;
+        });
+
+        contVis.innerHTML = hVis || "Nenhum visitante ativo";
+        contRon.innerHTML = hRon || "Nenhuma ronda ativa";
+    } catch (e) { console.error(e); }
+}
+
+function encerrar(nome) {
+    nomesEncerrados.add(nome.toUpperCase());
+    localStorage.setItem('alvorada_encerrados', JSON.stringify(Array.from(nomesEncerrados)));
+    if (markers[nome]) { markers[nome].setMap(null); delete markers[nome]; }
+    atualizar();
+}
+
+// RELATÓRIO COM INFRAÇÕES (VELOCIDADE, ROTA, TEMPO PARADO)
 async function gerarRelatoriosSeparados() {
     const dataF = document.getElementById('data-filtro').value;
     if (!dataF) return alert("Selecione uma data.");
-
-    const { data, error } = await supabaseClient
-        .from('rastreamento')
-        .select('*')
-        .gte('created_at', `${dataF}T00:00:00.000Z`)
-        .lte('created_at', `${dataF}T23:59:59.999Z`)
-        .order('created_at', { ascending: true });
-
+    const { data, error } = await supabaseClient.from('rastreamento').select('*').gte('created_at', `${dataF}T00:00:00.000Z`).lte('created_at', `${dataF}T23:59:59.999Z`).order('created_at', { ascending: true });
     if (error || !data || data.length === 0) return alert("Nenhum dado encontrado.");
 
     const resumo = {};
     data.forEach(p => {
         if (!p.nome || !p.placa) return;
-        const n = p.nome.toUpperCase();
-        const placa = p.placa.toUpperCase();
-        const lote = (p.lote_destino || 'NÃO INFORMADO').toUpperCase();
-        const idUnicaViagem = n + "_" + placa + "_" + lote;
+        const n = p.nome.toUpperCase(), placa = p.placa.toUpperCase(), lote = (p.lote_destino || 'NÃO INFORMADO').toUpperCase();
+        const idV = n + "_" + placa + "_" + lote;
         const isR = lote === 'EM RONDA' || (p.tipo_usuario || '').toLowerCase().includes('ronda');
-
-        if (!resumo[idUnicaViagem]) {
-            resumo[idUnicaViagem] = {
-                nome: n, placa: placa, lote: lote,
-                entrada: p.created_at, vMax: 0, tP: 0,
-                tipo: isR ? 'RONDA' : 'VISITANTE', uS: p.created_at
-            };
-        }
-        if ((p.velocidade || 0) > resumo[idUnicaViagem].vMax) resumo[idUnicaViagem].vMax = p.velocidade;
-        resumo[idUnicaViagem].uS = p.created_at;
+        if (!resumo[idV]) resumo[idV] = { nome: n, placa: placa, lote: lote, entrada: p.created_at, vMax: 0, tP: 0, desviou: false, infraVel: false, tipo: isR ? 'RONDA' : 'VISITANTE', uS: p.created_at };
+        const r = resumo[idV];
+        const diff = (new Date(p.created_at) - new Date(r.uS)) / 1000;
+        if ((p.velocidade || 0) < 3 && diff > 0) r.tP += diff;
+        if (p.status_viagem && String(p.status_viagem).toUpperCase().includes("FORA DA ROTA")) r.desviou = true;
+        if ((p.velocidade || 0) > 40) r.infraVel = true;
+        if ((p.velocidade || 0) > r.vMax) r.vMax = p.velocidade || 0;
+        r.uS = p.created_at;
     });
 
     const { jsPDF } = window.jspdf;
     const exportar = (titulo, lista, cor) => {
+        if (lista.length === 0) return;
         const doc = new jsPDF('l');
-        doc.text(titulo + " - " + dataF, 14, 15);
-        const rows = lista.map(r => [r.nome, r.placa, r.lote, new Date(r.entrada).toLocaleTimeString(), new Date(r.uS).toLocaleTimeString(), r.vMax + " km/h"]);
-        doc.autoTable({ head: [['NOME', 'PLACA', 'DESTINO', 'ENTRADA', 'SAÍDA', 'VEL. MÁX']], body: rows, startY: 25, headStyles: { fillColor: cor } });
+        doc.text(`ZAYRONALVORADA - ${titulo} - ${dataF}`, 14, 15);
+        const rows = lista.map(r => [r.nome, r.placa, r.lote, new Date(r.entrada).toLocaleTimeString(), new Date(r.uS).toLocaleTimeString(), r.vMax + " km/h", (r.infraVel ? "VEL. " : "") + (r.desviou ? "ROTA " : "") + (r.tP > 60 ? "PARADO" : "OK")]);
+        doc.autoTable({ head: [['NOME', 'PLACA', 'DESTINO', 'INÍCIO', 'FIM', 'V.MÁX', 'STATUS']], body: rows, startY: 25, headStyles: { fillColor: cor } });
         doc.save(`${titulo}_${dataF}.pdf`);
     };
-
-    const lista = Object.values(resumo);
-    exportar("Visitantes", lista.filter(x => x.tipo === 'VISITANTE'), [16, 185, 129]);
-    exportar("Rondas", lista.filter(x => x.tipo === 'RONDA'), [59, 130, 246]);
+    const listaGeral = Object.values(resumo);
+    exportar("Visitantes", listaGeral.filter(x => x.tipo === 'VISITANTE'), [16, 185, 129]);
+    exportar("Rondas", listaGeral.filter(x => x.tipo === 'RONDA'), [59, 130, 246]);
 }
 
 document.getElementById('data-filtro').valueAsDate = new Date();
