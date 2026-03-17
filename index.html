@@ -465,10 +465,9 @@ const BANCO_COORDENADAS = {
     }
 	};
 	
-// --- CONFIGURAÇÕES DO SISTEMA ---
+
 
 const SUPABASE_URL = "https://lsotfcirloamzhwgiplf.supabase.co";
-
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxzb3RmY2lybG9hbXpod2dpcGxmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNDQ0MjIsImV4cCI6MjA4ODgyMDQyMn0.2PrghPM-3fTVDNg6shxjtaiq7yJAuqSGcxFXrfRozDo";
 
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -479,77 +478,239 @@ let directionsRenderer;
 let directionsService;
 let geocoder;
 let watchID;
-
 let rotaPath = [];
 let wakeLock = null;
 
 let idViagemSupabase = null;
 let ultimaGravacaoBanco = 0;
-
 const INTERVALO_BANCO = 15000;
 
-let segundosParado = 0;
+let ultimaLatLng = null;
+let ultimoHeading = 0;
+let ultimoCameraUpdate = 0;
+let inicioParado = null;
+let navegando = false;
 
-let ultimaPos = {
-    lat: 0,
-    lng: 0
-};
-
-
-// --- INICIAR MAPA ---
-
+// =========================
+// MAPA
+// =========================
 function initMap() {
+    map = new google.maps.Map(document.getElementById("map-visitante"), {
+        center: BANCO_COORDENADAS.PORTARIA,
+        zoom: 19,
+        tilt: 0,
+        heading: 0,
+        mapTypeId: "roadmap",
+        disableDefaultUI: true,
+        gestureHandling: "greedy"
+    });
 
-   map = new google.maps.Map(document.getElementById("map-visitante"), {
-    center: BANCO_COORDENADAS.PORTARIA,
-    zoom: 19,
-    tilt: 45,
-    heading: 0,
-    mapTypeId: "roadmap",
-    disableDefaultUI: true
-});
+    directionsService = new google.maps.DirectionsService();
+    geocoder = new google.maps.Geocoder();
 
-   directionsService = new google.maps.DirectionsService();
-
-geocoder = new google.maps.Geocoder();
-
-directionsRenderer = new google.maps.DirectionsRenderer({
-    map: map,
-    suppressMarkers: true,
-    polylineOptions: {
-        strokeColor: "#3b82f6",
-        strokeWeight: 8
-    }
-});
+    directionsRenderer = new google.maps.DirectionsRenderer({
+        map: map,
+        suppressMarkers: true,
+        preserveViewport: true,
+        polylineOptions: {
+            strokeColor: "#3b82f6",
+            strokeWeight: 8
+        }
+    });
 
     marker = new google.maps.Marker({
         map: map,
+        position: BANCO_COORDENADAS.PORTARIA,
+        zIndex: 9999,
         icon: {
-            path: google.maps.SymbolPath.CIRCLE,
-            scale: 12,
+            path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+            scale: 6,
             fillColor: "#3b82f6",
             fillOpacity: 1,
-            strokeColor: "white",
-            strokeWeight: 4
+            strokeColor: "#ffffff",
+            strokeWeight: 2,
+            rotation: 0
         }
     });
 
     const salvo = JSON.parse(localStorage.getItem("dados_visitante"));
-
     if (salvo) {
-
-        document.getElementById("nome_v").value = salvo.nome;
-        document.getElementById("placa_v").value = salvo.placa;
-
-        document.getElementById("btn-saida-direta").style.display = "block";
-
+        document.getElementById("nome_v").value = salvo.nome || "";
+        document.getElementById("placa_v").value = salvo.placa || "";
     }
 }
 
+// =========================
+// HELPERS
+// =========================
+function atualizarStatus(texto, classe = "") {
+    const el = document.getElementById("status-txt");
+    el.textContent = texto;
+    el.classList.remove("cor-verde", "cor-vermelha");
+    if (classe) el.classList.add(classe);
+}
 
-// --- INICIAR NAVEGAÇÃO ---
+function atualizarDestino(texto) {
+    const el = document.getElementById("status-destino");
+    if (el) el.textContent = "Destino: " + texto;
+}
 
+function normalizarTexto(txt) {
+    return (txt || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .trim()
+        .toUpperCase();
+}
+
+function encontrarRuaNoBanco(ruaSelecionada) {
+    const ruas = BANCO_COORDENADAS.RUAS || {};
+    const alvo = normalizarTexto(ruaSelecionada);
+
+    if (ruas[ruaSelecionada]) return ruas[ruaSelecionada];
+
+    for (const chave of Object.keys(ruas)) {
+        if (normalizarTexto(chave) === alvo) {
+            return ruas[chave];
+        }
+    }
+
+    // compatibilidade extra: com ou sem "RUA "
+    for (const chave of Object.keys(ruas)) {
+        const chaveNorm = normalizarTexto(chave).replace(/^RUA\s+/, "");
+        const alvoNorm = alvo.replace(/^RUA\s+/, "");
+        if (chaveNorm === alvoNorm) {
+            return ruas[chave];
+        }
+    }
+
+    return null;
+}
+
+function obterDestinoPorRuaNumero(rua, numero) {
+    const ruaBanco = encontrarRuaNoBanco(rua);
+    if (!ruaBanco) return null;
+
+    const numeroTxt = String(numero).trim();
+
+    if (ruaBanco[numeroTxt]) {
+        return {
+            lat: ruaBanco[numeroTxt][0],
+            lng: ruaBanco[numeroTxt][1]
+        };
+    }
+
+    // tenta número com zero à esquerda
+    const numero2 = numeroTxt.padStart(2, "0");
+    if (ruaBanco[numero2]) {
+        return {
+            lat: ruaBanco[numero2][0],
+            lng: ruaBanco[numero2][1]
+        };
+    }
+
+    return null;
+}
+
+function obterDestinoPorLote(lote) {
+    const lotes = BANCO_COORDENADAS.LOTES || {};
+    const alvo = normalizarTexto(lote);
+
+    if (lotes[alvo]) {
+        return {
+            lat: lotes[alvo][0],
+            lng: lotes[alvo][1]
+        };
+    }
+
+    for (const chave of Object.keys(lotes)) {
+        if (normalizarTexto(chave) === alvo) {
+            return {
+                lat: lotes[chave][0],
+                lng: lotes[chave][1]
+            };
+        }
+    }
+
+    return null;
+}
+
+function calcularHeading(origem, destino) {
+    return google.maps.geometry.spherical.computeHeading(origem, destino);
+}
+
+function normalizarHeading(h) {
+    let v = h;
+    while (v < 0) v += 360;
+    while (v >= 360) v -= 360;
+    return v;
+}
+
+function suavizarHeading(anterior, atual) {
+    if (anterior == null || isNaN(anterior)) return atual;
+    let diff = atual - anterior;
+    if (diff > 180) diff -= 360;
+    if (diff < -180) diff += 360;
+    return anterior + diff * 0.22;
+}
+
+function obterCentroDeslocado(lat, lng, heading, distanciaMetros = 40) {
+    // coloca o centro um pouco atrás do carro, para o carro aparecer mais abaixo na tela
+    return google.maps.geometry.spherical.computeOffset(
+        new google.maps.LatLng(lat, lng),
+        distanciaMetros,
+        heading + 180
+    );
+}
+
+function moverCamera(lat, lng, heading, velocidadeKmh) {
+    const agora = Date.now();
+
+    let intervalo = 160;
+    if (velocidadeKmh >= 80) intervalo = 60;
+    else if (velocidadeKmh >= 60) intervalo = 80;
+    else if (velocidadeKmh >= 40) intervalo = 100;
+    else if (velocidadeKmh >= 20) intervalo = 130;
+
+    if (agora - ultimoCameraUpdate < intervalo) return;
+    ultimoCameraUpdate = agora;
+
+    const centro = obterCentroDeslocado(lat, lng, heading, velocidadeKmh >= 60 ? 55 : 35);
+
+    map.panTo(centro);
+
+    // gira só o mapa
+    if (!isNaN(heading)) {
+        map.setHeading(normalizarHeading(heading));
+    }
+
+    if (velocidadeKmh >= 60) {
+        if (map.getTilt() !== 45) map.setTilt(45);
+        if (map.getZoom() !== 20) map.setZoom(20);
+    } else if (velocidadeKmh >= 30) {
+        if (map.getTilt() !== 45) map.setTilt(45);
+        if (map.getZoom() !== 19) map.setZoom(19);
+    } else {
+        if (map.getTilt() !== 0) map.setTilt(0);
+        if (map.getZoom() !== 19) map.setZoom(19);
+    }
+}
+
+async function solicitarWakeLock() {
+    if ("wakeLock" in navigator) {
+        try {
+            wakeLock = await navigator.wakeLock.request("screen");
+        } catch (err) {
+            console.log("WakeLock não suportado");
+        }
+    }
+}
+
+// =========================
+// NAVEGAÇÃO
+// =========================
 async function iniciarNavegacao(sentido) {
+    if (navegando) return;
 
     const nome = document.getElementById("nome_v").value.trim();
     const placa = document.getElementById("placa_v").value.trim();
@@ -563,52 +724,36 @@ async function iniciarNavegacao(sentido) {
     let labelDestino;
 
     if (sentido === "ida") {
-
         const lote = document.getElementById("lote_alvo").value.trim().toUpperCase();
         const rua = document.getElementById("rua_alvo").value;
         const numero = document.getElementById("num_alvo").value.trim();
 
-        // PRIORIDADE 1: BUSCA POR RUA + NÚMERO DENTRO DO BANCO_COORDENADAS.RUAS
+        // PRIORIDADE 1: RUA + NÚMERO
         if (rua && numero) {
+            destCoord = obterDestinoPorRuaNumero(rua, numero);
 
-            if (
-                BANCO_COORDENADAS.RUAS[rua] &&
-                BANCO_COORDENADAS.RUAS[rua][numero]
-            ) {
-
-                destCoord = {
-                    lat: BANCO_COORDENADAS.RUAS[rua][numero][0],
-                    lng: BANCO_COORDENADAS.RUAS[rua][numero][1]
-                };
-
-                labelDestino = rua + " " + numero;
-
-                localStorage.setItem("dados_visitante", JSON.stringify({
-                    nome,
-                    placa,
-                    rua_origem: rua,
-                    numero_origem: numero
-                }));
-
-            } else {
+            if (!destCoord) {
                 alert("Endereço não encontrado para esta rua e número.");
                 return;
             }
 
+            labelDestino = rua + " " + numero;
+
+            localStorage.setItem("dados_visitante", JSON.stringify({
+                nome,
+                placa,
+                rua_origem: rua,
+                numero_origem: numero
+            }));
         }
-
-        // PRIORIDADE 2: BUSCA POR QUADRA/LOTE
+        // PRIORIDADE 2: QUADRA/LOTE
         else if (lote) {
+            destCoord = obterDestinoPorLote(lote);
 
-            if (!BANCO_COORDENADAS.LOTES[lote]) {
+            if (!destCoord) {
                 alert("Lote não encontrado.");
                 return;
             }
-
-            destCoord = {
-                lat: BANCO_COORDENADAS.LOTES[lote][0],
-                lng: BANCO_COORDENADAS.LOTES[lote][1]
-            };
 
             labelDestino = lote;
 
@@ -617,24 +762,17 @@ async function iniciarNavegacao(sentido) {
                 placa,
                 lote_origem: lote
             }));
-
         }
-
-        // SE NÃO INFORMAR NADA
         else {
             alert("Digite Rua + Número ou Quadra/Lote.");
             return;
         }
-
     } else {
-
         destCoord = BANCO_COORDENADAS.PORTARIA;
         labelDestino = "PORTARIA";
-
     }
 
     try {
-
         const { data, error } = await supabaseClient
             .from("rastreamento")
             .insert([{
@@ -652,27 +790,19 @@ async function iniciarNavegacao(sentido) {
             return;
         }
 
-        if (!data) {
-            alert("Erro ao iniciar rastreamento.");
-            return;
-        }
-
         idViagemSupabase = data.id;
-
-        console.log("Viagem criada:", idViagemSupabase);
-
     } catch (err) {
-
         console.error(err);
         alert("Erro inesperado ao iniciar rastreamento.");
         return;
-
     }
 
+    navegando = true;
+    atualizarDestino(labelDestino);
+    atualizarStatus("LOCALIZANDO GPS...", "cor-verde");
     solicitarWakeLock();
 
     navigator.geolocation.getCurrentPosition((pos) => {
-
         const origin = {
             lat: pos.coords.latitude,
             lng: pos.coords.longitude
@@ -683,101 +813,116 @@ async function iniciarNavegacao(sentido) {
             destination: destCoord,
             travelMode: google.maps.TravelMode.DRIVING
         }, (result, status) => {
-
             if (status === "OK") {
-
                 directionsRenderer.setDirections(result);
-                rotaPath = result.routes[0].overview_path;
+                rotaPath = result.routes[0].overview_path || [];
+
+                map.setZoom(19);
+                map.setTilt(45);
 
                 ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord);
-
             } else {
                 alert("Não foi possível calcular a rota.");
+                navegando = false;
             }
-
         });
 
     }, (erro) => {
         console.error("Erro ao obter localização:", erro);
         alert("Não foi possível obter sua localização.");
-    }, { enableHighAccuracy: true });
-
+        navegando = false;
+    }, {
+        enableHighAccuracy: true,
+        maximumAge: 0,
+        timeout: 10000
+    });
 }
 
-
-// --- MONITORAMENTO GPS ---
-
+// =========================
+// GPS
+// =========================
 function ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord) {
-
     if (watchID) navigator.geolocation.clearWatch(watchID);
 
     watchID = navigator.geolocation.watchPosition(async (p) => {
-
         const lat = p.coords.latitude;
         const lng = p.coords.longitude;
-
-        const vel = p.coords.speed ? Math.round(p.coords.speed * 3.6) : 0;
-
+        const acc = p.coords.accuracy || 999;
+        const velMs = p.coords.speed || 0;
+        const vel = Math.max(0, Math.round(velMs * 3.6));
         const gPos = new google.maps.LatLng(lat, lng);
-
         const agora = Date.now();
 
-      marker.setPosition(gPos);
+        // filtro de precisão
+        if (vel >= 60 && acc > 60) return;
+        if (vel < 60 && acc > 35) return;
 
-map.panTo(gPos);
-map.setZoom(19);
-map.setTilt(45);
-// desloca o mapa para que o carro fique mais abaixo na tela
-const offsetLat = lat - 0.00015;
+        let heading = p.coords.heading;
 
-map.panTo({
-    lat: offsetLat,
-    lng: lng
-});
+        if ((heading === null || isNaN(heading) || heading < 0) && ultimaLatLng) {
+            const deslocamento = google.maps.geometry.spherical.computeDistanceBetween(ultimaLatLng, gPos);
+            if (deslocamento >= 3) {
+                heading = calcularHeading(ultimaLatLng, gPos);
+            }
+        }
+
+        if (heading === null || isNaN(heading) || heading < 0) {
+            heading = ultimoHeading || 0;
+        } else {
+            heading = suavizarHeading(ultimoHeading || heading, heading);
+            ultimoHeading = heading;
+        }
+
+        marker.setPosition(gPos);
+
+        // IMPORTANTE:
+        // não girar a seta junto com o mapa, senão parece invertido
+        const icon = marker.getIcon();
+        icon.rotation = 0;
+        marker.setIcon(icon);
+
+        moverCamera(lat, lng, heading, vel);
 
         let statusAlerta = sentido === "ida" ? "EM ROTA" : "EM ROTA SAIDA";
+        let classeStatus = "cor-verde";
 
         if (vel > 30) {
-
             statusAlerta = "ALERTA VELOCIDADE " + vel + "km/h";
-
+            classeStatus = "cor-vermelha";
         }
 
-        if (lat.toFixed(4) === ultimaPos.lat && lng.toFixed(4) === ultimaPos.lng) {
+        if (ultimaLatLng) {
+            const distMov = google.maps.geometry.spherical.computeDistanceBetween(ultimaLatLng, gPos);
 
-            segundosParado += 5;
+            if (distMov < 2) {
+                if (!inicioParado) inicioParado = agora;
 
-            if (segundosParado >= 60) {
-
-                statusAlerta = "VEICULO PARADO +60s";
-
+                const tempoParado = (agora - inicioParado) / 1000;
+                if (tempoParado >= 60) {
+                    statusAlerta = "VEICULO PARADO +60s";
+                    classeStatus = "cor-vermelha";
+                }
+            } else {
+                inicioParado = null;
             }
-
-        } else {
-
-            segundosParado = 0;
-
-            ultimaPos = {
-                lat: lat.toFixed(4),
-                lng: lng.toFixed(4)
-            };
-
         }
 
-        const onRoute = google.maps.geometry.poly.isLocationOnEdge(
-            gPos,
-            new google.maps.Polyline({ path: rotaPath }),
-            0.0005
-        );
+        if (rotaPath.length) {
+            const onRoute = google.maps.geometry.poly.isLocationOnEdge(
+                gPos,
+                new google.maps.Polyline({ path: rotaPath }),
+                0.00035
+            );
 
-        if (!onRoute) {
-
-            statusAlerta = "FORA DA ROTA";
-
+            if (!onRoute) {
+                statusAlerta = "FORA DA ROTA";
+                classeStatus = "cor-vermelha";
+            }
         }
+
+        atualizarStatus(statusAlerta, classeStatus);
 
         if (idViagemSupabase && agora - ultimaGravacaoBanco >= INTERVALO_BANCO) {
-
             ultimaGravacaoBanco = agora;
 
             const { error } = await supabaseClient
@@ -791,11 +936,8 @@ map.panTo({
                 .eq("id", idViagemSupabase);
 
             if (error) {
-
                 console.error("Erro update:", error);
-
             }
-
         }
 
         const distFinal = google.maps.geometry.spherical.computeDistanceBetween(
@@ -803,72 +945,43 @@ map.panTo({
             new google.maps.LatLng(destCoord.lat, destCoord.lng)
         );
 
-        if (distFinal < 20) {
+        ultimaLatLng = gPos;
 
+        if (distFinal < 20) {
             navigator.geolocation.clearWatch(watchID);
+            navegando = false;
 
             if (sentido === "ida") {
-
                 alert("Chegada no destino " + labelDestino);
                 location.reload();
-
             } else {
-
                 alert("Chegada na portaria confirmada.");
                 localStorage.clear();
                 location.reload();
-
             }
-
         }
 
-    }, null, {
+    }, (erro) => {
+        console.error("Erro no watchPosition:", erro);
+        atualizarStatus("ERRO GPS", "cor-vermelha");
+    }, {
         enableHighAccuracy: true,
-        maximumAge: 0
+        maximumAge: 0,
+        timeout: 3000
     });
-
-}
-
-
-// --- WAKELOCK (TELA NÃO DESLIGA) ---
-
-async function solicitarWakeLock() {
-
-    if ("wakeLock" in navigator) {
-
-        try {
-
-            wakeLock = await navigator.wakeLock.request("screen");
-
-        } catch (err) {
-
-            console.log("WakeLock não suportado");
-
-        }
-
-    }
-
 }
 
 window.onload = initMap;
 
-
 // --- BLOQUEIO INSPEÇÃO ---
-
 document.addEventListener("contextmenu", event => event.preventDefault());
 
 document.onkeydown = function(e) {
-
     if (e.keyCode == 123) return false;
-
     if (e.ctrlKey && e.shiftKey && e.keyCode == "I".charCodeAt(0)) return false;
-
     if (e.ctrlKey && e.shiftKey && e.keyCode == "J".charCodeAt(0)) return false;
-
     if (e.ctrlKey && e.keyCode == "U".charCodeAt(0)) return false;
-
 };
-
 </script>
 </body>
 </html>
