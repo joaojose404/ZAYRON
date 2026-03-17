@@ -542,6 +542,16 @@ function initMap() {
         document.getElementById("nome_v").value = salvo.nome || "";
         document.getElementById("placa_v").value = salvo.placa || "";
     }
+
+    window.addEventListener("resize", ajustarMapaParaTela);
+    window.addEventListener("orientationchange", () => {
+        setTimeout(() => {
+            ajustarMapaParaTela();
+            if (ultimaPosicaoValida) {
+                centralizarComOffsetPixel(ultimaPosicaoValida, 0);
+            }
+        }, 300);
+    });
 }
 
 // =========================
@@ -593,6 +603,7 @@ function obterDestinoPorRuaNumero(rua, numero) {
     if (!ruaBanco) return null;
 
     const numeroTxt = String(numero).trim();
+
     if (ruaBanco[numeroTxt]) {
         return { lat: ruaBanco[numeroTxt][0], lng: ruaBanco[numeroTxt][1] };
     }
@@ -641,9 +652,23 @@ function suavizarHeading(anterior, atual) {
     return anterior + diff * 0.30;
 }
 
-function getCentroComOffset(pos, heading, velocidadeKmh) {
-    const distancia = velocidadeKmh >= 70 ? 65 : velocidadeKmh >= 40 ? 45 : 28;
-    return google.maps.geometry.spherical.computeOffset(pos, distancia, heading + 180);
+function ajustarMapaParaTela() {
+    if (!map) return;
+    google.maps.event.trigger(map, "resize");
+}
+
+function centralizarComOffsetPixel(pos, velocidadeKmh) {
+    if (!map) return;
+
+    map.panTo(pos);
+
+    const altura = window.innerHeight || 800;
+
+    let offsetY = Math.round(altura * 0.18);
+    if (velocidadeKmh >= 70) offsetY = Math.round(altura * 0.22);
+    else if (velocidadeKmh >= 40) offsetY = Math.round(altura * 0.20);
+
+    map.panBy(0, offsetY);
 }
 
 function moverCameraSuave(pos, heading, velocidadeKmh) {
@@ -658,11 +683,6 @@ function moverCameraSuave(pos, heading, velocidadeKmh) {
     if (agora - ultimoUpdateCamera < intervalo) return;
     ultimoUpdateCamera = agora;
 
-    const centro = getCentroComOffset(pos, heading, velocidadeKmh);
-
-    map.panTo(centro);
-
-    // mapa sempre para cima, igual GPS mais estável
     if (map.getHeading() !== 0) map.setHeading(0);
 
     if (velocidadeKmh >= 70) {
@@ -675,12 +695,35 @@ function moverCameraSuave(pos, heading, velocidadeKmh) {
         if (map.getTilt() !== 0) map.setTilt(0);
         if (map.getZoom() !== 19) map.setZoom(19);
     }
+
+    centralizarComOffsetPixel(pos, velocidadeKmh);
 }
 
 function atualizarRotacaoSeta(heading) {
     const icon = marker.getIcon();
     icon.rotation = normalizarHeading(heading);
     marker.setIcon(icon);
+}
+
+function obterOrigemAtual(callbackSucesso, callbackErro) {
+    if (ultimaPosicaoValida) {
+        callbackSucesso({
+            lat: ultimaPosicaoValida.lat(),
+            lng: ultimaPosicaoValida.lng()
+        });
+        return;
+    }
+
+    navigator.geolocation.getCurrentPosition((pos) => {
+        callbackSucesso({
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude
+        });
+    }, callbackErro, {
+        enableHighAccuracy: true,
+        maximumAge: 0,
+        timeout: 10000
+    });
 }
 
 async function solicitarWakeLock() {
@@ -698,6 +741,7 @@ function limparSessaoGPS() {
         navigator.geolocation.clearWatch(watchID);
         watchID = null;
     }
+
     rotaPath = [];
     ultimaPosicaoValida = null;
     ultimoHeadingValido = 0;
@@ -711,6 +755,7 @@ function limparSessaoGPS() {
 // =========================
 async function criarRegistroViagem(nome, placa, labelDestino, sentido) {
     const prefixo = sentido === "ida" ? "ENTRADA" : "SAIDA";
+
     const { data, error } = await supabaseClient
         .from("rastreamento")
         .insert([{
@@ -827,12 +872,7 @@ async function iniciarNavegacao(sentido) {
 
         await solicitarWakeLock();
 
-        navigator.geolocation.getCurrentPosition((pos) => {
-            const origin = {
-                lat: pos.coords.latitude,
-                lng: pos.coords.longitude
-            };
-
+        obterOrigemAtual((origin) => {
             directionsService.route({
                 origin: origin,
                 destination: destCoord,
@@ -841,19 +881,20 @@ async function iniciarNavegacao(sentido) {
                 if (status === "OK") {
                     directionsRenderer.setDirections(result);
                     rotaPath = result.routes[0].overview_path || [];
+
+                    const origemLatLng = new google.maps.LatLng(origin.lat, origin.lng);
+                    marker.setPosition(origemLatLng);
+                    ultimaPosicaoValida = origemLatLng;
+                    centralizarComOffsetPixel(origemLatLng, 0);
+
                     ativarMonitoramento(sentido, labelDestino, destCoord);
                 } else {
                     alert("Não foi possível calcular a rota.");
                 }
             });
-
         }, (erro) => {
             console.error("Erro ao obter localização:", erro);
             alert("Não foi possível obter sua localização.");
-        }, {
-            enableHighAccuracy: true,
-            maximumAge: 0,
-            timeout: 10000
         });
 
     } catch (err) {
@@ -877,7 +918,6 @@ function ativarMonitoramento(sentido, labelDestino, destCoord) {
         const pos = new google.maps.LatLng(lat, lng);
         const agora = Date.now();
 
-        // filtro mais tolerante em velocidade alta
         if (vel >= 60 && acc > 80) return;
         if (vel < 60 && acc > 40) return;
 
