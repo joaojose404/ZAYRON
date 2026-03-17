@@ -554,6 +554,15 @@ function initMap() {
             }
         }, 350);
     });
+
+    document.addEventListener("visibilitychange", () => {
+        if (!document.hidden && ultimaPosicaoValida) {
+            setTimeout(() => {
+                ajustarMapaParaTela();
+                centralizarComOffsetPixel(ultimaPosicaoValida, 0);
+            }, 250);
+        }
+    });
 }
 
 // =========================
@@ -735,7 +744,7 @@ function mostrarErroGPS(erro) {
     let msg = "Não foi possível obter sua localização.";
 
     if (erro && erro.code === 1) {
-        msg = "Permissão de localização negada no navegador.";
+        msg = "Permissão de localização negada pelo navegador. No iPhone, abra em uma aba normal do Safari e permita a localização para este site.";
     } else if (erro && erro.code === 2) {
         msg = "Localização indisponível. Verifique GPS, internet e tente em local aberto.";
     } else if (erro && erro.code === 3) {
@@ -768,56 +777,23 @@ function obterOrigemAtual(callbackSucesso, callbackErro) {
             lat: pos.coords.latitude,
             lng: pos.coords.longitude
         });
-    }, (erroInicial) => {
-        console.warn("getCurrentPosition falhou, tentando watchPosition...", erroInicial);
-
-        let watchTemp = null;
-        let resolveu = false;
-        const inicio = Date.now();
-
-        watchTemp = navigator.geolocation.watchPosition((pos) => {
-            const acc = pos.coords.accuracy || 999;
-            const tempo = Date.now() - inicio;
-
-            if (acc <= 60 || tempo > 12000) {
-                if (resolveu) return;
-                resolveu = true;
-
-                navigator.geolocation.clearWatch(watchTemp);
-
-                callbackSucesso({
-                    lat: pos.coords.latitude,
-                    lng: pos.coords.longitude
-                });
-            }
-        }, (erroWatch) => {
-            if (resolveu) return;
-            resolveu = true;
-
-            if (watchTemp) navigator.geolocation.clearWatch(watchTemp);
-            callbackErro(erroWatch);
+    }, () => {
+        navigator.geolocation.getCurrentPosition((pos) => {
+            callbackSucesso({
+                lat: pos.coords.latitude,
+                lng: pos.coords.longitude
+            });
+        }, (erroFinal) => {
+            callbackErro(erroFinal);
         }, {
             enableHighAccuracy: true,
-            maximumAge: 0,
+            maximumAge: 5000,
             timeout: 20000
         });
-
-        setTimeout(() => {
-            if (resolveu) return;
-            resolveu = true;
-
-            if (watchTemp) navigator.geolocation.clearWatch(watchTemp);
-
-            callbackErro({
-                code: 3,
-                message: "O GPS demorou para responder. Tente novamente em local aberto."
-            });
-        }, 20000);
-
     }, {
-        enableHighAccuracy: true,
-        maximumAge: 0,
-        timeout: 15000
+        enableHighAccuracy: false,
+        maximumAge: 10000,
+        timeout: 12000
     });
 }
 
