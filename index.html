@@ -491,12 +491,59 @@ const INTERVALO_BANCO = 15000;
 let segundosParado = 0;
 
 let ultimaPos = {
-    lat: 0,
-    lng: 0
+    lat: null,
+    lng: null
 };
+
+let ultimoHeadingSuave = 0;
+let ultimoCentroSuave = null;
+
+
+
+
+function calcularAnguloEntrePontos(lat1, lng1, lat2, lng2) {
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const y = Math.sin(dLng) * Math.cos(lat2 * Math.PI / 180);
+    const x =
+        Math.cos(lat1 * Math.PI / 180) * Math.sin(lat2 * Math.PI / 180) -
+        Math.sin(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.cos(dLng);
+
+    let brng = Math.atan2(y, x) * 180 / Math.PI;
+    return (brng + 360) % 360;
+}
+
+function suavizarAngulo(atual, alvo, fator = 0.22) {
+    let diff = ((alvo - atual + 540) % 360) - 180;
+    return atual + diff * fator;
+}
+
+function suavizarCentro(atual, alvo, fator = 0.20) {
+    if (!atual) return alvo;
+    return {
+        lat: atual.lat + (alvo.lat - atual.lat) * fator,
+        lng: atual.lng + (alvo.lng - atual.lng) * fator
+    };
+}
+
+function animarMarcadorSuave(marker, origem, destino, duracao = 900) {
+    const inicio = performance.now();
+
+    function frame(agora) {
+        const t = Math.min((agora - inicio) / duracao, 1);
+        const lat = origem.lat() + (destino.lat() - origem.lat()) * t;
+        const lng = origem.lng() + (destino.lng() - origem.lng()) * t;
+
+        marker.setPosition(new google.maps.LatLng(lat, lng));
+
+        if (t < 1) requestAnimationFrame(frame);
+    }
+
+    requestAnimationFrame(frame);
+}
 
 
 // --- INICIAR MAPA ---
+
 
 function initMap() {
 
@@ -722,18 +769,46 @@ function ativarMonitoramento(nome, placa, labelDestino, sentido, destCoord) {
 
         const agora = Date.now();
 
-      marker.setPosition(gPos);
+        const posAnterior = marker.getPosition();
+        if (posAnterior) {
+            animarMarcadorSuave(marker, posAnterior, gPos, 900);
+        } else {
+            marker.setPosition(gPos);
+        }
 
-map.panTo(gPos);
-map.setZoom(19);
-map.setTilt(45);
-// desloca o mapa para que o carro fique mais abaixo na tela
-const offsetLat = lat - 0.00015;
+        map.setZoom(19);
+        map.setTilt(45);
 
-map.panTo({
-    lat: offsetLat,
-    lng: lng
-});
+        let headingAtual = p.coords.heading;
+
+        if (
+            (headingAtual === null || Number.isNaN(headingAtual)) &&
+            ultimaPos.lat !== null &&
+            ultimaPos.lng !== null &&
+            (parseFloat(ultimaPos.lat) !== lat || parseFloat(ultimaPos.lng) !== lng)
+        ) {
+            headingAtual = calcularAnguloEntrePontos(
+                parseFloat(ultimaPos.lat),
+                parseFloat(ultimaPos.lng),
+                lat,
+                lng
+            );
+        }
+
+        if (headingAtual !== null && !Number.isNaN(headingAtual)) {
+            ultimoHeadingSuave = suavizarAngulo(ultimoHeadingSuave, headingAtual, 0.22);
+            map.setHeading(ultimoHeadingSuave);
+        }
+
+        const rad = (ultimoHeadingSuave || 0) * Math.PI / 180;
+        const distanciaOffset = 0.00018;
+        const centroDesejado = {
+            lat: lat - Math.cos(rad) * distanciaOffset,
+            lng: lng - Math.sin(rad) * distanciaOffset
+        };
+
+        ultimoCentroSuave = suavizarCentro(ultimoCentroSuave, centroDesejado, 0.20);
+        map.panTo(ultimoCentroSuave);
 
         let statusAlerta = sentido === "ida" ? "EM ROTA" : "EM ROTA SAIDA";
 
@@ -807,18 +882,41 @@ map.panTo({
 
             navigator.geolocation.clearWatch(watchID);
 
+            const statusFinal = sentido === "ida"
+                ? "CHEGOU AO DESTINO"
+                : "CHEGOU NA PORTARIA";
+
+            if (idViagemSupabase) {
+                const { error } = await supabaseClient
+                    .from("rastreamento")
+                    .update({
+                        latitude: lat,
+                        longitude: lng,
+                        velocidade: vel,
+                        status_viagem: statusFinal
+                    })
+                    .eq("id", idViagemSupabase);
+
+                if (error) {
+                    console.error("Erro ao gravar chegada:", error);
+                }
+            }
+
+            const statusEl = document.getElementById("status-txt");
+            if (statusEl) {
+                statusEl.innerText = statusFinal;
+                statusEl.className = "cor-verde";
+            }
+
             if (sentido === "ida") {
-
                 alert("Chegada no destino " + labelDestino);
-                location.reload();
-
             } else {
-
                 alert("Chegada na portaria confirmada.");
                 localStorage.clear();
-                location.reload();
-
             }
+
+            setTimeout(() => location.reload(), 1500);
+            return;
 
         }
 
