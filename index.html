@@ -468,6 +468,7 @@ const BANCO_COORDENADAS = {
 
 
 
+
 const SUPABASE_URL = "https://lsotfcirloamzhwgiplf.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxzb3RmY2lybG9hbXpod2dpcGxmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNDQ0MjIsImV4cCI6MjA4ODgyMDQyMn0.2PrghPM-3fTVDNg6shxjtaiq7yJAuqSGcxFXrfRozDo";
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -494,6 +495,7 @@ let nomeAtual = "";
 let placaAtual = "";
 
 const INTERVALO_BANCO = 3000;
+const LIMITE_VELOCIDADE = 30;
 
 // =========================
 // MAPA
@@ -550,7 +552,7 @@ function initMap() {
             if (ultimaPosicaoValida) {
                 centralizarComOffsetPixel(ultimaPosicaoValida, 0);
             }
-        }, 300);
+        }, 350);
     });
 }
 
@@ -663,8 +665,8 @@ function centralizarComOffsetPixel(pos, velocidadeKmh) {
     map.panTo(pos);
 
     const altura = window.innerHeight || 800;
-
     let offsetY = Math.round(altura * 0.18);
+
     if (velocidadeKmh >= 70) offsetY = Math.round(altura * 0.22);
     else if (velocidadeKmh >= 40) offsetY = Math.round(altura * 0.20);
 
@@ -705,33 +707,12 @@ function atualizarRotacaoSeta(heading) {
     marker.setIcon(icon);
 }
 
-function obterOrigemAtual(callbackSucesso, callbackErro) {
-    if (ultimaPosicaoValida) {
-        callbackSucesso({
-            lat: ultimaPosicaoValida.lat(),
-            lng: ultimaPosicaoValida.lng()
-        });
-        return;
-    }
-
-    navigator.geolocation.getCurrentPosition((pos) => {
-        callbackSucesso({
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude
-        });
-    }, callbackErro, {
-        enableHighAccuracy: true,
-        maximumAge: 0,
-        timeout: 10000
-    });
-}
-
 async function solicitarWakeLock() {
     if ("wakeLock" in navigator) {
         try {
             wakeLock = await navigator.wakeLock.request("screen");
         } catch (err) {
-            console.log("WakeLock não suportado");
+            console.log("WakeLock não suportado", err);
         }
     }
 }
@@ -748,6 +729,96 @@ function limparSessaoGPS() {
     ultimoUpdateCamera = 0;
     inicioParado = null;
     ultimoStatusEnviado = "";
+}
+
+function mostrarErroGPS(erro) {
+    let msg = "Não foi possível obter sua localização.";
+
+    if (erro && erro.code === 1) {
+        msg = "Permissão de localização negada no navegador.";
+    } else if (erro && erro.code === 2) {
+        msg = "Localização indisponível. Verifique GPS, internet e tente em local aberto.";
+    } else if (erro && erro.code === 3) {
+        msg = "O GPS demorou para responder. Tente novamente em local aberto.";
+    } else if (erro && erro.message) {
+        msg = erro.message;
+    }
+
+    console.error("Erro GPS:", erro);
+    alert(msg);
+    atualizarStatus("ERRO GPS", "cor-vermelha");
+}
+
+function obterOrigemAtual(callbackSucesso, callbackErro) {
+    if (ultimaPosicaoValida) {
+        callbackSucesso({
+            lat: ultimaPosicaoValida.lat(),
+            lng: ultimaPosicaoValida.lng()
+        });
+        return;
+    }
+
+    if (!navigator.geolocation) {
+        callbackErro({ message: "Geolocalização não suportada neste dispositivo." });
+        return;
+    }
+
+    navigator.geolocation.getCurrentPosition((pos) => {
+        callbackSucesso({
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude
+        });
+    }, (erroInicial) => {
+        console.warn("getCurrentPosition falhou, tentando watchPosition...", erroInicial);
+
+        let watchTemp = null;
+        let resolveu = false;
+        const inicio = Date.now();
+
+        watchTemp = navigator.geolocation.watchPosition((pos) => {
+            const acc = pos.coords.accuracy || 999;
+            const tempo = Date.now() - inicio;
+
+            if (acc <= 60 || tempo > 12000) {
+                if (resolveu) return;
+                resolveu = true;
+
+                navigator.geolocation.clearWatch(watchTemp);
+
+                callbackSucesso({
+                    lat: pos.coords.latitude,
+                    lng: pos.coords.longitude
+                });
+            }
+        }, (erroWatch) => {
+            if (resolveu) return;
+            resolveu = true;
+
+            if (watchTemp) navigator.geolocation.clearWatch(watchTemp);
+            callbackErro(erroWatch);
+        }, {
+            enableHighAccuracy: true,
+            maximumAge: 0,
+            timeout: 20000
+        });
+
+        setTimeout(() => {
+            if (resolveu) return;
+            resolveu = true;
+
+            if (watchTemp) navigator.geolocation.clearWatch(watchTemp);
+
+            callbackErro({
+                code: 3,
+                message: "O GPS demorou para responder. Tente novamente em local aberto."
+            });
+        }, 20000);
+
+    }, {
+        enableHighAccuracy: true,
+        maximumAge: 0,
+        timeout: 15000
+    });
 }
 
 // =========================
@@ -865,41 +936,48 @@ async function iniciarNavegacao(sentido) {
         modoNavegacao = sentido;
         destinoAtual = destCoord;
 
-        idViagemSupabase = await criarRegistroViagem(nome, placa, labelDestino, sentido);
-
         atualizarDestino(labelDestino);
         atualizarStatus(sentido === "ida" ? "ENTRADA - LOCALIZANDO GPS..." : "SAIDA - LOCALIZANDO GPS...", "cor-verde");
 
         await solicitarWakeLock();
 
-        obterOrigemAtual((origin) => {
-            directionsService.route({
-                origin: origin,
-                destination: destCoord,
-                travelMode: google.maps.TravelMode.DRIVING
-            }, (result, status) => {
-                if (status === "OK") {
-                    directionsRenderer.setDirections(result);
-                    rotaPath = result.routes[0].overview_path || [];
+        obterOrigemAtual(async (origin) => {
+            try {
+                idViagemSupabase = await criarRegistroViagem(nome, placa, labelDestino, sentido);
 
-                    const origemLatLng = new google.maps.LatLng(origin.lat, origin.lng);
-                    marker.setPosition(origemLatLng);
-                    ultimaPosicaoValida = origemLatLng;
-                    centralizarComOffsetPixel(origemLatLng, 0);
+                directionsService.route({
+                    origin: origin,
+                    destination: destCoord,
+                    travelMode: google.maps.TravelMode.DRIVING
+                }, (result, status) => {
+                    if (status === "OK") {
+                        directionsRenderer.setDirections(result);
+                        rotaPath = result.routes[0].overview_path || [];
 
-                    ativarMonitoramento(sentido, labelDestino, destCoord);
-                } else {
-                    alert("Não foi possível calcular a rota.");
-                }
-            });
+                        const origemLatLng = new google.maps.LatLng(origin.lat, origin.lng);
+                        marker.setPosition(origemLatLng);
+                        ultimaPosicaoValida = origemLatLng;
+                        centralizarComOffsetPixel(origemLatLng, 0);
+
+                        ativarMonitoramento(sentido, labelDestino, destCoord);
+                    } else {
+                        alert("Não foi possível calcular a rota.");
+                        atualizarStatus("ERRO NA ROTA", "cor-vermelha");
+                    }
+                });
+            } catch (err) {
+                console.error("Erro ao criar viagem:", err);
+                alert("Erro ao iniciar rastreamento: " + err.message);
+                atualizarStatus("ERRO AO INICIAR", "cor-vermelha");
+            }
         }, (erro) => {
-            console.error("Erro ao obter localização:", erro);
-            alert("Não foi possível obter sua localização.");
+            mostrarErroGPS(erro);
         });
 
     } catch (err) {
         console.error("Erro ao iniciar viagem:", err);
         alert("Erro ao iniciar rastreamento: " + err.message);
+        atualizarStatus("ERRO AO INICIAR", "cor-vermelha");
     }
 }
 
@@ -945,7 +1023,7 @@ function ativarMonitoramento(sentido, labelDestino, destCoord) {
         let statusTexto = `${prefixo} - EM ROTA`;
         let classeStatus = "cor-verde";
 
-        if (vel > 30) {
+        if (vel > LIMITE_VELOCIDADE) {
             statusTexto = `${prefixo} - ALERTA VELOCIDADE ${vel}km/h`;
             classeStatus = "cor-vermelha";
         }
