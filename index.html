@@ -487,7 +487,6 @@ let ultimaGravacaoBanco = 0;
 let ultimoStatusEnviado = "";
 let ultimaPosicaoValida = null;
 let ultimoHeadingValido = 0;
-let ultimoUpdateCamera = 0;
 let inicioParado = null;
 let modoNavegacao = null;
 let destinoAtual = null;
@@ -499,6 +498,12 @@ let posicaoAnimada = null;
 let headingAnimado = 0;
 let cameraAnimando = false;
 let destinoCamera = null;
+
+// acumuladores para relatório
+let velocidadeMaximaViagem = 0;
+let houveExcessoVelocidade = false;
+let houveForaRota = false;
+let houveParadaProlongada = false;
 
 const INTERVALO_BANCO = 3000;
 const LIMITE_VELOCIDADE = 30;
@@ -661,20 +666,18 @@ function normalizarHeading(h) {
     return v;
 }
 
-function suavizarHeading(anterior, atual) {
+function suavizarHeadingSeguro(anterior, atual) {
     if (anterior == null || isNaN(anterior)) return atual;
-    let diff = atual - anterior;
-    if (diff > 180) diff -= 360;
-    if (diff < -180) diff += 360;
-    return anterior + diff * 0.30;
-}
 
-function suavizarRotacaoCamera(anterior, atual) {
-    if (anterior == null || isNaN(anterior)) return atual;
     let diff = atual - anterior;
     if (diff > 180) diff -= 360;
     if (diff < -180) diff += 360;
-    return anterior + diff * 0.18;
+
+    if (Math.abs(diff) > 120) {
+        return anterior;
+    }
+
+    return anterior + diff * 0.25;
 }
 
 function ajustarMapaParaTela() {
@@ -748,9 +751,9 @@ function obterCentroOffsetAnimado(pos) {
     return proj.fromPointToLatLng(newPoint);
 }
 
-function atualizarSetaFixaTopo() {
+function atualizarRotacaoSeta(heading) {
     const icon = marker.getIcon();
-    icon.rotation = 0;
+    icon.rotation = normalizarHeading(heading);
     marker.setIcon(icon);
 }
 
@@ -776,9 +779,9 @@ function iniciarAnimacaoCamera() {
         );
 
         marker.setPosition(posicaoAnimada);
-        atualizarSetaFixaTopo();
+        atualizarRotacaoSeta(headingAnimado);
 
-        map.setHeading(normalizarHeading(headingAnimado));
+        map.setHeading(0);
 
         const centro = obterCentroOffsetAnimado(posicaoAnimada);
         map.setCenter(centro);
@@ -796,8 +799,8 @@ function iniciarAnimacaoCamera() {
             posicaoAnimada = destinoCamera.pos;
             headingAnimado = destinoCamera.heading;
             marker.setPosition(posicaoAnimada);
-            atualizarSetaFixaTopo();
-            map.setHeading(normalizarHeading(headingAnimado));
+            atualizarRotacaoSeta(headingAnimado);
+            map.setHeading(0);
             map.setCenter(obterCentroOffsetAnimado(posicaoAnimada));
             cameraAnimando = false;
         }
@@ -859,13 +862,17 @@ function limparSessaoGPS() {
     rotaPath = [];
     ultimaPosicaoValida = null;
     ultimoHeadingValido = 0;
-    ultimoUpdateCamera = 0;
     inicioParado = null;
     ultimoStatusEnviado = "";
     posicaoAnimada = null;
     headingAnimado = 0;
     cameraAnimando = false;
     destinoCamera = null;
+
+    velocidadeMaximaViagem = 0;
+    houveExcessoVelocidade = false;
+    houveForaRota = false;
+    houveParadaProlongada = false;
 }
 
 function mostrarErroGPS(erro) {
@@ -937,7 +944,12 @@ async function criarRegistroViagem(nome, placa, labelDestino, sentido) {
             nome: nome.toUpperCase(),
             placa: placa.toUpperCase(),
             lote_destino: labelDestino,
-            status_viagem: `${prefixo} - INICIANDO ROTA`
+            status_viagem: `${prefixo} - INICIANDO ROTA`,
+            tipo_viagem: prefixo,
+            velocidade_maxima: 0,
+            teve_excesso_velocidade: false,
+            teve_fora_rota: false,
+            teve_parada_prolongada: false
         }])
         .select()
         .single();
@@ -959,14 +971,21 @@ async function atualizarRegistroViagem(lat, lng, vel, statusTexto, forcar = fals
     ultimaGravacaoBanco = agora;
     ultimoStatusEnviado = statusTexto;
 
+    const payload = {
+        latitude: lat,
+        longitude: lng,
+        velocidade: vel,
+        status_viagem: statusTexto,
+        tipo_viagem: modoNavegacao === "ida" ? "ENTRADA" : "SAIDA",
+        velocidade_maxima: velocidadeMaximaViagem,
+        teve_excesso_velocidade: houveExcessoVelocidade,
+        teve_fora_rota: houveForaRota,
+        teve_parada_prolongada: houveParadaProlongada
+    };
+
     const { error } = await supabaseClient
         .from("rastreamento")
-        .update({
-            latitude: lat,
-            longitude: lng,
-            velocidade: vel,
-            status_viagem: statusTexto
-        })
+        .update(payload)
         .eq("id", idViagemSupabase);
 
     if (error) {
@@ -1105,6 +1124,10 @@ function ativarMonitoramento(sentido, labelDestino, destCoord) {
         if (vel >= 60 && acc > 80) return;
         if (vel < 60 && acc > 40) return;
 
+        if (vel > velocidadeMaximaViagem) {
+            velocidadeMaximaViagem = vel;
+        }
+
         let heading = p.coords.heading;
 
         if ((heading == null || isNaN(heading) || heading < 0) && ultimaPosicaoValida) {
@@ -1117,8 +1140,12 @@ function ativarMonitoramento(sentido, labelDestino, destCoord) {
         if (heading == null || isNaN(heading) || heading < 0) {
             heading = ultimoHeadingValido || headingAnimado || 0;
         } else {
-            heading = suavizarHeading(ultimoHeadingValido || heading, heading);
-            ultimoHeadingValido = heading;
+            if (vel >= 5) {
+                heading = suavizarHeadingSeguro(ultimoHeadingValido || heading, heading);
+                ultimoHeadingValido = heading;
+            } else {
+                heading = ultimoHeadingValido || heading || 0;
+            }
         }
 
         moverCameraSuave(pos, heading, vel);
@@ -1128,6 +1155,7 @@ function ativarMonitoramento(sentido, labelDestino, destCoord) {
         let classeStatus = "cor-verde";
 
         if (vel > LIMITE_VELOCIDADE) {
+            houveExcessoVelocidade = true;
             statusTexto = `${prefixo} - ALERTA VELOCIDADE ${vel}km/h`;
             classeStatus = "cor-vermelha";
         }
@@ -1140,6 +1168,7 @@ function ativarMonitoramento(sentido, labelDestino, destCoord) {
                 const tempoParado = (agora - inicioParado) / 1000;
 
                 if (tempoParado >= 60) {
+                    houveParadaProlongada = true;
                     statusTexto = `${prefixo} - VEICULO PARADO +60s`;
                     classeStatus = "cor-vermelha";
                 }
@@ -1156,6 +1185,7 @@ function ativarMonitoramento(sentido, labelDestino, destCoord) {
             );
 
             if (!onRoute) {
+                houveForaRota = true;
                 statusTexto = `${prefixo} - FORA DA ROTA`;
                 classeStatus = "cor-vermelha";
             }
