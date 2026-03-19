@@ -487,6 +487,7 @@ let ultimaGravacaoBanco = 0;
 let ultimoStatusEnviado = "";
 let ultimaPosicaoValida = null;
 let ultimoHeadingValido = 0;
+let ultimoHeadingCamera = 0;
 let ultimoUpdateCamera = 0;
 let inicioParado = null;
 let modoNavegacao = null;
@@ -504,7 +505,7 @@ function initMap() {
     map = new google.maps.Map(document.getElementById("map-visitante"), {
         center: BANCO_COORDENADAS.PORTARIA,
         zoom: 19,
-        tilt: 0,
+        tilt: 45,
         heading: 0,
         mapTypeId: "roadmap",
         disableDefaultUI: true,
@@ -663,6 +664,14 @@ function suavizarHeading(anterior, atual) {
     return anterior + diff * 0.30;
 }
 
+function suavizarRotacaoCamera(anterior, atual) {
+    if (anterior == null || isNaN(anterior)) return atual;
+    let diff = atual - anterior;
+    if (diff > 180) diff -= 360;
+    if (diff < -180) diff += 360;
+    return anterior + diff * 0.18;
+}
+
 function ajustarMapaParaTela() {
     if (!map) return;
     google.maps.event.trigger(map, "resize");
@@ -671,48 +680,73 @@ function ajustarMapaParaTela() {
 function centralizarComOffsetPixel(pos, velocidadeKmh) {
     if (!map) return;
 
-    map.panTo(pos);
+    const proj = map.getProjection();
+    if (!proj) {
+        map.panTo(pos);
+        return;
+    }
+
+    const scale = Math.pow(2, map.getZoom());
+    const worldPoint = proj.fromLatLngToPoint(pos);
 
     const altura = window.innerHeight || 800;
-    let offsetY = Math.round(altura * 0.18);
+    let offsetY = altura * 0.20;
+    if (velocidadeKmh >= 70) offsetY = altura * 0.24;
+    else if (velocidadeKmh >= 40) offsetY = altura * 0.22;
 
-    if (velocidadeKmh >= 70) offsetY = Math.round(altura * 0.22);
-    else if (velocidadeKmh >= 40) offsetY = Math.round(altura * 0.20);
+    const pixelOffset = new google.maps.Point(0, offsetY / scale);
+    const newPoint = new google.maps.Point(
+        worldPoint.x,
+        worldPoint.y - pixelOffset.y
+    );
 
-    map.panBy(0, offsetY);
+    const newCenter = proj.fromPointToLatLng(newPoint);
+    map.panTo(newCenter);
 }
 
 function moverCameraSuave(pos, heading, velocidadeKmh) {
     const agora = Date.now();
 
-    let intervalo = 150;
-    if (velocidadeKmh >= 80) intervalo = 50;
-    else if (velocidadeKmh >= 60) intervalo = 70;
-    else if (velocidadeKmh >= 40) intervalo = 90;
-    else if (velocidadeKmh >= 20) intervalo = 110;
+    let intervalo = 140;
+    if (velocidadeKmh >= 80) intervalo = 45;
+    else if (velocidadeKmh >= 60) intervalo = 60;
+    else if (velocidadeKmh >= 40) intervalo = 80;
+    else if (velocidadeKmh >= 20) intervalo = 100;
 
     if (agora - ultimoUpdateCamera < intervalo) return;
     ultimoUpdateCamera = agora;
 
-    if (map.getHeading() !== 0) map.setHeading(0);
+    let zoomDesejado = 19;
+    let tiltDesejado = 45;
 
-    if (velocidadeKmh >= 70) {
-        if (map.getTilt() !== 45) map.setTilt(45);
-        if (map.getZoom() !== 20) map.setZoom(20);
-    } else if (velocidadeKmh >= 35) {
-        if (map.getTilt() !== 45) map.setTilt(45);
-        if (map.getZoom() !== 19) map.setZoom(19);
+    if (velocidadeKmh >= 75) {
+        zoomDesejado = 20;
+        tiltDesejado = 67.5;
+    } else if (velocidadeKmh >= 45) {
+        zoomDesejado = 19;
+        tiltDesejado = 60;
+    } else if (velocidadeKmh >= 15) {
+        zoomDesejado = 19;
+        tiltDesejado = 45;
     } else {
-        if (map.getTilt() !== 0) map.setTilt(0);
-        if (map.getZoom() !== 19) map.setZoom(19);
+        zoomDesejado = 19;
+        tiltDesejado = 30;
+    }
+
+    if (map.getZoom() !== zoomDesejado) map.setZoom(zoomDesejado);
+    if (map.getTilt() !== tiltDesejado) map.setTilt(tiltDesejado);
+
+    if (!isNaN(heading)) {
+        ultimoHeadingCamera = suavizarRotacaoCamera(ultimoHeadingCamera || heading, heading);
+        map.setHeading(normalizarHeading(ultimoHeadingCamera));
     }
 
     centralizarComOffsetPixel(pos, velocidadeKmh);
 }
 
-function atualizarRotacaoSeta(heading) {
+function atualizarSetaFixaTopo() {
     const icon = marker.getIcon();
-    icon.rotation = normalizarHeading(heading);
+    icon.rotation = 0;
     marker.setIcon(icon);
 }
 
@@ -735,6 +769,7 @@ function limparSessaoGPS() {
     rotaPath = [];
     ultimaPosicaoValida = null;
     ultimoHeadingValido = 0;
+    ultimoHeadingCamera = 0;
     ultimoUpdateCamera = 0;
     inicioParado = null;
     ultimoStatusEnviado = "";
@@ -992,7 +1027,7 @@ function ativarMonitoramento(sentido, labelDestino, destCoord) {
         }
 
         marker.setPosition(pos);
-        atualizarRotacaoSeta(heading);
+        atualizarSetaFixaTopo();
         moverCameraSuave(pos, heading, vel);
 
         let prefixo = sentido === "ida" ? "ENTRADA" : "SAIDA";
