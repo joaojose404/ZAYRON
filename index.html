@@ -709,46 +709,11 @@ function suavizarHeadingAnimado(atual, alvo, fator = 0.12) {
 
 function centralizarComOffsetPixel(pos) {
     if (!map) return;
-
-    const proj = map.getProjection();
-    if (!proj) {
-        map.setCenter(pos);
-        return;
-    }
-
-    const scale = Math.pow(2, map.getZoom());
-    const worldPoint = proj.fromLatLngToPoint(pos);
-
-    const altura = window.innerHeight || 800;
-    const offsetY = altura * 0.22;
-
-    const pixelOffset = new google.maps.Point(0, offsetY / scale);
-    const newPoint = new google.maps.Point(
-        worldPoint.x,
-        worldPoint.y - pixelOffset.y
-    );
-
-    const newCenter = proj.fromPointToLatLng(newPoint);
-    map.setCenter(newCenter);
+    map.setCenter(pos);
 }
 
 function obterCentroOffsetAnimado(pos) {
-    const proj = map.getProjection();
-    if (!proj) return pos;
-
-    const scale = Math.pow(2, map.getZoom());
-    const worldPoint = proj.fromLatLngToPoint(pos);
-
-    const altura = window.innerHeight || 800;
-    const offsetY = altura * 0.22;
-
-    const pixelOffset = new google.maps.Point(0, offsetY / scale);
-    const newPoint = new google.maps.Point(
-        worldPoint.x,
-        worldPoint.y - pixelOffset.y
-    );
-
-    return proj.fromPointToLatLng(newPoint);
+    return pos;
 }
 
 function atualizarRotacaoSeta(heading) {
@@ -771,20 +736,18 @@ function iniciarAnimacaoCamera() {
             posicaoAnimada = destinoCamera.pos;
         }
 
-        posicaoAnimada = lerpLatLng(posicaoAnimada, destinoCamera.pos, 0.12);
+        posicaoAnimada = lerpLatLng(posicaoAnimada, destinoCamera.pos, 0.14);
         headingAnimado = suavizarHeadingAnimado(
             headingAnimado || destinoCamera.heading,
             destinoCamera.heading,
-            0.15
+            0.18
         );
 
         marker.setPosition(posicaoAnimada);
         atualizarRotacaoSeta(headingAnimado);
 
         map.setHeading(0);
-
-        const centro = obterCentroOffsetAnimado(posicaoAnimada);
-        map.setCenter(centro);
+        map.setCenter(posicaoAnimada);
 
         const dist = google.maps.geometry.spherical.computeDistanceBetween(
             posicaoAnimada,
@@ -793,7 +756,7 @@ function iniciarAnimacaoCamera() {
 
         const headingRestante = Math.abs(diffHeading(headingAnimado, destinoCamera.heading));
 
-        if (dist > 0.8 || headingRestante > 1) {
+        if (dist > 0.6 || headingRestante > 1) {
             requestAnimationFrame(animar);
         } else {
             posicaoAnimada = destinoCamera.pos;
@@ -801,7 +764,7 @@ function iniciarAnimacaoCamera() {
             marker.setPosition(posicaoAnimada);
             atualizarRotacaoSeta(headingAnimado);
             map.setHeading(0);
-            map.setCenter(obterCentroOffsetAnimado(posicaoAnimada));
+            map.setCenter(posicaoAnimada);
             cameraAnimando = false;
         }
     };
