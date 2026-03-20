@@ -468,7 +468,6 @@ const BANCO_COORDENADAS = {
 
 
 
-
 const SUPABASE_URL = "https://lsotfcirloamzhwgiplf.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxzb3RmY2lybG9hbXpod2dpcGxmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNDQ0MjIsImV4cCI6MjA4ODgyMDQyMn0.2PrghPM-3fTVDNg6shxjtaiq7yJAuqSGcxFXrfRozDo";
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -493,13 +492,13 @@ let destinoAtual = null;
 let nomeAtual = "";
 let placaAtual = "";
 
-// animação suave
+// animação
 let posicaoAnimada = null;
 let headingAnimado = 0;
 let cameraAnimando = false;
 let destinoCamera = null;
 
-// acumuladores para relatório
+// acumuladores relatório
 let velocidadeMaximaViagem = 0;
 let houveExcessoVelocidade = false;
 let houveForaRota = false;
@@ -515,7 +514,7 @@ function initMap() {
     map = new google.maps.Map(document.getElementById("map-visitante"), {
         center: BANCO_COORDENADAS.PORTARIA,
         zoom: 19,
-        tilt: 45,
+        tilt: 55,
         heading: 0,
         mapTypeId: "roadmap",
         disableDefaultUI: true,
@@ -561,7 +560,7 @@ function initMap() {
         setTimeout(() => {
             ajustarMapaParaTela();
             if (ultimaPosicaoValida) {
-                centralizarComOffsetPixel(ultimaPosicaoValida);
+                centralizarComOffsetDirecional(ultimaPosicaoValida, headingAnimado || 0);
             }
         }, 350);
     });
@@ -570,7 +569,7 @@ function initMap() {
         if (!document.hidden && ultimaPosicaoValida) {
             setTimeout(() => {
                 ajustarMapaParaTela();
-                centralizarComOffsetPixel(ultimaPosicaoValida);
+                centralizarComOffsetDirecional(ultimaPosicaoValida, headingAnimado || 0);
             }, 250);
         }
     });
@@ -666,6 +665,13 @@ function normalizarHeading(h) {
     return v;
 }
 
+function diffHeading(a, b) {
+    let d = b - a;
+    while (d > 180) d -= 360;
+    while (d < -180) d += 360;
+    return d;
+}
+
 function suavizarHeadingSeguro(anterior, atual) {
     if (anterior == null || isNaN(anterior)) return atual;
 
@@ -677,7 +683,7 @@ function suavizarHeadingSeguro(anterior, atual) {
         return anterior;
     }
 
-    return anterior + diff * 0.25;
+    return anterior + diff * 0.22;
 }
 
 function ajustarMapaParaTela() {
@@ -696,30 +702,95 @@ function lerpLatLng(a, b, t) {
     );
 }
 
-function diffHeading(a, b) {
-    let d = b - a;
-    while (d > 180) d -= 360;
-    while (d < -180) d += 360;
-    return d;
-}
-
-function suavizarHeadingAnimado(atual, alvo, fator = 0.12) {
+function suavizarHeadingAnimado(atual, alvo, fator = 0.14) {
     return atual + diffHeading(atual, alvo) * fator;
 }
 
-function centralizarComOffsetPixel(pos) {
-    if (!map) return;
-    map.setCenter(pos);
-}
-
-function obterCentroOffsetAnimado(pos) {
-    return pos;
-}
-
-function atualizarRotacaoSeta(heading) {
+function atualizarSetaFixaTopo() {
     const icon = marker.getIcon();
-    icon.rotation = normalizarHeading(heading);
+    icon.rotation = 0;
     marker.setIcon(icon);
+}
+
+function centralizarComOffsetDirecional(pos, heading) {
+    if (!map) return;
+
+    const proj = map.getProjection();
+    if (!proj) {
+        map.setCenter(pos);
+        return;
+    }
+
+    const scale = Math.pow(2, map.getZoom());
+    const worldPoint = proj.fromLatLngToPoint(pos);
+    const altura = window.innerHeight || 800;
+
+    // carro fica mais abaixo na tela
+    const offsetPx = altura * 0.18;
+
+    // desloca para trás da direção do movimento
+    const rad = (normalizarHeading(heading) * Math.PI) / 180;
+    const dx = Math.sin(rad) * (offsetPx / scale);
+    const dy = -Math.cos(rad) * (offsetPx / scale);
+
+    const newPoint = new google.maps.Point(
+        worldPoint.x - dx,
+        worldPoint.y - dy
+    );
+
+    const newCenter = proj.fromPointToLatLng(newPoint);
+    map.setCenter(newCenter);
+}
+
+function encontrarSegmentoMaisProximo(pos) {
+    if (!rotaPath || rotaPath.length < 2) return null;
+
+    let menorDist = Infinity;
+    let melhorIndice = 0;
+
+    for (let i = 0; i < rotaPath.length - 1; i++) {
+        const a = rotaPath[i];
+        const b = rotaPath[i + 1];
+
+        const distA = google.maps.geometry.spherical.computeDistanceBetween(pos, a);
+        const distB = google.maps.geometry.spherical.computeDistanceBetween(pos, b);
+        const dist = Math.min(distA, distB);
+
+        if (dist < menorDist) {
+            menorDist = dist;
+            melhorIndice = i;
+        }
+    }
+
+    return {
+        i: melhorIndice,
+        a: rotaPath[melhorIndice],
+        b: rotaPath[melhorIndice + 1]
+    };
+}
+
+function obterHeadingDaRota(pos, headingGps, vel) {
+    if (!rotaPath || rotaPath.length < 2) {
+        return headingGps ?? ultimoHeadingValido ?? 0;
+    }
+
+    const seg = encontrarSegmentoMaisProximo(pos);
+    if (!seg) return headingGps ?? ultimoHeadingValido ?? 0;
+
+    let headingRota = calcularHeading(seg.a, seg.b);
+    headingRota = normalizarHeading(headingRota);
+
+    // se o GPS for confiável e movimento estiver rápido, usa mistura GPS+rota
+    if (headingGps != null && !isNaN(headingGps) && vel >= 12) {
+        const gpsNorm = normalizarHeading(headingGps);
+        const diff = Math.abs(diffHeading(headingRota, gpsNorm));
+
+        if (diff <= 45) {
+            return normalizarHeading(headingRota + diffHeading(headingRota, gpsNorm) * 0.35);
+        }
+    }
+
+    return headingRota;
 }
 
 function iniciarAnimacaoCamera() {
@@ -736,18 +807,18 @@ function iniciarAnimacaoCamera() {
             posicaoAnimada = destinoCamera.pos;
         }
 
-        posicaoAnimada = lerpLatLng(posicaoAnimada, destinoCamera.pos, 0.14);
+        posicaoAnimada = lerpLatLng(posicaoAnimada, destinoCamera.pos, 0.16);
         headingAnimado = suavizarHeadingAnimado(
             headingAnimado || destinoCamera.heading,
             destinoCamera.heading,
-            0.18
+            0.16
         );
 
         marker.setPosition(posicaoAnimada);
-        atualizarRotacaoSeta(headingAnimado);
+        atualizarSetaFixaTopo();
 
-        map.setHeading(0);
-        map.setCenter(posicaoAnimada);
+        map.setHeading(normalizarHeading(headingAnimado));
+        centralizarComOffsetDirecional(posicaoAnimada, headingAnimado);
 
         const dist = google.maps.geometry.spherical.computeDistanceBetween(
             posicaoAnimada,
@@ -756,15 +827,15 @@ function iniciarAnimacaoCamera() {
 
         const headingRestante = Math.abs(diffHeading(headingAnimado, destinoCamera.heading));
 
-        if (dist > 0.6 || headingRestante > 1) {
+        if (dist > 0.7 || headingRestante > 1) {
             requestAnimationFrame(animar);
         } else {
             posicaoAnimada = destinoCamera.pos;
             headingAnimado = destinoCamera.heading;
             marker.setPosition(posicaoAnimada);
-            atualizarRotacaoSeta(headingAnimado);
-            map.setHeading(0);
-            map.setCenter(posicaoAnimada);
+            atualizarSetaFixaTopo();
+            map.setHeading(normalizarHeading(headingAnimado));
+            centralizarComOffsetDirecional(posicaoAnimada, headingAnimado);
             cameraAnimando = false;
         }
     };
@@ -774,7 +845,7 @@ function iniciarAnimacaoCamera() {
 
 function moverCameraSuave(pos, heading, velocidadeKmh) {
     let zoomDesejado = 19;
-    let tiltDesejado = 45;
+    let tiltDesejado = 50;
 
     if (velocidadeKmh >= 75) {
         zoomDesejado = 20;
@@ -784,17 +855,17 @@ function moverCameraSuave(pos, heading, velocidadeKmh) {
         tiltDesejado = 60;
     } else if (velocidadeKmh >= 15) {
         zoomDesejado = 19;
-        tiltDesejado = 45;
+        tiltDesejado = 50;
     } else {
         zoomDesejado = 19;
-        tiltDesejado = 30;
+        tiltDesejado = 40;
     }
 
     if (Math.abs(map.getZoom() - zoomDesejado) >= 1) {
         map.setZoom(zoomDesejado);
     }
 
-    if (Math.abs((map.getTilt() || 0) - tiltDesejado) >= 10) {
+    if (Math.abs((map.getTilt() || 0) - tiltDesejado) >= 8) {
         map.setTilt(tiltDesejado);
     }
 
@@ -1045,7 +1116,7 @@ async function iniciarNavegacao(sentido) {
                         ultimaPosicaoValida = origemLatLng;
                         posicaoAnimada = origemLatLng;
                         headingAnimado = 0;
-                        centralizarComOffsetPixel(origemLatLng);
+                        centralizarComOffsetDirecional(origemLatLng, 0);
 
                         ativarMonitoramento(sentido, labelDestino, destCoord);
                     } else {
@@ -1091,16 +1162,18 @@ function ativarMonitoramento(sentido, labelDestino, destCoord) {
             velocidadeMaximaViagem = vel;
         }
 
-        let heading = p.coords.heading;
+        let headingGps = p.coords.heading;
 
-        if ((heading == null || isNaN(heading) || heading < 0) && ultimaPosicaoValida) {
+        if ((headingGps == null || isNaN(headingGps) || headingGps < 0) && ultimaPosicaoValida) {
             const distMov = google.maps.geometry.spherical.computeDistanceBetween(ultimaPosicaoValida, pos);
             if (distMov >= 2) {
-                heading = calcularHeading(ultimaPosicaoValida, pos);
+                headingGps = calcularHeading(ultimaPosicaoValida, pos);
             }
         }
 
-        if (heading == null || isNaN(heading) || heading < 0) {
+        let heading = obterHeadingDaRota(pos, headingGps, vel);
+
+        if (heading == null || isNaN(heading)) {
             heading = ultimoHeadingValido || headingAnimado || 0;
         } else {
             if (vel >= 5) {
