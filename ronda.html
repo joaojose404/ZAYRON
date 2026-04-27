@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>ZAYRON - RONDA OPERACIONAL</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    :root{--navy:#020617;--lead:#1e293b;--accent:#3b82f6;--success:#10b981;--warning:#f59e0b;--danger:#ef4444;--border:#334155;--muted:#94a3b8;--purple:#8b5cf6}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:"Segoe UI",sans-serif;background:var(--navy);color:#f8fafc;height:100vh;overflow:hidden;display:grid;grid-template-rows:auto 1fr auto}
+    .topbar{background:var(--lead);border-bottom:2px solid var(--accent);padding:10px 12px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+    .brand{font-weight:bold;letter-spacing:.8px;color:var(--accent)}
+    .muted{color:var(--muted);font-size:12px}
+    #app{display:grid;grid-template-columns:400px 1fr;min-height:0}
+    #sidebar{background:rgba(15,23,42,.95);border-right:2px solid var(--accent);overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:12px}
+    #map-ronda{width:100%;height:100%}
+    .card{background:rgba(15,23,42,.9);border:1px solid var(--border);border-radius:10px;padding:12px}
+    .section-header{font-size:10px;color:var(--accent);font-weight:bold;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px;letter-spacing:.8px}
+    input,textarea{background:#0f172a;border:1px solid var(--border);color:#e2e8f0;padding:10px;border-radius:6px;width:100%;margin-bottom:8px;font-size:13px;outline:none}
+    textarea{min-height:100px;resize:vertical}
+    .btn{background:var(--accent);color:#fff;border:none;padding:11px 12px;border-radius:6px;font-weight:bold;cursor:pointer;width:100%;text-transform:uppercase;font-size:11px;transition:.2s}
+    .btn:hover{filter:brightness(1.08)}
+    .btn-success{background:var(--success)}.btn-warning{background:var(--warning);color:#111827}.btn-danger{background:var(--danger)}.btn-purple{background:var(--purple)}
+    .row{display:flex;gap:8px}.row>*{flex:1}
+    .status-box{border-radius:8px;padding:10px;font-size:13px;font-weight:bold;text-align:center;border:1px solid var(--border);background:#0f172a}
+    #cronometro{font-size:22px;font-weight:bold;color:var(--warning);text-align:center;margin-top:4px}
+    .pontos-lista,.eventos-lista,.sugestoes-lista{display:flex;flex-direction:column;gap:8px;max-height:250px;overflow-y:auto}
+    .ponto-item,.evento-item,.sugestao-item{border:1px solid var(--border);border-radius:8px;padding:8px;background:#0f172a;font-size:12px}
+    .ponto-item.ativo{border-color:var(--warning);background:rgba(245,158,11,.08)}
+    .ponto-item.concluido{border-color:var(--success);background:rgba(16,185,129,.08)}
+    .evento-item.panico{border-color:var(--danger);background:rgba(239,68,68,.08)}
+    .sugestao-item{cursor:pointer}
+    .hidden{display:none!important}
+    .ponto-label{background:rgba(139,92,246,.92);color:white;border:1px solid white;font-size:10px;font-weight:bold;padding:2px 6px;border-radius:4px}
+    .footer-bar{background:var(--lead);border-top:2px solid var(--accent);padding:10px 12px;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+    @media(max-width:1024px){#app{grid-template-columns:1fr;grid-template-rows:auto 48vh}#sidebar{border-right:none;border-bottom:2px solid var(--accent)}#map-ronda{min-height:48vh}}
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div>
+      <div class="brand">SECURE TECH · ZAYRON RONDA</div>
+      <div class="muted" id="user-info">Aguardando identificação</div>
+    </div>
+    <div class="muted" id="gps-info">GPS aguardando...</div>
+  </div>
+
+  <div id="app">
+    <div id="sidebar">
+      <div class="card" id="identificacao-card">
+        <div class="section-header">Identificação do Vigilante</div>
+        <input type="text" id="nome_condominio" placeholder="NOME / CHAVE / QR DO CONDOMÍNIO" autocomplete="off" />
+        <div id="lista-sugestoes" class="sugestoes-lista hidden"></div>
+        <input type="text" id="nome_vigilante" placeholder="NOME DO VIGILANTE" />
+        <input type="text" id="num_viatura" placeholder="PREFIXO / NÚMERO DA VIATURA" />
+        <button class="btn" id="btn-entrar">Entrar na ronda</button>
+      </div>
+
+      <div class="card hidden" id="controle-card">
+        <div class="section-header">Controle da Ronda</div>
+        <div class="status-box" id="status-msg">Aguardando início...</div>
+        <div id="cronometro">00s</div>
+        <div class="row" style="margin-top:10px;">
+          <button class="btn btn-success" id="btn-iniciar">Iniciar ronda</button>
+          <button class="btn btn-danger hidden" id="btn-finalizar">Finalizar</button>
+        </div>
+        <div class="row" style="margin-top:8px;">
+          <button class="btn btn-warning" id="btn-centralizar">Centralizar</button>
+          <button class="btn btn-danger" id="btn-panico">Pânico</button>
+        </div>
+      </div>
+
+      <div class="card hidden" id="rota-card">
+        <div class="section-header">Pontos da Ronda</div>
+        <div class="muted" id="rota-resumo">Nenhum ponto carregado.</div>
+        <div class="pontos-lista" id="lista-pontos"></div>
+      </div>
+
+      <div class="card hidden" id="relatorio-card">
+        <div class="section-header">Relatório Operacional</div>
+        <textarea id="texto-relatorio" placeholder="Descreva ocorrência, anormalidade, apoio prestado ou observação da ronda..."></textarea>
+        <input type="file" id="imagens-relatorio" accept="image/*" multiple />
+        <button class="btn btn-purple" id="btn-relatorio">Enviar relatório</button>
+      </div>
+
+      <div class="card hidden" id="eventos-card">
+        <div class="section-header">Histórico da Sessão</div>
+        <div class="eventos-lista" id="lista-eventos"></div>
+      </div>
+    </div>
+
+    <div id="map-ronda"></div>
+  </div>
+
+  <div class="footer-bar">
+    <div class="muted" id="bateria-info">Bateria: --</div>
+    <div class="muted" id="sessao-info">Sessão: --</div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <script>
+    const API_BASE_URL = 'http://127.0.0.1:3000';
+
+    async function apiGet(path){
+      const res = await fetch(`${API_BASE_URL}${path}`);
+      const json = await res.json();
+      if(!res.ok || json.success === false) throw new Error(json.message || 'Erro na API');
+      return json.data ?? json;
+    }
+
+    async function apiPost(path, body){
+      const res = await fetch(`${API_BASE_URL}${path}`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(body)
+      });
+      const json = await res.json();
+      if(!res.ok || json.success === false) throw new Error(json.message || 'Erro na API');
+      return json.data ?? json;
+    }
+
+    async function apiPatch(path, body = {}){
+      const res = await fetch(`${API_BASE_URL}${path}`, {
+        method:'PATCH',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(body)
+      });
+      const json = await res.json();
+      if(!res.ok || json.success === false) throw new Error(json.message || 'Erro na API');
+      return json.data ?? json;
+    }
+
+    const map = L.map('map-ronda',{zoomControl:true}).setView([-23.206558,-47.034927],18);
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{
+      maxZoom:22,
+      attribution:'Tiles © Esri'
+    }).addTo(map);
+
+    const pontosLayer = L.layerGroup().addTo(map);
+    const rotaLayer = L.layerGroup().addTo(map);
+
+    let currentUser = null;
+    let currentCondoId = null;
+    let currentCondoNome = null;
+    let emRonda = false;
+    let sessionCodigo = null;
+    let watchId = null;
+    let pontosRonda = [];
+    let pontoAtualIndex = 0;
+    let ultimoStatus = 'AGUARDANDO';
+    let cronometroSeg = 0;
+    let cronometroId = null;
+    let pontoEmValidacao = null;
+    let bateriaInfo = {level:null, charging:null};
+    let entidadeId = null;
+    let eventosSessao = [];
+    let ultimaPosicao = null;
+    let prefixoViatura = '';
+    let condominiosCache = [];
+    let ultimoEnvioPosicaoMs = 0;
+    let rondaSessaoId = null;
+    let checkpointAtualId = null;
+
+    const marcadorVigilante = L.circleMarker([0,0],{
+      radius:9,
+      color:'#10b981',
+      fillColor:'#10b981',
+      fillOpacity:.9,
+      weight:2
+    }).addTo(map).bindPopup('Vigilante');
+
+    const els = {
+      userInfo:document.getElementById('user-info'),
+      gpsInfo:document.getElementById('gps-info'),
+      bateriaInfo:document.getElementById('bateria-info'),
+      sessaoInfo:document.getElementById('sessao-info'),
+      statusMsg:document.getElementById('status-msg'),
+      cronometro:document.getElementById('cronometro'),
+      listaPontos:document.getElementById('lista-pontos'),
+      rotaResumo:document.getElementById('rota-resumo'),
+      listaEventos:document.getElementById('lista-eventos'),
+      listaSugestoes:document.getElementById('lista-sugestoes'),
+      identificacaoCard:document.getElementById('identificacao-card'),
+      controleCard:document.getElementById('controle-card'),
+      rotaCard:document.getElementById('rota-card'),
+      relatorioCard:document.getElementById('relatorio-card'),
+      eventosCard:document.getElementById('eventos-card'),
+      btnEntrar:document.getElementById('btn-entrar'),
+      btnIniciar:document.getElementById('btn-iniciar'),
+      btnFinalizar:document.getElementById('btn-finalizar'),
+      btnRelatorio:document.getElementById('btn-relatorio'),
+      btnPanico:document.getElementById('btn-panico'),
+      btnCentralizar:document.getElementById('btn-centralizar'),
+      nomeCondominio:document.getElementById('nome_condominio'),
+      nomeVigilante:document.getElementById('nome_vigilante'),
+      numViatura:document.getElementById('num_viatura'),
+      textoRelatorio:document.getElementById('texto-relatorio')
+    };
+
+    function escapeHtml(text){
+      if(text === null || text === undefined) return '';
+      return String(text)
+        .replace(/&/g,'&amp;')
+        .replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;')
+        .replace(/'/g,'&#039;');
+    }
+
+    function formatDateTime(dateStr){
+      if(!dateStr) return '-';
+      return new Date(dateStr).toLocaleString('pt-BR');
+    }
+
+    function setStatus(texto, cor='var(--accent)'){
+      ultimoStatus = texto;
+      els.statusMsg.textContent = texto;
+      els.statusMsg.style.color = cor;
+    }
+
+    function atualizarBateriaUI(){
+      let texto = 'Bateria: --';
+      if(bateriaInfo.level != null){
+        const pct = Math.round(bateriaInfo.level * 100);
+        texto = `Bateria: ${pct}%${bateriaInfo.charging ? ' (carregando)' : ''}`;
+      }
+      els.bateriaInfo.textContent = texto;
+    }
+
+    async function monitorarBateria(){
+      if(!navigator.getBattery) return;
+      try{
+        const battery = await navigator.getBattery();
+        const sync = () => {
+          bateriaInfo = {level:battery.level, charging:battery.charging};
+          atualizarBateriaUI();
+        };
+        sync();
+        battery.addEventListener('levelchange', sync);
+        battery.addEventListener('chargingchange', sync);
+      }catch(e){
+        console.error('Falha bateria:', e);
+      }
+    }
+
+    function adicionarEventoLocal(tipo, titulo, destaque=''){
+      eventosSessao.unshift({tipo, titulo, destaque, created_at:new Date().toISOString()});
+      renderizarEventos();
+    }
+
+    function renderizarEventos(){
+      if(!eventosSessao.length){
+        els.listaEventos.innerHTML = '<div class="muted">Nenhum evento na sessão.</div>';
+        return;
+      }
+
+      els.listaEventos.innerHTML = eventosSessao.slice(0,50).map(ev => `
+        <div class="${ev.tipo === 'panico_ronda' ? 'evento-item panico' : 'evento-item'}">
+          <div><b>${escapeHtml(ev.titulo)}</b></div>
+          <small>${formatDateTime(ev.created_at)}</small>
+          ${ev.destaque ? `<div style="margin-top:6px;">${escapeHtml(ev.destaque)}</div>` : ''}
+        </div>
+      `).join('');
+    }
+
+    function normalizarPonto(item, index){
+      return {
+        id:item.id || `ponto_${index}`,
+        nome:item.nome || `PONTO ${index+1}`,
+        ordem:Number(item.ordem ?? index+1),
+        latitude:Number(item.latitude ?? 0),
+        longitude:Number(item.longitude ?? 0),
+        raio:Number(item.raio_metros ?? item.raio ?? 20),
+        concluido:false
+      };
+    }
+
+    function renderizarPontos(){
+      if(!pontosRonda.length){
+        els.rotaResumo.textContent = 'Nenhum ponto cadastrado para este condomínio.';
+        els.listaPontos.innerHTML = '<div class="muted">Cadastre os pontos no painel admin.</div>';
+        return;
+      }
+
+      const concluidos = pontosRonda.filter(p => p.concluido).length;
+      const proximo = pontosRonda.find(p => !p.concluido);
+
+      els.rotaResumo.innerHTML =
+        `Concluídos: <b>${concluidos}/${pontosRonda.length}</b>` +
+        (proximo ? ` · Próximo: <b>${escapeHtml(proximo.nome)}</b>` : ' · Rota concluída');
+
+      els.listaPontos.innerHTML = pontosRonda.map((p, idx) => `
+        <div class="${p.concluido ? 'ponto-item concluido' : (idx === pontoAtualIndex ? 'ponto-item ativo' : 'ponto-item')}">
+          <div><b>${p.ordem}. ${escapeHtml(p.nome)}</b></div>
+          <small>Lat: ${p.latitude.toFixed(6)} · Lng: ${p.longitude.toFixed(6)}</small>
+          <small>Raio: ${p.raio}m · Permanência obrigatória: 15s</small>
+        </div>
+      `).join('');
+    }
+
+    async function carregarCondominios(){
+      try{
+        condominiosCache = await apiGet('/public/condominios');
+        console.log('Condomínios carregados:', condominiosCache);
+      }catch(error){
+        console.error('Erro ao carregar condomínios:', error);
+        condominiosCache = [];
+      }
+    }
+
+    function renderizarSugestoesCondominio(filtro=''){
+      const termo = filtro.trim().toLowerCase();
+
+      if(!termo){
+        els.listaSugestoes.classList.add('hidden');
+        els.listaSugestoes.innerHTML = '';
+        return;
+      }
+
+      const resultados = condominiosCache.filter(c =>
+        (c.nome || '').toLowerCase().includes(termo) ||
+        (c.chave_acesso || '').toLowerCase().includes(termo) ||
+        (c.codigo_qr || '').toLowerCase().includes(termo) ||
+        (c.token_condominio || '').toLowerCase().includes(termo)
+      ).slice(0,8);
+
+      if(!resultados.length){
+        els.listaSugestoes.classList.remove('hidden');
+        els.listaSugestoes.innerHTML = '<div class="muted">Nenhum condomínio encontrado.</div>';
+        return;
+      }
+
+      els.listaSugestoes.classList.remove('hidden');
+      els.listaSugestoes.innerHTML = resultados.map(c => `
+        <div class="sugestao-item" data-id="${c.id}" data-nome="${String(c.nome).replace(/"/g,'&quot;')}">
+          <b>${escapeHtml(c.nome)}</b>
+          <div class="muted">${escapeHtml(c.chave_acesso || c.token_condominio || c.codigo_qr || '')}</div>
+        </div>
+      `).join('');
+
+      [...els.listaSugestoes.querySelectorAll('.sugestao-item')].forEach(item => {
+        item.addEventListener('click', () => {
+          currentCondoId = item.getAttribute('data-id');
+          currentCondoNome = item.getAttribute('data-nome');
+          els.nomeCondominio.value = currentCondoNome;
+          els.listaSugestoes.classList.add('hidden');
+          els.listaSugestoes.innerHTML = '';
+        });
+      });
+    }
+
+    async function buscarCondominioNoBanco(valorDigitado){
+      const termo = String(valorDigitado || '').trim();
+      if(!termo) return null;
+
+      try{
+        const data = await apiGet(`/public/condominios?busca=${encodeURIComponent(termo)}`);
+        return data && data.length ? data[0] : null;
+      }catch(error){
+        console.error('Erro ao buscar condomínio:', error);
+        return null;
+      }
+    }
+
+    async function carregarPontos(){
+      try{
+        const data = await apiGet(`/public/pontos-ronda?condominio_id=${encodeURIComponent(currentCondoId)}`);
+        pontosRonda = (data || []).map(normalizarPonto).sort((a,b) => a.ordem - b.ordem);
+      }catch(error){
+        console.error('Erro ao carregar pontos:', error);
+        pontosRonda = [];
+      }
+
+      pontoAtualIndex = 0;
+      pontosLayer.clearLayers();
+      rotaLayer.clearLayers();
+
+      pontosRonda.forEach((p, idx) => {
+        L.circle([p.latitude,p.longitude],{
+          radius:p.raio,
+          color:'#8b5cf6',
+          fillColor:'#8b5cf6',
+          fillOpacity:.15,
+          weight:2
+        }).addTo(pontosLayer);
+
+        L.marker([p.latitude,p.longitude],{
+          icon:L.divIcon({className:'ponto-label', html:`${p.ordem}`})
+        }).addTo(pontosLayer);
+
+        if(idx < pontosRonda.length - 1){
+          const next = pontosRonda[idx+1];
+          L.polyline([[p.latitude,p.longitude],[next.latitude,next.longitude]],{
+            color:'#3b82f6',
+            weight:2,
+            dashArray:'6,6'
+          }).addTo(rotaLayer);
+        }
+      });
+
+      renderizarPontos();
+
+      if(pontosRonda[0]){
+        map.flyTo([pontosRonda[0].latitude,pontosRonda[0].longitude],18,{duration:.8});
+      }
+    }
+
+    async function registrarEvento(tipoEvento, titulo, prioridade='normal', descricao=''){
+      if(!currentCondoId || !entidadeId) return false;
+
+      try{
+        await apiPost('/eventos-operacionais', {
+          condominio_id:currentCondoId,
+          tipo_origem:'ronda',
+          origem_id:entidadeId,
+          tipo_evento:tipoEvento,
+          titulo,
+          descricao,
+          prioridade
+        });
+        return true;
+      }catch(error){
+        console.warn('Evento não salvo na API:', error.message);
+        return false;
+      }
+    }
+
+    async function criarSessaoRonda(){
+      try{
+        const data = await apiPost('/ronda-sessoes', {
+          condominio_id:currentCondoId,
+          vigilante_login:prefixoViatura,
+          vigilante_nome:currentUser?.nome || '',
+          entidade_id:entidadeId,
+          observacoes:`Sessão ${sessionCodigo}`
+        });
+
+        rondaSessaoId = data.id;
+        return true;
+      }catch(error){
+        console.error('Erro ao criar sessão da ronda:', error);
+        alert('Falha ao iniciar ronda.\n' + error.message);
+        return false;
+      }
+    }
+
+    async function iniciarCheckpointRonda(ponto){
+      if(!rondaSessaoId || !ponto) return false;
+
+      try{
+        const data = await apiPost('/ronda-checkpoints', {
+          ronda_sessao_id:rondaSessaoId,
+          ponto_id:ponto.id,
+          nome_ponto:ponto.nome,
+          ordem:ponto.ordem,
+          validado:false,
+          tempo_permanencia_seg:0,
+          latitude:ponto.latitude,
+          longitude:ponto.longitude
+        });
+
+        checkpointAtualId = data.id;
+        return true;
+      }catch(error){
+        console.error('Erro ao iniciar checkpoint:', error);
+        return false;
+      }
+    }
+
+    async function finalizarSessaoRonda(){
+      if(!rondaSessaoId) return true;
+
+      try{
+        await apiPatch(`/ronda-sessoes/${rondaSessaoId}/finalizar`);
+        return true;
+      }catch(error){
+        console.error('Erro ao finalizar sessão da ronda:', error);
+        return false;
+      }
+    }
+
+    async function validarCheckpointRonda(tempoSegundos){
+      if(!checkpointAtualId) return false;
+
+      try{
+        await apiPatch(`/ronda-checkpoints/${checkpointAtualId}/validar`, {
+          tempo_permanencia_seg:tempoSegundos
+        });
+      }catch(error){
+        console.warn('Checkpoint não atualizado pela API:', error.message);
+      }
+
+      checkpointAtualId = null;
+      return true;
+    }
+
+    async function marcarPanicoSessao(){
+      if(!rondaSessaoId) return false;
+
+      try{
+        await apiPatch(`/ronda-sessoes/${rondaSessaoId}/panico`);
+        return true;
+      }catch(error){
+        console.error('Erro ao marcar pânico:', error);
+        return false;
+      }
+    }
+
+    async function atualizarPosicaoRealtime(lat, lng, extra={}){
+      if(!entidadeId || !currentCondoId || !emRonda) return;
+
+      const agora = Date.now();
+      if(agora - ultimoEnvioPosicaoMs < 2500) return;
+      ultimoEnvioPosicaoMs = agora;
+
+      try{
+        await apiPost('/posicoes-tempo-real', {
+          condominio_id:currentCondoId,
+          tipo_entidade:'vigilante',
+          entidade_id:entidadeId,
+          latitude:lat,
+          longitude:lng,
+          precisao:extra.precisao ?? null,
+          velocidade:extra.velocidadeKmh ?? 0,
+          bateria:bateriaInfo.level != null ? Math.round(bateriaInfo.level * 100) : null,
+          status:'online'
+        });
+      }catch(error){
+        console.error('Erro posição realtime:', error);
+      }
+    }
+
+    async function limparPosicaoRealtime(){
+      return true;
+    }
+
+    function verificarPontoAtual(lat,lng){
+      if(!emRonda || !pontosRonda.length) return;
+
+      const ponto = pontosRonda[pontoAtualIndex];
+      if(!ponto) return;
+
+      const dist = map.distance([lat,lng],[ponto.latitude,ponto.longitude]);
+
+      if(dist <= ponto.raio){
+        if(!pontoEmValidacao || pontoEmValidacao.id !== ponto.id){
+          iniciarContagemPonto(ponto);
+        }
+      }else if(pontoEmValidacao && pontoEmValidacao.id === ponto.id){
+        cancelarContagemPonto(`Saia do ponto ${ponto.nome}. Retorne e permaneça 15s.`);
+      }
+    }
+
+    async function iniciarContagemPonto(ponto){
+      pontoEmValidacao = ponto;
+      cronometroSeg = 0;
+
+      await iniciarCheckpointRonda(ponto);
+
+      if(cronometroId) clearInterval(cronometroId);
+
+      setStatus(`Em ponto: ${ponto.nome}`,'var(--warning)');
+
+      cronometroId = setInterval(async () => {
+        cronometroSeg += 1;
+        els.cronometro.textContent = `${String(cronometroSeg).padStart(2,'0')}s`;
+
+        if(cronometroSeg >= 15){
+          clearInterval(cronometroId);
+          cronometroId = null;
+          await validarPontoAtual();
+        }
+      },1000);
+    }
+
+    function cancelarContagemPonto(mensagem){
+      pontoEmValidacao = null;
+      cronometroSeg = 0;
+
+      if(cronometroId) clearInterval(cronometroId);
+      cronometroId = null;
+
+      els.cronometro.textContent = '00s';
+      setStatus(mensagem);
+    }
+
+    async function validarPontoAtual(){
+      const ponto = pontosRonda[pontoAtualIndex];
+      if(!ponto) return;
+
+      ponto.concluido = true;
+
+      await validarCheckpointRonda(cronometroSeg);
+      await registrarEvento(
+        'checkpoint_ronda',
+        `Checkpoint concluído: ${ponto.nome}`,
+        'normal',
+        `Ponto ${ponto.ordem} validado com permanência de ${cronometroSeg}s`
+      );
+
+      adicionarEventoLocal('checkpoint_ronda','Ponto validado',`${ponto.nome} · ${cronometroSeg}s`);
+
+      pontoAtualIndex += 1;
+      pontoEmValidacao = null;
+      cronometroSeg = 0;
+      els.cronometro.textContent = '00s';
+
+      renderizarPontos();
+
+      if(pontoAtualIndex >= pontosRonda.length){
+        setStatus('Todos os pontos concluídos. Retorne e finalize a ronda.','var(--success)');
+      }else{
+        setStatus(`Ponto validado. Próximo: ${pontosRonda[pontoAtualIndex].nome}`,'var(--success)');
+      }
+    }
+
+    async function enviarRelatorio(){
+      const texto = els.textoRelatorio.value.trim();
+
+      if(!texto){
+        alert('Digite um relatório antes de enviar.');
+        return;
+      }
+
+      await registrarEvento(
+        'relatorio_ronda',
+        `Relatório da ronda - ${currentUser?.nome || ''}`,
+        'alta',
+        texto
+      );
+
+      adicionarEventoLocal('relatorio_ronda','Relatório enviado',texto);
+
+      els.textoRelatorio.value = '';
+      const inputImg = document.getElementById('imagens-relatorio');
+      if(inputImg) inputImg.value = '';
+
+      alert('Relatório registrado.');
+    }
+
+    async function acionarPanico(){
+      if(!emRonda){
+        alert('Inicie a ronda antes de acionar o pânico.');
+        return;
+      }
+
+      if(!confirm('Confirmar acionamento do botão de pânico?')) return;
+
+      await marcarPanicoSessao();
+      await registrarEvento(
+        'panico_ronda',
+        `PÂNICO ACIONADO por ${currentUser.nome} · ${entidadeId}`,
+        'critica',
+        'Botão de pânico acionado pelo vigilante'
+      );
+
+      adicionarEventoLocal('panico_ronda','Pânico acionado','O painel deve tocar alarme.');
+      setStatus('PÂNICO ACIONADO','var(--danger)');
+    }
+
+    async function iniciarRonda(){
+      if(!currentUser || !currentCondoId){
+        alert('Identifique o vigilante primeiro.');
+        return;
+      }
+
+      if(!prefixoViatura){
+        alert('Informe o prefixo da viatura.');
+        return;
+      }
+
+      if(!pontosRonda.length){
+        alert('Não há pontos cadastrados para este condomínio.');
+        return;
+      }
+
+      if(emRonda) return;
+
+      entidadeId = `RONDA_${prefixoViatura}`;
+      sessionCodigo = `R${Date.now()}`;
+      els.sessaoInfo.textContent = `Sessão: ${sessionCodigo}`;
+      emRonda = true;
+
+      pontosRonda.forEach(p => p.concluido = false);
+      pontoAtualIndex = 0;
+      renderizarPontos();
+
+      const sessaoOk = await criarSessaoRonda();
+      if(!sessaoOk){
+        emRonda = false;
+        return;
+      }
+
+      await registrarEvento(
+        'inicio_ronda',
+        `Início da ronda · ${currentUser.nome} · viatura ${prefixoViatura}`,
+        'normal',
+        `Sessão ${sessionCodigo}`
+      );
+
+      adicionarEventoLocal('inicio_ronda','Ronda iniciada',`Sessão ${sessionCodigo}`);
+
+      if(ultimaPosicao){
+        await atualizarPosicaoRealtime(ultimaPosicao.lat, ultimaPosicao.lng, ultimaPosicao.extra || {});
+      }
+
+      setStatus(`Ronda iniciada. Primeiro ponto: ${pontosRonda[0].nome}`,'var(--accent)');
+      els.btnIniciar.classList.add('hidden');
+      els.btnFinalizar.classList.remove('hidden');
+    }
+
+    async function finalizarRonda(){
+      if(!emRonda) return;
+      if(!confirm('Deseja finalizar a ronda?')) return;
+
+      emRonda = false;
+
+      if(cronometroId) clearInterval(cronometroId);
+      cronometroId = null;
+
+      els.cronometro.textContent = '00s';
+
+      const concluidos = pontosRonda.filter(p => p.concluido).length;
+
+      await registrarEvento(
+        'fim_ronda',
+        `Fim da ronda · ${currentUser.nome}`,
+        'normal',
+        `Pontos concluídos: ${concluidos}/${pontosRonda.length}`
+      );
+
+      await finalizarSessaoRonda();
+      await limparPosicaoRealtime();
+
+      adicionarEventoLocal(
+        'fim_ronda',
+        'Ronda finalizada',
+        `Pontos concluídos: ${concluidos}/${pontosRonda.length}`
+      );
+
+      setStatus('Ronda finalizada','var(--success)');
+      els.btnIniciar.classList.remove('hidden');
+      els.btnFinalizar.classList.add('hidden');
+
+      sessionCodigo = null;
+      rondaSessaoId = null;
+      checkpointAtualId = null;
+      els.sessaoInfo.textContent = 'Sessão: --';
+    }
+
+    function iniciarWatch(){
+      if(!navigator.geolocation){
+        alert('Geolocalização indisponível neste aparelho.');
+        return;
+      }
+
+      if(watchId) navigator.geolocation.clearWatch(watchId);
+
+      watchId = navigator.geolocation.watchPosition(async pos => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const velocidadeKmh = pos.coords.speed ? Number(pos.coords.speed) * 3.6 : 0;
+
+        ultimaPosicao = {
+          lat,
+          lng,
+          extra:{
+            precisao:Math.round(pos.coords.accuracy || 0),
+            velocidadeKmh
+          }
+        };
+
+        marcadorVigilante
+          .setLatLng([lat,lng])
+          .setPopupContent(`<b>${escapeHtml(currentUser?.nome || 'Vigilante')}</b><br>Viatura: ${escapeHtml(prefixoViatura || '-')}<br>Status: ${escapeHtml(ultimoStatus)}`);
+
+        els.gpsInfo.textContent = `GPS: ${lat.toFixed(6)}, ${lng.toFixed(6)} · precisão ${Math.round(pos.coords.accuracy || 0)}m`;
+
+        if(emRonda && currentCondoId && entidadeId){
+          await atualizarPosicaoRealtime(lat,lng,{
+            precisao:Math.round(pos.coords.accuracy || 0),
+            velocidadeKmh
+          });
+        }
+
+        if(emRonda) verificarPontoAtual(lat,lng);
+      }, err => {
+        console.error(err);
+        setStatus('Erro ao obter GPS','var(--danger)');
+      },{
+        enableHighAccuracy:true,
+        maximumAge:3000,
+        timeout:12000
+      });
+    }
+
+    async function identificarVigilante(){
+      const valorCondominio = els.nomeCondominio.value.trim();
+      const nome = els.nomeVigilante.value.trim().toUpperCase();
+      const numero = els.numViatura.value.trim().toUpperCase().replace(/\s+/g,'_');
+
+      if(!valorCondominio){
+        alert('Informe o nome, chave ou QR do condomínio.');
+        return;
+      }
+
+      if(!nome || !numero){
+        alert('Informe o nome do vigilante e o prefixo da viatura.');
+        return;
+      }
+
+      const condo = currentCondoId
+        ? {id:currentCondoId, nome:currentCondoNome}
+        : await buscarCondominioNoBanco(valorCondominio);
+
+      if(!condo){
+        alert('Condomínio não encontrado.');
+        return;
+      }
+
+      currentUser = {id:null, nome};
+      currentCondoId = condo.id;
+      currentCondoNome = condo.nome;
+      prefixoViatura = numero;
+      entidadeId = `RONDA_${prefixoViatura}`;
+
+      els.nomeCondominio.value = currentCondoNome;
+      els.userInfo.textContent = `${currentUser.nome} · ${currentCondoNome}`;
+
+      els.identificacaoCard.classList.add('hidden');
+      els.controleCard.classList.remove('hidden');
+      els.rotaCard.classList.remove('hidden');
+      els.relatorioCard.classList.remove('hidden');
+      els.eventosCard.classList.remove('hidden');
+
+      setStatus('Vigilante identificado. Carregando pontos...','var(--accent)');
+
+      await carregarPontos();
+      iniciarWatch();
+      await monitorarBateria();
+      renderizarEventos();
+
+      await registrarEvento(
+        'acesso_ronda',
+        `Acesso da ronda · ${currentUser.nome} · viatura ${prefixoViatura}`,
+        'normal',
+        `Condomínio: ${currentCondoNome}`
+      );
+
+      adicionarEventoLocal('acesso_ronda','Acesso realizado',`${currentUser.nome} · ${prefixoViatura}`);
+    }
+
+    els.nomeCondominio.addEventListener('input', () => {
+      currentCondoId = null;
+      currentCondoNome = null;
+      renderizarSugestoesCondominio(els.nomeCondominio.value);
+    });
+
+    els.btnEntrar.addEventListener('click', identificarVigilante);
+    els.btnIniciar.addEventListener('click', iniciarRonda);
+    els.btnFinalizar.addEventListener('click', finalizarRonda);
+    els.btnRelatorio.addEventListener('click', enviarRelatorio);
+    els.btnPanico.addEventListener('click', acionarPanico);
+
+    els.btnCentralizar.addEventListener('click', () => {
+      if(!ultimaPosicao){
+        alert('Ainda sem posição válida do GPS.');
+        return;
+      }
+      map.flyTo([ultimaPosicao.lat, ultimaPosicao.lng],20,{duration:.8});
+      marcadorVigilante.openPopup();
+    });
+
+    async function inicializarTela(){
+      await carregarCondominios();
+      els.userInfo.textContent = 'Informe condomínio, vigilante e viatura';
+      renderizarEventos();
+      setTimeout(() => map.invalidateSize(), 300);
+    }
+
+    inicializarTela();
+  </script>
+</body>
+</html>
