@@ -886,10 +886,9 @@ function iniciarRastreamentoVisitante(centralizar = false) {
 
       atualizarMarcadorVisitante(lat, lng, centralizar);
 
-      if (map) {
-  map.panTo([lat, lng], {
-    animate: true,
-    duration: 0.5
+ if (map) {
+  map.setView([lat, lng], map.getZoom(), {
+    animate: true
   });
 }
       centralizar = false;
