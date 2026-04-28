@@ -687,74 +687,114 @@ async function apiPatch(url, body){
             };
         }
 
-        function tracarRotaAteDestino(destLat, destLng, forceRecreate = false) {
-            if (!map) return;
+async function tracarRotaAteDestino(destLat, destLng, forceRecreate = false) {
+  if (!map) return;
 
-            const origem = obterOrigemRota();
-            const waypoints = [
-                L.latLng(origem[0], origem[1]),
-                L.latLng(destLat, destLng)
-            ];
+  const origem = obterOrigemRota();
 
-            if (destinoMarker) {
-                map.removeLayer(destinoMarker);
-            }
+  try {
+    document.getElementById('status-rota').innerText = 'Calculando rota pelo Google...';
 
-            destinoMarker = L.marker([destLat, destLng])
-                .addTo(map)
-                .bindPopup(rotaModo === 'retorno' ? '<b>Portaria</b>' : '<b>Destino</b>')
-                .openPopup();
+    const rotaGoogle = await calcularRotaGoogle(
+      {
+        lat: Number(origem[0]),
+        lng: Number(origem[1])
+      },
+      {
+        lat: Number(destLat),
+        lng: Number(destLng)
+      }
+    );
 
-            if (!routingControl || forceRecreate) {
-                if (routingControl) {
-                    map.removeControl(routingControl);
-                    routingControl = null;
-                }
+    const encoded = rotaGoogle?.polyline?.encodedPolyline;
 
-                routingControl = L.Routing.control({
-                    waypoints: waypoints,
-                    router: L.Routing.osrmv1({
-                        serviceUrl: 'https://router.project-osrm.org/route/v1'
-                    }),
-                    lineOptions: {
-                        styles: [{ color: '#3b82f6', weight: 7, opacity: 0.85 }]
-                    },
-                    createMarker: function(i, wp) {
-                        if (i === 0) {
-                            return L.marker(wp.latLng).bindPopup(minhaPosicaoAtual ? 'Sua posição' : 'Origem');
-                        }
-                        return L.marker(wp.latLng).bindPopup(rotaModo === 'retorno' ? 'Portaria' : 'Destino');
-                    },
-                    addWaypoints: false,
-                    routeWhileDragging: false,
-                    show: false,
-                    draggableWaypoints: false,
-                    fitSelectedRoutes: false
-                }).addTo(map);
-            } else {
-                routingControl.setWaypoints(waypoints);
-            }
+    if (!encoded) {
+      throw new Error('Google não retornou a rota.');
+    }
 
-            ultimaAtualizacaoRotaEm = Date.now();
+    const coords = decodePolyline(encoded);
 
-            const bounds = L.latLngBounds([
-                [origem[0], origem[1]],
-                [destLat, destLng]
-            ]);
+    if (!coords.length) {
+      throw new Error('Polyline vazia.');
+    }
 
-            const padding = getPaddingMapa();
-            map.fitBounds(bounds, padding);
+    if (routingControl) {
+      map.removeControl(routingControl);
+      routingControl = null;
+    }
 
-            if (rotaModo === 'retorno') {
-                document.getElementById('status-rota').innerText = 'Rota traçada para retorno à portaria.';
-            } else {
-                document.getElementById('status-rota').innerText =
-                    minhaPosicaoAtual
-                        ? 'Rota traçada da sua posição até o destino.'
-                        : 'Rota traçada da portaria até o destino. Aguarde sua localização para atualizar.';
-            }
-        }
+    if (window.rotaPolyline) {
+      map.removeLayer(window.rotaPolyline);
+      window.rotaPolyline = null;
+    }
 
+    if (destinoMarker) {
+      map.removeLayer(destinoMarker);
+      destinoMarker = null;
+    }
+
+    destinoMarker = L.marker([destLat, destLng])
+      .addTo(map)
+      .bindPopup(rotaModo === 'retorno' ? '<b>Portaria / Saída</b>' : '<b>Destino</b>');
+
+    window.rotaPolyline = L.polyline(coords, {
+      color: '#2563eb',
+      weight: 7,
+      opacity: 0.9
+    }).addTo(map);
+
+    rotaAtualCoords = coords;
+    ultimaAtualizacaoRotaEm = Date.now();
+
+    map.fitBounds(L.latLngBounds(coords), getPaddingMapa());
+
+    document.getElementById('status-rota').innerText =
+      rotaModo === 'retorno'
+        ? 'Rota de saída calculada pelo Google.'
+        : 'Rota de entrada calculada pelo Google.';
+
+  } catch (error) {
+    console.error('Erro ao traçar rota Google:', error);
+    document.getElementById('status-rota').innerText =
+      'Erro ao calcular rota pelo Google.';
+  }
+}
+
+
+
+	function decodePolyline(encoded) {
+  let points = [];
+  let index = 0;
+  let lat = 0;
+  let lng = 0;
+
+  while (index < encoded.length) {
+    let b, shift = 0, result = 0;
+
+    do {
+      b = encoded.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+
+    lat += (result & 1) ? ~(result >> 1) : (result >> 1);
+
+    shift = 0;
+    result = 0;
+
+    do {
+      b = encoded.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+
+    lng += (result & 1) ? ~(result >> 1) : (result >> 1);
+
+    points.push([lat / 1e5, lng / 1e5]);
+  }
+
+  return points;
+}
         async function registrarOuAtualizarVisita() {
             if (!condominioAtual || !loteDestinoAtual) return;
 
@@ -801,62 +841,96 @@ async function apiPatch(url, body){
             return txt.trim();
         }
 
-        function iniciarRastreamentoVisitante(centralizar = false) {
-            if (!navigator.geolocation) {
-                console.warn('Geolocalização não suportada.');
-                return;
-            }
+       let ultimaPosicaoValida = null;
 
-            if (geolocationWatchId) return;
+function distanciaEntrePontos(a, b) {
+  return map.distance([a.lat, a.lng], [b.lat, b.lng]);
+}
 
-            geolocationWatchId = navigator.geolocation.watchPosition(
-                async (position) => {
-                    const lat = position.coords.latitude;
-                    const lng = position.coords.longitude;
-                    const accuracy = position.coords.accuracy;
-                    const speedMs = position.coords.speed;
-                    const speedKmh = speedMs != null ? speedMs * 3.6 : 0;
+function iniciarRastreamentoVisitante(centralizar = false) {
+  if (!navigator.geolocation) {
+    console.warn('Geolocalização não suportada.');
+    return;
+  }
 
-                    minhaPosicaoAtual = { lat, lng };
-                    atualizarMarcadorVisitante(lat, lng, centralizar);
-                    centralizar = false;
+  if (geolocationWatchId) return;
 
-                    await verificarVelocidade(speedKmh);
+  geolocationWatchId = navigator.geolocation.watchPosition(
+    async (position) => {
+      const lat = position.coords.latitude;
+      const lng = position.coords.longitude;
+      const accuracy = position.coords.accuracy || 999;
+      const speedMs = position.coords.speed;
+      const speedKmh = speedMs != null ? speedMs * 3.6 : 0;
 
-                    if (destinoAtualCoords) {
-                        verificarChegada(lat, lng);
-                        await verificarDesvio(lat, lng);
+      if (accuracy > 50) {
+        console.log('GPS ignorado por baixa precisão:', accuracy);
+        return;
+      }
 
-                        const agora = Date.now();
-                        const precisaRecalcular =
-                            !routingControl ||
-                            (agora - ultimaAtualizacaoRotaEm) >= INTERVALO_RECALCULO_ROTA_MS;
+      const novaPosicao = { lat, lng };
 
-                        if ((!destinoChegou || rotaModo === 'retorno') && precisaRecalcular) {
-                            tracarRotaAteDestino(destinoAtualCoords[0], destinoAtualCoords[1], false);
-                        }
-                    }
+      if (ultimaPosicaoValida) {
+        const distancia = distanciaEntrePontos(ultimaPosicaoValida, novaPosicao);
 
-                    const agora = Date.now();
-                    if (agora - ultimoEnvioPosicao < 8000) return;
-                    ultimoEnvioPosicao = agora;
+        if (distancia < 2) return;
 
-                    await enviarPosicaoTempoReal(lat, lng, accuracy, speedKmh);
-                },
-                (error) => {
-                    console.error('Erro geolocalização:', error);
-                    document.getElementById('status-rota').innerText =
-                        'Não foi possível obter sua localização. A rota pode usar a portaria como origem.';
-                },
-                {
-                    enableHighAccuracy: true,
-                    maximumAge: 5000,
-                    timeout: 10000
-                }
-            );
+        if (distancia > 100) {
+          console.log('GPS ignorado por salto grande:', distancia);
+          return;
         }
+      }
 
-        function atualizarMarcadorVisitante(lat, lng, centralizar = false) {
+      ultimaPosicaoValida = novaPosicao;
+      minhaPosicaoAtual = novaPosicao;
+
+      atualizarMarcadorVisitante(lat, lng, centralizar);
+
+      if (map) {
+  map.panTo([lat, lng], {
+    animate: true,
+    duration: 0.5
+  });
+}
+      centralizar = false;
+
+      await verificarVelocidade(speedKmh);
+
+      if (destinoAtualCoords) {
+        verificarChegada(lat, lng);
+        await verificarDesvio(lat, lng);
+
+        // IMPORTANTE:
+        // Não recalcula rota automaticamente durante o trajeto.
+        // A rota deve ser traçada quando escolher o destino.
+      }
+
+      const agora = Date.now();
+      if (agora - ultimoEnvioPosicao < 8000) return;
+      ultimoEnvioPosicao = agora;
+
+      await enviarPosicaoTempoReal(lat, lng, accuracy, speedKmh);
+    },
+    (error) => {
+      console.error('Erro geolocalização:', error);
+      document.getElementById('status-rota').innerText =
+        'Não foi possível obter sua localização. A rota pode usar a portaria como origem.';
+    },
+    {
+      enableHighAccuracy: true,
+      maximumAge: 1000,
+      timeout: 10000
+    }
+  );
+}
+async function calcularRotaGoogle(origem, destino) {
+  return await apiPost('/google/rota', {
+    origem,
+    destino
+  });
+}
+
+function atualizarMarcadorVisitante(lat, lng, centralizar = false) {
             if (visitanteMarker) {
                 visitanteMarker.setLatLng([lat, lng]);
             } else {
@@ -918,26 +992,30 @@ async function apiPatch(url, body){
             return Math.sqrt(dx * dx + dy * dy);
         }
 
-        function distanciaDaRota(lat, lng) {
-            if (!routingControl || !routingControl._routes || !routingControl._routes.length) {
-                return 0;
-            }
+      function distanciaDaRota(lat, lng) {
+  const coords = window.rotaAtualCoords || [];
+  if (coords.length < 2) return 0;
 
-            const coords = routingControl._routes[0].coordinates || [];
-            if (coords.length < 2) return 0;
+  let menor = Infinity;
 
-            let menor = Infinity;
+  for (let i = 0; i < coords.length - 1; i++) {
+    const a = coords[i];
+    const b = coords[i + 1];
 
-            for (let i = 0; i < coords.length - 1; i++) {
-                const a = coords[i];
-                const b = coords[i + 1];
-                const dist = distanciaPontoSegmentoMetros(lat, lng, a.lat, a.lng, b.lat, b.lng);
-                if (dist < menor) menor = dist;
-            }
+    const dist = distanciaPontoSegmentoMetros(
+      lat,
+      lng,
+      a[0],
+      a[1],
+      b[0],
+      b[1]
+    );
 
-            return menor;
-        }
+    if (dist < menor) menor = dist;
+  }
 
+  return menor;
+}
         async function verificarVelocidade(speedKmh) {
             if (!speedKmh || speedKmh <= LIMITE_VELOCIDADE_KMH) return;
 
@@ -955,7 +1033,7 @@ async function apiPatch(url, body){
         }
 
         async function verificarDesvio(lat, lng) {
-            if (!routingControl || !destinoAtualCoords) return;
+            if (!window.rotaAtualCoords || !destinoAtualCoords) return;
 
             const distRota = distanciaDaRota(lat, lng);
             if (distRota <= DISTANCIA_DESVIO_METROS) return;
