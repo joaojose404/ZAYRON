@@ -2034,7 +2034,14 @@ console.log('✅ PATCH MAPA VISITANTE APLICADO - tela original preservada');
     const j = await r.json();
     const rt = j?.routes?.[0];
 
-    if(!rt || !Array.isArray(rt.geometry?.coordinates)) throw new Error("Sem rota");
+    if(!rt || !Array.isArray(rt.geometry?.coordinates)) console.warn("OSRM sem rota, usando linha direta.");
+
+return {
+  coords: [
+    { lat: origem.lat, lng: origem.lng },
+    { lat: destino.lat, lng: destino.lng }
+  ]
+};
 
     return {
       coords: rt.geometry.coordinates.map(c => ({lat:c[1], lng:c[0]})),
@@ -2205,6 +2212,13 @@ console.log('✅ PATCH MAPA VISITANTE APLICADO - tela original preservada');
     status("Calculando rota de monitoramento...");
 
     try{
+const distanciaOrigemDestino = dist(origem, destino);
+
+if (distanciaOrigemDestino < 10) {
+    alert("Destino inválido: o destino está igual ou muito perto do ponto de partida.");
+    status("Destino inválido. Selecione outro lote.");
+    return;
+}
       const rota = await calcularRota(origem,destino);
       monitor.rota = rota.coords;
       window.rotaAtualCoords = monitor.rota.map(p => [p.lat,p.lng]);
