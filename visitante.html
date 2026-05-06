@@ -2214,7 +2214,15 @@ console.log('✅ PATCH MAPA VISITANTE APLICADO - tela original preservada');
       iniciarWatch();
 
       status(modo === "retorno" ? "Retorno monitorado pelo Zayron." : "Ida monitorada pelo Zayron.");
-      abrirGoogleMaps(origem,destino);
+      if (/iPad|iPhone|iPod/.test(navigator.userAgent)) {
+  abrirBotaoIOS(
+    `comgooglemaps://?saddr=${origem.lat},${origem.lng}&daddr=${destino.lat},${destino.lng}&directionsmode=driving`,
+    `maps://?saddr=${origem.lat},${origem.lng}&daddr=${destino.lat},${destino.lng}`,
+    `https://www.google.com/maps/dir/?api=1&origin=${origem.lat},${origem.lng}&destination=${destino.lat},${destino.lng}&travelmode=driving`
+  );
+} else {
+  abrirGoogleMaps(origem,destino);
+}
     }catch(e){
       alert("Não consegui calcular a rota de monitoramento. Verifique internet e destino.");
       status("Erro ao calcular rota.");
