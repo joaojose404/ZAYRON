@@ -1792,21 +1792,20 @@ async function tracarRotaAteDestino(destLat, destLng, forceRecreate = false) {
         }
     }
 
-    zayronDesenharRotaCorrigida(
-        coords,
-        destino.lat,
-        destino.lng,
-        rotaModo === 'retorno'
-            ? 'Rota de saída calculada.'
-            : 'Rota de entrada calculada.'
-    );
+ zayronDesenharRotaCorrigida(
+    coords,
+    destino.lat,
+    destino.lng,
+    rotaModo === 'retorno'
+        ? 'Rota de saída calculada.'
+        : 'Rota de entrada calculada.'
+);
 
-    // Atualiza imediatamente o marcador colado na rota, se já houver GPS.
-    if (minhaPosicaoAtual) {
-        atualizarMarcadorVisitante(minhaPosicaoAtual.lat, minhaPosicaoAtual.lng, false);
-    }
+// Atualiza imediatamente o marcador colado na rota, se já houver GPS.
+if (minhaPosicaoAtual) {
+    atualizarMarcadorVisitante(minhaPosicaoAtual.lat, minhaPosicaoAtual.lng, false);
 }
-
+}
 // Sobrescreve somente o marcador do visitante para não ficar jogado fora da rota.
 function atualizarMarcadorVisitante(lat, lng, centralizar = false) {
     if (!map || !zayronCoordValida(lat, lng)) return;
