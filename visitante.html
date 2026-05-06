@@ -347,32 +347,67 @@
     <div id="map"></div>
 
     <script>
-       const API = "http://localhost:3000";
+       const API = "https://zayron-api-1011701557501.southamerica-east1.run.app";
+
+function normalizarTexto(valor) {
+  return String(valor || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toUpperCase();
+}
 
 async function apiGet(url){
-  const res = await fetch(API + url);
-  const json = await res.json();
-  return json.data;
+  const res = await fetch(API + url, {
+    method: 'GET',
+    headers: { 'Accept': 'application/json' }
+  });
+
+  const json = await res.json().catch(() => ({}));
+
+  if (!res.ok || json.success === false) {
+    throw new Error(json.message || json.details || `Erro HTTP ${res.status}`);
+  }
+
+  return json.data ?? json;
 }
 
 async function apiPost(url, body){
   const res = await fetch(API + url,{
     method:"POST",
-    headers:{'Content-Type':'application/json'},
+    headers:{
+      'Content-Type':'application/json',
+      'Accept':'application/json'
+    },
     body:JSON.stringify(body)
   });
-  const json = await res.json();
-  return json.data;
+
+  const json = await res.json().catch(() => ({}));
+
+  if (!res.ok || json.success === false) {
+    throw new Error(json.message || json.details || `Erro HTTP ${res.status}`);
+  }
+
+  return json.data ?? json;
 }
 
 async function apiPatch(url, body){
   const res = await fetch(API + url,{
     method:"PATCH",
-    headers:{'Content-Type':'application/json'},
+    headers:{
+      'Content-Type':'application/json',
+      'Accept':'application/json'
+    },
     body:JSON.stringify(body)
   });
-  const json = await res.json();
-  return json.data;
+
+  const json = await res.json().catch(() => ({}));
+
+  if (!res.ok || json.success === false) {
+    throw new Error(json.message || json.details || `Erro HTTP ${res.status}`);
+  }
+
+  return json.data ?? json;
 }
 
         let map = null;
@@ -395,12 +430,28 @@ async function apiPatch(url, body){
         let destinoChegou = false;
         let ultimoDesvioEm = 0;
         let ultimoExcessoVelocidadeEm = 0;
+        let ultimoParadoEm = 0;
+        let paradaIniciadaEm = null;
+        let ultimoTempoMonitoramento = null;
+        let ultimaPosicaoMonitoramento = null;
+        let ultimaVelocidadeCalculadaKmh = 0;
         let ultimaAtualizacaoRotaEm = 0;
 
         const LIMITE_VELOCIDADE_KMH = 30;
+        const TEMPO_PARADO_ALERTA_MS = 30000;
+        const DISTANCIA_PARADO_METROS = 3;
         const DISTANCIA_CHEGADA_METROS = 35;
-        const DISTANCIA_DESVIO_METROS = 80;
+        const DISTANCIA_DESVIO_METROS = 35;
         const INTERVALO_RECALCULO_ROTA_MS = 12000;
+        const ZOOM_NAVEGACAO = 20;
+        const ZOOM_NAVEGACAO_MOBILE = 20;
+        const MAPA_PAINEL_OFFSET_DESKTOP = 210;
+        const MAPA_PAINEL_OFFSET_VERTICAL = 130;
+        const GOOGLE_SATELLITE_TILE = 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}';
+        let modoNavegacaoAtivo = false;
+        let retornoAutomaticoIniciado = false;
+        let visitaEncerradaAutomaticamente = false;
+        let avisoChegadaDestinoMostrado = false;
 
         function escapeHtml(text) {
             if (text === null || text === undefined) return '';
@@ -448,7 +499,8 @@ async function apiPatch(url, body){
         }
 
         async function conectarCondominio() {
-            const nomeBusca = document.getElementById('input-condo').value.trim().toUpperCase();
+            const nomeDigitado = document.getElementById('input-condo').value.trim();
+            const nomeBusca = normalizarTexto(nomeDigitado);
             const status = document.getElementById('status-condo');
 
             if (!nomeBusca || nomeBusca.length < 2) {
@@ -459,21 +511,40 @@ async function apiPatch(url, body){
             status.innerText = 'Buscando condomínio...';
 
             try {
-                const condos = await apiGet(`/public/condominios?busca=${encodeURIComponent(nomeBusca)}`);
+                const condos = await apiGet(`/public/condominios?busca=${encodeURIComponent(nomeDigitado)}`);
+                const listaCondominios = Array.isArray(condos) ? condos : [];
 
-                if (!condos || condos.length === 0) {
+                console.log('Condomínios retornados:', listaCondominios);
+
+                if (!listaCondominios.length) {
                     status.innerText = 'Condomínio não encontrado.';
                     return;
                 }
 
-                condominioAtual = condos[0];
+                // Importante: a API pode retornar mais de um condomínio.
+                // Aqui escolhemos o que realmente corresponde ao texto digitado,
+                // evitando pegar Alpha quando o usuário digitou Terras.
+                condominioAtual =
+                    listaCondominios.find(c => normalizarTexto(c.nome) === nomeBusca) ||
+                    listaCondominios.find(c => normalizarTexto(c.nome).includes(nomeBusca)) ||
+                    listaCondominios.find(c => nomeBusca.includes(normalizarTexto(c.nome))) ||
+                    listaCondominios[0];
+
+                if (!condominioAtual || !condominioAtual.id) {
+                    status.innerText = 'Condomínio não encontrado.';
+                    return;
+                }
+
+                status.innerText = `Condomínio encontrado: ${condominioAtual.nome}. Carregando unidades...`;
 
                 const lotes = await apiGet(`/public/lotes?condominio_id=${encodeURIComponent(condominioAtual.id)}`);
+                lotesCondominio = Array.isArray(lotes) ? lotes : [];
 
-                lotesCondominio = lotes || [];
+                console.log('Condomínio selecionado:', condominioAtual);
+                console.log('Lotes retornados:', lotesCondominio);
 
                 if (!lotesCondominio.length) {
-                    status.innerText = 'Este condomínio não possui unidades cadastradas.';
+                    status.innerText = 'Este condomínio não possui unidades cadastradas na nuvem.';
                     return;
                 }
 
@@ -483,8 +554,8 @@ async function apiPatch(url, body){
                     document.getElementById('step-ident').classList.remove('hidden');
                 }, 300);
             } catch (err) {
-                console.error(err);
-                status.innerText = 'Falha de conexão.';
+                console.error('Erro ao conectar condomínio:', err);
+                status.innerText = `Falha de conexão: ${err.message}`;
             }
         }
 
@@ -563,21 +634,24 @@ async function apiPatch(url, body){
             const portaria = getPortariaCoords();
 
             if (!map) {
-                map = L.map('map', { zoomControl: true }).setView(portaria, 18);
+                map = L.map('map', {
+                    zoomControl: true,
+                    maxZoom: 22,
+                    zoomSnap: 0.25,
+                    zoomDelta: 0.5
+                }).setView(portaria, ZOOM_NAVEGACAO);
 
-                L.tileLayer(
-                    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-                    {
-                        maxZoom: 22,
-                        attribution: 'Tiles &copy; Esri'
-                    }
-                ).addTo(map);
+                L.tileLayer(GOOGLE_SATELLITE_TILE, {
+                    maxZoom: 22,
+                    maxNativeZoom: 22,
+                    attribution: 'Imagens © Google'
+                }).addTo(map);
 
                 portariaMarker = L.marker(portaria)
                     .addTo(map)
                     .bindPopup('<b>Portaria</b>');
             } else {
-                map.flyTo(portaria, 18);
+                map.flyTo(portaria, ZOOM_NAVEGACAO, { duration: 0.5 });
             }
 
             map.whenReady(() => {
@@ -687,37 +761,37 @@ async function apiPatch(url, body){
             };
         }
 
+        function centralizarMapaNoVisitante(lat, lng, animate = true) {
+            if (!map || lat == null || lng == null) return;
+
+            const zoom = isMobile() ? ZOOM_NAVEGACAO_MOBILE : ZOOM_NAVEGACAO;
+            map.setView([Number(lat), Number(lng)], zoom, { animate });
+
+            // Modo navegação tipo Uber/Google:
+            // visitante mais embaixo da tela para mostrar o caminho à frente.
+            setTimeout(() => {
+                if (!map) return;
+                if (isMobile()) {
+                    map.panBy([0, MAPA_PAINEL_OFFSET_VERTICAL], { animate: false });
+                } else {
+                    map.panBy([-MAPA_PAINEL_OFFSET_DESKTOP, MAPA_PAINEL_OFFSET_VERTICAL], { animate: false });
+                }
+            }, 80);
+        }
+
+
 async function tracarRotaAteDestino(destLat, destLng, forceRecreate = false) {
   if (!map) return;
 
   const origem = obterOrigemRota();
+  modoNavegacaoAtivo = true;
 
-  try {
-    document.getElementById('status-rota').innerText = 'Calculando rota pelo Google...';
+  const origemLat = Number(origem[0]);
+  const origemLng = Number(origem[1]);
+  const destinoLat = Number(destLat);
+  const destinoLng = Number(destLng);
 
-    const rotaGoogle = await calcularRotaGoogle(
-      {
-        lat: Number(origem[0]),
-        lng: Number(origem[1])
-      },
-      {
-        lat: Number(destLat),
-        lng: Number(destLng)
-      }
-    );
-
-    const encoded = rotaGoogle?.polyline?.encodedPolyline;
-
-    if (!encoded) {
-      throw new Error('Google não retornou a rota.');
-    }
-
-    const coords = decodePolyline(encoded);
-
-    if (!coords.length) {
-      throw new Error('Polyline vazia.');
-    }
-
+  function limparRotaAtual() {
     if (routingControl) {
       map.removeControl(routingControl);
       routingControl = null;
@@ -728,41 +802,103 @@ async function tracarRotaAteDestino(destLat, destLng, forceRecreate = false) {
       window.rotaPolyline = null;
     }
 
+    if (window.rotaPolylineBorda) {
+      map.removeLayer(window.rotaPolylineBorda);
+      window.rotaPolylineBorda = null;
+    }
+
     if (destinoMarker) {
       map.removeLayer(destinoMarker);
       destinoMarker = null;
     }
+  }
 
-    destinoMarker = L.marker([destLat, destLng])
+  function desenharRotaGoogle(coords, mensagem) {
+    limparRotaAtual();
+
+    destinoMarker = L.marker([destinoLat, destinoLng])
       .addTo(map)
       .bindPopup(rotaModo === 'retorno' ? '<b>Portaria / Saída</b>' : '<b>Destino</b>');
 
+    window.rotaPolylineBorda = L.polyline(coords, {
+      color: '#ffffff',
+      weight: 12,
+      opacity: 0.95,
+      lineJoin: 'round',
+      lineCap: 'round'
+    }).addTo(map);
+
     window.rotaPolyline = L.polyline(coords, {
       color: '#2563eb',
-      weight: 7,
-      opacity: 0.9
+      weight: 8,
+      opacity: 1,
+      lineJoin: 'round',
+      lineCap: 'round'
     }).addTo(map);
 
     rotaAtualCoords = coords;
+    window.rotaAtualCoords = coords;
     ultimaAtualizacaoRotaEm = Date.now();
 
-    map.fitBounds(L.latLngBounds(coords), getPaddingMapa());
+    document.getElementById('status-rota').innerText = mensagem;
 
-    document.getElementById('status-rota').innerText =
+    try {
+      map.fitBounds(coords, getPaddingMapa());
+    } catch {
+      centralizarMapaNoVisitante(origemLat, origemLng, false);
+    }
+  }
+
+  try {
+    if (
+      !Number.isFinite(origemLat) ||
+      !Number.isFinite(origemLng) ||
+      !Number.isFinite(destinoLat) ||
+      !Number.isFinite(destinoLng)
+    ) {
+      throw new Error('Coordenadas inválidas para calcular rota.');
+    }
+
+    document.getElementById('status-rota').innerText = 'Calculando rota pelo Google Maps...';
+
+    const rotaGoogle = await calcularRotaGoogle(
+      { lat: origemLat, lng: origemLng },
+      { lat: destinoLat, lng: destinoLng }
+    );
+
+    const encoded = rotaGoogle?.polyline?.encodedPolyline;
+    if (!encoded) throw new Error('Google Maps não retornou a rota.');
+
+    const coords = decodePolyline(encoded);
+    if (!coords.length || coords.length < 2) throw new Error('Polyline vazia.');
+
+    desenharRotaGoogle(
+      coords,
       rotaModo === 'retorno'
-        ? 'Rota de saída calculada pelo Google.'
-        : 'Rota de entrada calculada pelo Google.';
+        ? 'Rota de saída calculada pelo Google Maps.'
+        : 'Rota de entrada calculada pelo Google Maps.'
+    );
 
   } catch (error) {
-    console.error('Erro ao traçar rota Google:', error);
+    console.error('Erro ao traçar rota pelo Google Maps:', error);
+
+    limparRotaAtual();
+
+    destinoMarker = L.marker([destinoLat, destinoLng])
+      .addTo(map)
+      .bindPopup(rotaModo === 'retorno' ? '<b>Portaria / Saída</b>' : '<b>Destino</b>');
+
+    rotaAtualCoords = null;
+    window.rotaAtualCoords = null;
+
     document.getElementById('status-rota').innerText =
-      'Erro ao calcular rota pelo Google.';
+      'Não foi possível calcular a rota pelo Google Maps. Verifique a rota na API.';
+
+    centralizarMapaNoVisitante(origemLat, origemLng, false);
   }
 }
 
-
-
-	function decodePolyline(encoded) {
+function decodePolyline(encoded) {
   let points = [];
   let index = 0;
   let lat = 0;
@@ -840,92 +976,197 @@ async function tracarRotaAteDestino(destLat, destLng, forceRecreate = false) {
             }
             return txt.trim();
         }
+        let ultimaPosicaoValida = null;
 
-       let ultimaPosicaoValida = null;
-
-function distanciaEntrePontos(a, b) {
-  return map.distance([a.lat, a.lng], [b.lat, b.lng]);
-}
-
-function iniciarRastreamentoVisitante(centralizar = false) {
-  if (!navigator.geolocation) {
-    console.warn('Geolocalização não suportada.');
-    return;
-  }
-
-  if (geolocationWatchId) return;
-
-  geolocationWatchId = navigator.geolocation.watchPosition(
-    async (position) => {
-      const lat = position.coords.latitude;
-      const lng = position.coords.longitude;
-      const accuracy = position.coords.accuracy || 999;
-      const speedMs = position.coords.speed;
-      const speedKmh = speedMs != null ? speedMs * 3.6 : 0;
-
-      if (accuracy > 50) {
-        console.log('GPS ignorado por baixa precisão:', accuracy);
-        return;
-      }
-
-      const novaPosicao = { lat, lng };
-
-      if (ultimaPosicaoValida) {
-        const distancia = distanciaEntrePontos(ultimaPosicaoValida, novaPosicao);
-
-        if (distancia < 2) return;
-
-        if (distancia > 100) {
-          console.log('GPS ignorado por salto grande:', distancia);
-          return;
+        function distanciaEntrePontos(a, b) {
+            return map.distance([a.lat, a.lng], [b.lat, b.lng]);
         }
-      }
 
-      ultimaPosicaoValida = novaPosicao;
-      minhaPosicaoAtual = novaPosicao;
+        function calcularVelocidadePorGps(lat, lng, accuracy, speedMs) {
+            const agora = Date.now();
+            let velocidadeKmh = 0;
 
-      atualizarMarcadorVisitante(lat, lng, centralizar);
+            if (typeof speedMs === 'number' && Number.isFinite(speedMs) && speedMs >= 0) {
+                velocidadeKmh = speedMs * 3.6;
+            }
 
- if (map) {
-  map.setView([lat, lng], map.getZoom(), {
-    animate: true
-  });
-}
-      centralizar = false;
+            if (ultimaPosicaoMonitoramento && ultimoTempoMonitoramento) {
+                const distancia = distanciaEntrePontos(ultimaPosicaoMonitoramento, { lat, lng });
+                const segundos = Math.max(1, (agora - ultimoTempoMonitoramento) / 1000);
 
-      await verificarVelocidade(speedKmh);
+                // Quando o navegador não fornece speed, calcula por distância/tempo.
+                // Ignora cálculo com GPS muito ruim para evitar falso alerta.
+                if ((!velocidadeKmh || velocidadeKmh < 1) && accuracy <= 120 && distancia >= 4) {
+                    velocidadeKmh = (distancia / segundos) * 3.6;
+                }
+            }
 
-      if (destinoAtualCoords) {
-        verificarChegada(lat, lng);
-        await verificarDesvio(lat, lng);
+            ultimaPosicaoMonitoramento = { lat, lng };
+            ultimoTempoMonitoramento = agora;
+            ultimaVelocidadeCalculadaKmh = velocidadeKmh;
+            return velocidadeKmh;
+        }
 
-        // IMPORTANTE:
-        // Não recalcula rota automaticamente durante o trajeto.
-        // A rota deve ser traçada quando escolher o destino.
-      }
+        async function verificarVisitanteParado(lat, lng) {
+            const agora = Date.now();
 
-      const agora = Date.now();
-      if (agora - ultimoEnvioPosicao < 8000) return;
-      ultimoEnvioPosicao = agora;
+            if (!ultimaPosicaoValida) {
+                paradaIniciadaEm = agora;
+                return;
+            }
 
-      await enviarPosicaoTempoReal(lat, lng, accuracy, speedKmh);
-    },
-    (error) => {
-      console.error('Erro geolocalização:', error);
-      document.getElementById('status-rota').innerText =
-        'Não foi possível obter sua localização. A rota pode usar a portaria como origem.';
-    },
-    {
-      enableHighAccuracy: true,
-      maximumAge: 1000,
-      timeout: 10000
+            const distancia = distanciaEntrePontos(ultimaPosicaoValida, { lat, lng });
+
+            if (distancia <= DISTANCIA_PARADO_METROS) {
+                if (!paradaIniciadaEm) paradaIniciadaEm = agora;
+
+                const tempoParado = agora - paradaIniciadaEm;
+                if (tempoParado >= TEMPO_PARADO_ALERTA_MS && agora - ultimoParadoEm > 30000) {
+                    ultimoParadoEm = agora;
+                    mostrarAlerta('warning', 'Visitante parado há mais de 30 segundos. A central foi notificada.');
+
+                    await registrarEventoOperacional(
+                        'visitante_parado',
+                        'Visitante parado na rota',
+                        `Visitante ficou parado por aproximadamente ${Math.round(tempoParado / 1000)} segundos durante a navegação.`,
+                        'media'
+                    );
+
+                    if (visitaAtualId) {
+                        await apiPatch(`/public/visitas/${visitaAtualId}`, { status: 'parado' });
+                    }
+                }
+            } else {
+                paradaIniciadaEm = agora;
+            }
+        }
+
+       function iniciarRastreamentoVisitante(centralizar = false) {
+    if (!navigator.geolocation) {
+        console.warn('Geolocalização não suportada.');
+        alert('Este celular não suporta localização.');
+        return;
     }
-  );
+
+    if (geolocationWatchId) return;
+
+    document.getElementById('status-rota').innerText =
+        'Ative a localização do celular e aguarde o GPS iniciar...';
+
+    geolocationWatchId = navigator.geolocation.watchPosition(
+        async (position) => {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            const accuracy = position.coords.accuracy || 999;
+            const speedMs = position.coords.speed;
+
+            // Bloqueia somente GPS MUITO ruim
+            if (accuracy > 200) {
+                console.log('GPS muito ruim ignorado:', accuracy);
+                document.getElementById('status-rota').innerText =
+                    `GPS muito fraco (${Math.round(accuracy)}m). Aguarde melhorar.`;
+                mostrarAlerta('warning', `GPS muito fraco (${Math.round(accuracy)}m). Aguarde melhorar.`);
+                return;
+            }
+
+            // Aceita GPS médio, mas avisa
+            if (accuracy > 50) {
+                document.getElementById('status-rota').innerText =
+                    `GPS aproximado (${Math.round(accuracy)}m).`;
+            }
+
+            const novaPosicao = { lat, lng };
+
+            if (ultimaPosicaoValida) {
+                const distanciaSalto = distanciaEntrePontos(ultimaPosicaoValida, novaPosicao);
+
+                // Só bloqueia salto absurdo quando o GPS também estiver ruim
+                if (distanciaSalto > 250 && accuracy > 100) {
+                    console.log('GPS ignorado por salto grande:', distanciaSalto, 'Precisão:', accuracy);
+                    document.getElementById('status-rota').innerText =
+                        'GPS oscilando. Aguardando posição mais estável...';
+                    return;
+                }
+            }
+
+            const velocidadeKmh = calcularVelocidadePorGps(lat, lng, accuracy, speedMs);
+
+            minhaPosicaoAtual = novaPosicao;
+            atualizarMarcadorVisitante(lat, lng, centralizar);
+
+            if (modoNavegacaoAtivo || destinoAtualCoords) {
+                centralizarMapaNoVisitante(lat, lng, true);
+            } else if (centralizar) {
+                centralizarMapaNoVisitante(lat, lng, true);
+            }
+
+            centralizar = false;
+
+            if (accuracy <= 50) {
+                document.getElementById('status-rota').innerText =
+                    `GPS preciso: ${Math.round(accuracy)}m`;
+            }
+
+            await verificarVisitanteParado(lat, lng);
+            await verificarVelocidade(velocidadeKmh);
+
+            if (destinoAtualCoords) {
+                verificarChegada(lat, lng);
+                await verificarDesvio(lat, lng, accuracy);
+            }
+
+            ultimaPosicaoValida = novaPosicao;
+
+            const agora = Date.now();
+            if (agora - ultimoEnvioPosicao < 3000) return;
+            ultimoEnvioPosicao = agora;
+
+            await enviarPosicaoTempoReal(lat, lng, accuracy, velocidadeKmh);
+        },
+        (error) => {
+            console.error('Erro geolocalização:', error);
+
+            let msg = 'Não foi possível obter sua localização.';
+
+            if (error.code === 1) {
+                msg = 'Permissão de localização negada. Ative a localização do navegador.';
+            } else if (error.code === 2) {
+                msg = 'GPS indisponível. Ative o GPS do celular.';
+            } else if (error.code === 3) {
+                msg = 'GPS demorou para responder. Tente novamente.';
+            }
+
+            document.getElementById('status-rota').innerText = msg;
+            alert(msg);
+        },
+        {
+            enableHighAccuracy: true,
+            maximumAge: 0,
+            timeout: 20000
+        }
+    );
 }
 async function calcularRotaGoogle(origem, destino) {
+  const origemLat = Number(origem?.lat);
+  const origemLng = Number(origem?.lng);
+  const destinoLat = Number(destino?.lat);
+  const destinoLng = Number(destino?.lng);
+
+  console.log('ORIGEM GOOGLE:', { lat: origemLat, lng: origemLng });
+  console.log('DESTINO GOOGLE:', { lat: destinoLat, lng: destinoLng });
+
+  if (
+    !Number.isFinite(origemLat) ||
+    !Number.isFinite(origemLng) ||
+    !Number.isFinite(destinoLat) ||
+    !Number.isFinite(destinoLng)
+  ) {
+    throw new Error('Coordenadas inválidas para enviar ao Google Maps.');
+  }
+
   return await apiPost('/google/rota', {
-    origem,
-    destino
+    origem: { lat: origemLat, lng: origemLng },
+    destino: { lat: destinoLat, lng: destinoLng }
   });
 }
 
@@ -942,7 +1183,7 @@ function atualizarMarcadorVisitante(lat, lng, centralizar = false) {
             }
 
             if (centralizar && map) {
-                map.flyTo([lat, lng], 18, { duration: 0.8 });
+                centralizarMapaNoVisitante(lat, lng, true);
             }
         }
 
@@ -1016,32 +1257,40 @@ function atualizarMarcadorVisitante(lat, lng, centralizar = false) {
   return menor;
 }
         async function verificarVelocidade(speedKmh) {
-            if (!speedKmh || speedKmh <= LIMITE_VELOCIDADE_KMH) return;
+            const velocidade = Number(speedKmh || 0);
+            if (!velocidade || velocidade <= LIMITE_VELOCIDADE_KMH) return;
 
             const agora = Date.now();
             if (agora - ultimoExcessoVelocidadeEm < 15000) return;
             ultimoExcessoVelocidadeEm = agora;
 
-            mostrarAlerta('danger', `Velocidade acima do limite. Máximo permitido: ${LIMITE_VELOCIDADE_KMH} km/h.`);
+            mostrarAlerta('danger', `Velocidade acima do limite: ${velocidade.toFixed(1)} km/h. Máximo permitido: ${LIMITE_VELOCIDADE_KMH} km/h.`);
+
             await registrarEventoOperacional(
                 'excesso_velocidade',
                 'Excesso de velocidade detectado',
-                `Visitante acima de ${LIMITE_VELOCIDADE_KMH} km/h. Velocidade atual aproximada: ${speedKmh.toFixed(1)} km/h.`,
+                `Visitante acima de ${LIMITE_VELOCIDADE_KMH} km/h. Velocidade atual aproximada: ${velocidade.toFixed(1)} km/h.`,
                 'alta'
             );
+
+            if (visitaAtualId) {
+                await apiPatch(`/public/visitas/${visitaAtualId}`, { status: 'excesso_velocidade' });
+            }
         }
 
-        async function verificarDesvio(lat, lng) {
+        async function verificarDesvio(lat, lng, accuracy = 0) {
             if (!window.rotaAtualCoords || !destinoAtualCoords) return;
 
             const distRota = distanciaDaRota(lat, lng);
-            if (distRota <= DISTANCIA_DESVIO_METROS) return;
+            const tolerancia = Math.max(DISTANCIA_DESVIO_METROS, Number(accuracy || 0) * 0.55);
+
+            if (distRota <= tolerancia) return;
 
             const agora = Date.now();
             if (agora - ultimoDesvioEm < 15000) return;
             ultimoDesvioEm = agora;
 
-            mostrarAlerta('warning', 'Você saiu da rota. O sistema recalculou o caminho.');
+            mostrarAlerta('danger', `Visitante saiu da rota (${distRota.toFixed(0)}m). Rota recalculada.`);
             document.getElementById('status-rota').innerText = 'Desvio detectado. Rota recalculada automaticamente.';
 
             await registrarEventoOperacional(
@@ -1051,17 +1300,15 @@ function atualizarMarcadorVisitante(lat, lng, centralizar = false) {
                 'alta'
             );
 
-            tracarRotaAteDestino(destinoAtualCoords[0], destinoAtualCoords[1], false);
-
             if (visitaAtualId) {
-                await apiPatch(`/public/visitas/${visitaAtualId}`, {
-                    status: 'desvio'
-                });
+                await apiPatch(`/public/visitas/${visitaAtualId}`, { status: 'desvio' });
             }
+
+            await tracarRotaAteDestino(destinoAtualCoords[0], destinoAtualCoords[1], false);
         }
 
         function verificarChegada(lat, lng) {
-            if (!destinoAtualCoords || destinoChegou) return;
+            if (!destinoAtualCoords || destinoChegou || visitaEncerradaAutomaticamente) return;
 
             const dist = distanciaMetros(lat, lng, destinoAtualCoords[0], destinoAtualCoords[1]);
 
@@ -1069,12 +1316,22 @@ function atualizarMarcadorVisitante(lat, lng, centralizar = false) {
                 destinoChegou = true;
 
                 if (rotaModo === 'destino') {
-                    mostrarAlerta('success', 'Você chegou ao destino. Clique em "Retornar à Portaria".');
-                    document.getElementById('status-rota').innerText = 'Destino alcançado.';
+                    mostrarAlerta('success', 'Você chegou ao destino. Rota de retorno à portaria iniciada automaticamente.');
+                    document.getElementById('status-rota').innerText = 'Destino alcançado. Calculando retorno à portaria...';
                     marcarChegada();
+
+                    if (!avisoChegadaDestinoMostrado) {
+                        avisoChegadaDestinoMostrado = true;
+                        setTimeout(() => alert('Você chegou ao destino. Agora siga a rota de volta até a portaria.'), 250);
+                    }
+
+                    if (!retornoAutomaticoIniciado) {
+                        retornoAutomaticoIniciado = true;
+                        setTimeout(() => retornarPortaria(true), 1200);
+                    }
                 } else if (rotaModo === 'retorno') {
-                    mostrarAlerta('success', 'Você retornou à portaria com sucesso.');
-                    document.getElementById('status-rota').innerText = 'Retorno à portaria concluído.';
+                    mostrarAlerta('success', 'Você chegou à portaria. A visita será encerrada automaticamente.');
+                    document.getElementById('status-rota').innerText = 'Chegada à portaria confirmada. Encerrando visita...';
                     marcarChegadaPortaria();
                 }
             }
@@ -1085,13 +1342,14 @@ function atualizarMarcadorVisitante(lat, lng, centralizar = false) {
 
             try {
                 await apiPatch(`/public/visitas/${visitaAtualId}`, {
-                    status: 'chegou'
+                    status: 'chegou_destino',
+                    horario_chegada_destino: new Date().toISOString()
                 });
 
                 await registrarEventoOperacional(
                     'chegada_destino',
                     'Visitante chegou ao destino',
-                    'O visitante alcançou o lote de destino e pode retornar à portaria.',
+                    'O visitante alcançou o lote de destino. O retorno à portaria foi iniciado automaticamente.',
                     'baixa'
                 );
             } catch (err) {
@@ -1100,16 +1358,26 @@ function atualizarMarcadorVisitante(lat, lng, centralizar = false) {
         }
 
         async function marcarChegadaPortaria() {
-            if (!visitaAtualId) return;
+            if (!visitaAtualId || visitaEncerradaAutomaticamente) return;
+            visitaEncerradaAutomaticamente = true;
 
             try {
                 await apiPatch(`/public/visitas/${visitaAtualId}`, {
+                    status: 'retornou_portaria',
                     horario_chegada_portaria: new Date().toISOString()
                 });
 
-                await encerrarVisita();
+                await registrarEventoOperacional(
+                    'retorno_portaria_concluido',
+                    'Visitante retornou à portaria',
+                    'O visitante retornou à portaria e a visita foi encerrada automaticamente.',
+                    'baixa'
+                );
+
+                await encerrarVisita(true);
             } catch (err) {
                 console.error(err);
+                visitaEncerradaAutomaticamente = false;
             }
         }
 
@@ -1161,17 +1429,18 @@ function atualizarMarcadorVisitante(lat, lng, centralizar = false) {
             if (!map) return;
 
             if (minhaPosicaoAtual) {
-                map.flyTo([minhaPosicaoAtual.lat, minhaPosicaoAtual.lng], 18, { duration: 0.8 });
+                modoNavegacaoAtivo = true;
+                centralizarMapaNoVisitante(minhaPosicaoAtual.lat, minhaPosicaoAtual.lng, true);
                 return;
             }
 
             const portaria = getPortariaCoords();
-            map.flyTo(portaria, 18, { duration: 0.8 });
+            map.flyTo(portaria, ZOOM_NAVEGACAO, { duration: 0.8 });
         }
 
-        async function retornarPortaria() {
+        async function retornarPortaria(automatico = false) {
             if (!minhaPosicaoAtual) {
-                alert('Aguardando sua localização atual.');
+                if (!automatico) alert('Aguardando sua localização atual.');
                 return;
             }
 
@@ -1180,14 +1449,15 @@ function atualizarMarcadorVisitante(lat, lng, centralizar = false) {
             rotaModo = 'retorno';
             destinoChegou = false;
             destinoAtualCoords = [portaria[0], portaria[1]];
+            modoNavegacaoAtivo = true;
 
-            mostrarAlerta('warning', 'Retorno à portaria iniciado.');
+            mostrarAlerta('warning', automatico ? 'Rota de retorno à portaria iniciada automaticamente.' : 'Retorno à portaria iniciado.');
             document.getElementById('info-destino').innerHTML = `
                 <b>Retorno à portaria</b><br>
                 Siga a rota exibida no mapa para voltar ao ponto inicial.
             `;
 
-            tracarRotaAteDestino(portaria[0], portaria[1], true);
+            await tracarRotaAteDestino(portaria[0], portaria[1], true);
 
             if (isMobile()) {
                 togglePainelMapa(true);
@@ -1195,19 +1465,21 @@ function atualizarMarcadorVisitante(lat, lng, centralizar = false) {
 
             if (visitaAtualId) {
                 await apiPatch(`/public/visitas/${visitaAtualId}`, {
-                    status: 'em_rota'
+                    status: 'retornando_portaria'
                 });
 
                 await registrarEventoOperacional(
                     'retorno_portaria',
-                    'Retorno à portaria iniciado',
-                    'O visitante iniciou o retorno à portaria pelo aplicativo.',
+                    automatico ? 'Retorno automático à portaria iniciado' : 'Retorno à portaria iniciado',
+                    automatico
+                        ? 'O retorno à portaria foi iniciado automaticamente após a chegada ao destino.'
+                        : 'O visitante iniciou o retorno à portaria pelo aplicativo.',
                     'baixa'
                 );
             }
         }
 
-        async function encerrarVisita() {
+        async function encerrarVisita(automatico = false) {
             if (!visitaAtualId) {
                 location.reload();
                 return;
@@ -1215,7 +1487,8 @@ function atualizarMarcadorVisitante(lat, lng, centralizar = false) {
 
             try {
                 await apiPatch(`/public/visitas/${visitaAtualId}`, {
-                    status: 'finalizada'
+                    status: 'finalizada',
+                    finalizada_em: new Date().toISOString()
                 });
 
                 if (geolocationWatchId) {
@@ -1223,7 +1496,8 @@ function atualizarMarcadorVisitante(lat, lng, centralizar = false) {
                     geolocationWatchId = null;
                 }
 
-                alert('Visita encerrada com sucesso.');
+                mostrarAlerta('success', automatico ? 'Visita encerrada automaticamente na portaria.' : 'Visita encerrada com sucesso.');
+                alert(automatico ? 'Você chegou à portaria. Visita encerrada automaticamente.' : 'Visita encerrada com sucesso.');
                 location.reload();
             } catch (err) {
                 console.error(err);
@@ -1242,10 +1516,21 @@ function atualizarMarcadorVisitante(lat, lng, centralizar = false) {
             destinoAtualCoords = null;
             destinoChegou = false;
             rotaModo = 'destino';
+            modoNavegacaoAtivo = false;
 
             if (routingControl) {
                 map.removeControl(routingControl);
                 routingControl = null;
+            }
+
+            if (window.rotaPolyline) {
+                map.removeLayer(window.rotaPolyline);
+                window.rotaPolyline = null;
+            }
+
+            if (window.rotaPolylineBorda) {
+                map.removeLayer(window.rotaPolylineBorda);
+                window.rotaPolylineBorda = null;
             }
 
             if (destinoMarker) {
@@ -1253,6 +1538,841 @@ function atualizarMarcadorVisitante(lat, lng, centralizar = false) {
                 destinoMarker = null;
             }
         }
-    </script>
+
+/* =========================================================
+   PATCH FINAL - SOMENTE MAPA DO VISITANTE
+   Mantém login, telas, API, cadastro e fluxo original.
+   Corrige:
+   - rota por rua com fallback OSRM;
+   - marcador colado na rota;
+   - centralização estilo navegação;
+   - sem ponto verde "jogado" fora da via quando existe rota.
+========================================================= */
+
+let visitanteMarkerRealGpsZayron = null;
+let ultimaPosicaoExibidaZayron = null;
+
+function zayronCoordValida(lat, lng) {
+    lat = Number(lat);
+    lng = Number(lng);
+    return Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+}
+
+function zayronDistanciaMetrosPontos(a, b) {
+    const R = 6371000;
+    const rad = v => v * Math.PI / 180;
+    const dLat = rad(b.lat - a.lat);
+    const dLng = rad(b.lng - a.lng);
+    const h =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) *
+        Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+
+function zayronProjetarNaRota(p, a, b) {
+    const x = p.lng, y = p.lat;
+    const x1 = a.lng, y1 = a.lat;
+    const x2 = b.lng, y2 = b.lat;
+
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+
+    if (dx === 0 && dy === 0) return { lat: a.lat, lng: a.lng };
+
+    let t = ((x - x1) * dx + (y - y1) * dy) / (dx * dx + dy * dy);
+    t = Math.max(0, Math.min(1, t));
+
+    return {
+        lat: y1 + t * dy,
+        lng: x1 + t * dx
+    };
+}
+
+function zayronNormalizarRota(coords) {
+    return (coords || [])
+        .map(c => {
+            if (Array.isArray(c)) return { lat: Number(c[0]), lng: Number(c[1]) };
+            return { lat: Number(c.lat ?? c.latitude), lng: Number(c.lng ?? c.longitude) };
+        })
+        .filter(p => zayronCoordValida(p.lat, p.lng));
+}
+
+function zayronSnapNaRota(lat, lng) {
+    const rota = zayronNormalizarRota(window.rotaAtualCoords || []);
+    const real = { lat: Number(lat), lng: Number(lng) };
+
+    if (!zayronCoordValida(real.lat, real.lng) || rota.length < 2) {
+        return { ponto: real, distancia: 0 };
+    }
+
+    let melhor = { ponto: real, distancia: Infinity };
+
+    for (let i = 0; i < rota.length - 1; i++) {
+        const projetado = zayronProjetarNaRota(real, rota[i], rota[i + 1]);
+        const dist = zayronDistanciaMetrosPontos(real, projetado);
+
+        if (dist < melhor.distancia) {
+            melhor = { ponto: projetado, distancia: dist };
+        }
+    }
+
+    return melhor;
+}
+
+function zayronPosicaoExibidaVisitante(lat, lng) {
+    const snap = zayronSnapNaRota(lat, lng);
+
+    // Se existe rota, mostra o visitante colado nela, como apps de navegação.
+    // A distância real ainda continua sendo usada para detectar desvio.
+    if ((window.rotaAtualCoords || []).length >= 2 && snap.ponto && zayronCoordValida(snap.ponto.lat, snap.ponto.lng)) {
+        return snap.ponto;
+    }
+
+    return { lat: Number(lat), lng: Number(lng) };
+}
+
+function zayronAnimarMarcador(marker, destino) {
+    if (!marker || !destino) return;
+
+    const atual = marker.getLatLng();
+    const inicio = { lat: atual.lat, lng: atual.lng };
+    const fim = { lat: Number(destino.lat), lng: Number(destino.lng) };
+
+    if (!zayronCoordValida(fim.lat, fim.lng)) return;
+
+    const frames = 14;
+    let frame = 0;
+
+    if (marker._zayronAnimTimer) {
+        clearInterval(marker._zayronAnimTimer);
+    }
+
+    marker._zayronAnimTimer = setInterval(() => {
+        frame++;
+        const t = Math.min(1, frame / frames);
+        const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+
+        marker.setLatLng([
+            inicio.lat + (fim.lat - inicio.lat) * ease,
+            inicio.lng + (fim.lng - inicio.lng) * ease
+        ]);
+
+        if (frame >= frames) {
+            clearInterval(marker._zayronAnimTimer);
+            marker._zayronAnimTimer = null;
+        }
+    }, 24);
+}
+
+async function zayronCalcularRotaOSRM(origem, destino) {
+    const url =
+        'https://router.project-osrm.org/route/v1/driving/' +
+        origem.lng + ',' + origem.lat + ';' + destino.lng + ',' + destino.lat +
+        '?overview=full&geometries=geojson&steps=false';
+
+    const res = await fetch(url);
+    const data = await res.json();
+
+    const coords = data?.routes?.[0]?.geometry?.coordinates;
+    if (!Array.isArray(coords) || coords.length < 2) {
+        throw new Error('OSRM não retornou rota.');
+    }
+
+    return coords.map(c => [c[1], c[0]]);
+}
+
+function zayronLimparRotaAtual() {
+    if (routingControl) {
+        try { map.removeControl(routingControl); } catch(e) {}
+        routingControl = null;
+    }
+
+    if (window.rotaPolyline) {
+        try { map.removeLayer(window.rotaPolyline); } catch(e) {}
+        window.rotaPolyline = null;
+    }
+
+    if (window.rotaPolylineBorda) {
+        try { map.removeLayer(window.rotaPolylineBorda); } catch(e) {}
+        window.rotaPolylineBorda = null;
+    }
+
+    if (destinoMarker) {
+        try { map.removeLayer(destinoMarker); } catch(e) {}
+        destinoMarker = null;
+    }
+}
+
+function zayronDesenharRotaCorrigida(coords, destinoLat, destinoLng, mensagem) {
+    if (!map || !Array.isArray(coords) || coords.length < 2) return;
+
+    zayronLimparRotaAtual();
+
+    destinoMarker = L.marker([destinoLat, destinoLng])
+        .addTo(map)
+        .bindPopup(rotaModo === 'retorno' ? '<b>Portaria / Saída</b>' : '<b>Destino</b>');
+
+    window.rotaPolylineBorda = L.polyline(coords, {
+        color: '#ffffff',
+        weight: 13,
+        opacity: 0.95,
+        lineJoin: 'round',
+        lineCap: 'round',
+        smoothFactor: 2
+    }).addTo(map);
+
+    window.rotaPolyline = L.polyline(coords, {
+        color: '#2563eb',
+        weight: 8,
+        opacity: 1,
+        lineJoin: 'round',
+        lineCap: 'round',
+        smoothFactor: 2
+    }).addTo(map);
+
+    rotaAtualCoords = coords;
+    window.rotaAtualCoords = coords;
+    ultimaAtualizacaoRotaEm = Date.now();
+
+    const status = document.getElementById('status-rota');
+    if (status) status.innerText = mensagem || 'Rota calculada.';
+
+    try {
+        map.fitBounds(coords, getPaddingMapa());
+    } catch(e) {
+        const origem = obterOrigemRota();
+        centralizarMapaNoVisitante(origem[0], origem[1], false);
+    }
+}
+
+// Sobrescreve somente o cálculo/desenho da rota.
+async function tracarRotaAteDestino(destLat, destLng, forceRecreate = false) {
+    if (!map) return;
+
+    const origemArray = obterOrigemRota();
+    modoNavegacaoAtivo = true;
+
+    const origem = { lat: Number(origemArray[0]), lng: Number(origemArray[1]) };
+    const destino = { lat: Number(destLat), lng: Number(destLng) };
+
+    if (!zayronCoordValida(origem.lat, origem.lng) || !zayronCoordValida(destino.lat, destino.lng)) {
+        const status = document.getElementById('status-rota');
+        if (status) status.innerText = 'Coordenadas inválidas para calcular rota.';
+        return;
+    }
+
+    const status = document.getElementById('status-rota');
+    if (status) status.innerText = 'Calculando rota...';
+
+    let coords = null;
+
+    // 1) Tenta a rota do backend/Google que já existia.
+    try {
+        const rotaGoogle = await calcularRotaGoogle(
+            { lat: origem.lat, lng: origem.lng },
+            { lat: destino.lat, lng: destino.lng }
+        );
+
+        const encoded = rotaGoogle?.polyline?.encodedPolyline;
+        if (encoded) {
+            coords = decodePolyline(encoded);
+        }
+    } catch (e) {
+        console.warn('Google/backend rota falhou, usando OSRM:', e);
+    }
+
+    // 2) Fallback por rua via OSRM.
+    if (!coords || coords.length < 2) {
+        try {
+            coords = await zayronCalcularRotaOSRM(origem, destino);
+        } catch (e) {
+            console.warn('OSRM falhou, usando linha simples:', e);
+            coords = [[origem.lat, origem.lng], [destino.lat, destino.lng]];
+        }
+    }
+
+    zayronDesenharRotaCorrigida(
+        coords,
+        destino.lat,
+        destino.lng,
+        rotaModo === 'retorno'
+            ? 'Rota de saída calculada.'
+            : 'Rota de entrada calculada.'
+    );
+
+    // Atualiza imediatamente o marcador colado na rota, se já houver GPS.
+    if (minhaPosicaoAtual) {
+        atualizarMarcadorVisitante(minhaPosicaoAtual.lat, minhaPosicaoAtual.lng, false);
+    }
+}
+
+// Sobrescreve somente o marcador do visitante para não ficar jogado fora da rota.
+function atualizarMarcadorVisitante(lat, lng, centralizar = false) {
+    if (!map || !zayronCoordValida(lat, lng)) return;
+
+    const real = { lat: Number(lat), lng: Number(lng) };
+    const exibida = zayronPosicaoExibidaVisitante(real.lat, real.lng);
+    ultimaPosicaoExibidaZayron = exibida;
+
+    // Marcador principal: sempre mostrado na rota quando houver rota.
+    if (visitanteMarker) {
+        zayronAnimarMarcador(visitanteMarker, exibida);
+    } else {
+        visitanteMarker = L.circleMarker([exibida.lat, exibida.lng], {
+            radius: 10,
+            color: '#ffffff',
+            fillColor: '#10b981',
+            fillOpacity: 1,
+            weight: 4
+        }).addTo(map).bindPopup('<b>Você está aqui</b>');
+    }
+
+    // Marcador real pequeno: ajuda diagnóstico, mas não polui.
+    if (!visitanteMarkerRealGpsZayron) {
+        visitanteMarkerRealGpsZayron = L.circleMarker([real.lat, real.lng], {
+            radius: 4,
+            color: '#fbbf24',
+            fillColor: '#fbbf24',
+            fillOpacity: 0.55,
+            weight: 1,
+            opacity: 0.65
+        }).addTo(map);
+    } else {
+        visitanteMarkerRealGpsZayron.setLatLng([real.lat, real.lng]);
+    }
+
+    if (centralizar && map) {
+        centralizarMapaNoVisitante(real.lat, real.lng, true);
+    }
+}
+
+// Centralização usa a posição exibida, não o GPS bruto.
+function centralizarMapaNoVisitante(lat, lng, animate = true) {
+    if (!map || lat == null || lng == null) return;
+
+    const exibida = zayronPosicaoExibidaVisitante(Number(lat), Number(lng));
+    const zoom = isMobile() ? ZOOM_NAVEGACAO_MOBILE : ZOOM_NAVEGACAO;
+
+    map.setView([exibida.lat, exibida.lng], zoom, { animate });
+
+    setTimeout(() => {
+        if (!map) return;
+
+        if (isMobile()) {
+            map.panBy([0, MAPA_PAINEL_OFFSET_VERTICAL], { animate: false });
+        } else {
+            map.panBy([-MAPA_PAINEL_OFFSET_DESKTOP, MAPA_PAINEL_OFFSET_VERTICAL], { animate: false });
+        }
+    }, 80);
+}
+
+console.log('✅ PATCH MAPA VISITANTE APLICADO - tela original preservada');
+
+    
+/* ============================================================
+   ZAYRON VISITANTE - TELA ORIGINAL + ACESSO FACILITADO
+   Mantém a tela igual ao print:
+   - Acesso com nome do condomínio;
+   - botão Continuar;
+   - depois Rua/Nº e Quadra/Lote.
+
+   Adiciona:
+   - se a API falhar, não trava no "Failed to fetch";
+   - usa o nome digitado como condomínio atual;
+   - mantém Google Maps externo para navegação;
+   - mantém monitoramento no Zayron enquanto a aba estiver aberta;
+   - retorno à portaria;
+   - portaria real: -23.201898, -47.029153.
+============================================================ */
+
+(function(){
+  if (window.__ZAYRON_VISITANTE_ORIGINAL_FACILITADO__) return;
+  window.__ZAYRON_VISITANTE_ORIGINAL_FACILITADO__ = true;
+
+  const PORTARIA_REAL = { lat: -23.201898, lng: -47.029153 };
+  const LIMITE_FORA_ROTA_METROS = 50;
+  const LIMITE_PARADO_SEGUNDOS = 120;
+  const LIMITE_VELOCIDADE_KMH = 20;
+  const DISTANCIA_CHEGADA_METROS = 25;
+  const INTERVALO_ALERTA_MS = 30000;
+
+  const monitor = {
+    visitaId: localStorage.getItem("zayron_visita_id") || ("visita-" + Date.now()),
+    condominioNome: "",
+    destino: null,
+    rota: [],
+    watchId: null,
+    modo: "entrada",
+    ultimaPosicao: null,
+    ultimaMovimentacao: Date.now(),
+    alertas: {},
+    ativo: false
+  };
+
+  localStorage.setItem("zayron_visita_id", monitor.visitaId);
+
+  function $(id){ return document.getElementById(id); }
+
+  function texto(el, msg){
+    if(!el) return;
+    el.innerText = msg;
+    el.textContent = msg;
+  }
+
+  function status(msg){
+    const s = $("status-rota") || document.querySelector(".status-rota") || document.querySelector("[id*=status]");
+    if(s) texto(s, msg);
+    console.log("[ZAYRON VISITANTE]", msg);
+  }
+
+  function ok(lat,lng){
+    lat = Number(lat); lng = Number(lng);
+    return Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+  }
+
+  function pnt(p){
+    if(Array.isArray(p)) return { lat:Number(p[0]), lng:Number(p[1]) };
+    return { lat:Number(p?.lat ?? p?.latitude), lng:Number(p?.lng ?? p?.longitude) };
+  }
+
+  function dist(a,b){
+    const R = 6371000;
+    const rad = x => x * Math.PI / 180;
+    const dLat = rad(b.lat-a.lat);
+    const dLng = rad(b.lng-a.lng);
+    const h = Math.sin(dLat/2)**2 + Math.cos(rad(a.lat))*Math.cos(rad(b.lat))*Math.sin(dLng/2)**2;
+    return 2 * R * Math.atan2(Math.sqrt(h), Math.sqrt(1-h));
+  }
+
+  function project(p,a,b){
+    const x=p.lng,y=p.lat,x1=a.lng,y1=a.lat,x2=b.lng,y2=b.lat;
+    const dx=x2-x1,dy=y2-y1;
+    if(dx===0 && dy===0) return {lat:a.lat,lng:a.lng};
+    let t=((x-x1)*dx+(y-y1)*dy)/(dx*dx+dy*dy);
+    t=Math.max(0,Math.min(1,t));
+    return {lat:y1+t*dy,lng:x1+t*dx};
+  }
+
+  function distanciaDaRota(p, rota){
+    if(!rota || rota.length < 2) return Infinity;
+    let best = Infinity;
+    for(let i=0;i<rota.length-1;i++){
+      const q = project(p, rota[i], rota[i+1]);
+      best = Math.min(best, dist(p,q));
+    }
+    return best;
+  }
+
+  function salvarGps(lat,lng,speed,accuracy){
+    if(!ok(lat,lng)) return null;
+    const p = {
+      lat:Number(lat),
+      lng:Number(lng),
+      speed:Number(speed || 0),
+      accuracy:Number(accuracy || 0),
+      created_at:new Date().toISOString()
+    };
+    window.minhaPosicaoAtual = { ...(window.minhaPosicaoAtual || {}), lat:p.lat, lng:p.lng, latitude:p.lat, longitude:p.lng };
+    window.__zayronUltimaPosicaoReal = p;
+    window.__zayronUltimaPos = p;
+    monitor.ultimaPosicao = p;
+    return p;
+  }
+
+  function pegarGps(){
+    return new Promise(resolve => {
+      if(!navigator.geolocation){
+        status("GPS não disponível.");
+        resolve(null);
+        return;
+      }
+
+      status("Pegando localização atual...");
+
+      navigator.geolocation.getCurrentPosition(pos => {
+        const p = salvarGps(pos.coords.latitude, pos.coords.longitude, pos.coords.speed || 0, pos.coords.accuracy || 0);
+        status("GPS OK. Precisão: " + Math.round(p.accuracy || 0) + "m");
+        resolve(p);
+      }, err => {
+        status("Permita localização para iniciar a rota.");
+        resolve(null);
+      }, {
+        enableHighAccuracy:true,
+        maximumAge:0,
+        timeout:15000
+      });
+    });
+  }
+
+  function destinoAtual(destLat,destLng){
+    if(ok(destLat,destLng)) return {lat:Number(destLat),lng:Number(destLng)};
+
+    const fontes = [
+      window.loteDestinoAtual,
+      window.destinoAtual,
+      window.visitanteAtual,
+      window.visitaAtual,
+      window.currentVisitante
+    ];
+
+    for(const f of fontes){
+      if(!f) continue;
+      const lat = Number(f.latitude || f.lat || f.destino_latitude || f.latitude_destino || f.lote_latitude);
+      const lng = Number(f.longitude || f.lng || f.destino_longitude || f.longitude_destino || f.lote_longitude);
+      if(ok(lat,lng)) return {lat,lng};
+    }
+
+    return null;
+  }
+
+  async function calcularRota(origem,destino){
+    const url = "https://router.project-osrm.org/route/v1/driving/" +
+      origem.lng + "," + origem.lat + ";" + destino.lng + "," + destino.lat +
+      "?overview=full&geometries=geojson&steps=true&alternatives=false";
+
+    const r = await fetch(url);
+    const j = await r.json();
+    const rt = j?.routes?.[0];
+
+    if(!rt || !Array.isArray(rt.geometry?.coordinates)) throw new Error("Sem rota");
+
+    return {
+      coords: rt.geometry.coordinates.map(c => ({lat:c[1], lng:c[0]})),
+      distance: rt.distance || 0,
+      duration: rt.duration || 0
+    };
+  }
+
+  function abrirGoogleMaps(origem,destino){
+    const url = "https://www.google.com/maps/dir/?api=1" +
+      "&origin=" + encodeURIComponent(origem.lat + "," + origem.lng) +
+      "&destination=" + encodeURIComponent(destino.lat + "," + destino.lng) +
+      "&travelmode=driving";
+
+    window.open(url, "_blank");
+  }
+
+  function desenharRotaInterna(){
+    if(!window.map || !window.L || !monitor.rota.length) return;
+
+    try{ if(window.rotaPolyline) map.removeLayer(window.rotaPolyline); }catch(e){}
+    try{ if(window.rotaPolylineBorda) map.removeLayer(window.rotaPolylineBorda); }catch(e){}
+
+    const coords = monitor.rota.map(p => [p.lat,p.lng]);
+
+    window.rotaPolylineBorda = L.polyline(coords,{color:"#2b166f",weight:14,opacity:.9,lineJoin:"round",lineCap:"round",smoothFactor:2}).addTo(map);
+    window.rotaPolyline = L.polyline(coords,{color:"#4f22ff",weight:9,opacity:1,lineJoin:"round",lineCap:"round",smoothFactor:2}).addTo(map);
+
+    try{ map.fitBounds(window.rotaPolyline.getBounds(),{padding:[45,45]}); }catch(e){}
+  }
+
+  function iniciarWatch(){
+    if(monitor.watchId || !navigator.geolocation) return;
+
+    monitor.watchId = navigator.geolocation.watchPosition(pos => {
+      const p = salvarGps(pos.coords.latitude, pos.coords.longitude, pos.coords.speed || 0, pos.coords.accuracy || 0);
+      if(!p) return;
+      processarPosicao(p);
+      enviarPosicao(p);
+    }, err => {
+      status("GPS perdeu sinal. Mantenha esta aba aberta.");
+    }, {
+      enableHighAccuracy:true,
+      maximumAge:1000,
+      timeout:15000
+    });
+  }
+
+  function processarPosicao(p){
+    if(!monitor.ativo || !monitor.destino || !monitor.rota.length) return;
+
+    const velocidadeKmh = Math.max(0, Number(p.speed || 0) * 3.6);
+    const dRota = distanciaDaRota(p, monitor.rota);
+    const dDestino = dist(p, monitor.destino);
+
+    if(monitor.ultimaPosicao && dist(monitor.ultimaPosicao,p) > 6){
+      monitor.ultimaMovimentacao = Date.now();
+    }
+
+    const paradoSeg = Math.floor((Date.now() - monitor.ultimaMovimentacao) / 1000);
+
+    if(dRota > LIMITE_FORA_ROTA_METROS){
+      alerta("FORA_ROTA","Visitante saiu da rota",{distancia_rota_metros:Math.round(dRota)});
+    }
+
+    if(paradoSeg >= LIMITE_PARADO_SEGUNDOS){
+      alerta("PARADO_120S","Visitante parado há mais de 120 segundos",{parado_segundos:paradoSeg});
+    }
+
+    if(velocidadeKmh > LIMITE_VELOCIDADE_KMH){
+      alerta("VELOCIDADE","Visitante acima da velocidade",{velocidade_kmh:Math.round(velocidadeKmh)});
+    }
+
+    if(dDestino <= DISTANCIA_CHEGADA_METROS){
+      if(monitor.modo === "entrada"){
+        alerta("CHEGOU_RESIDENCIA","Visitante chegou à residência",{distancia_destino_metros:Math.round(dDestino)});
+        mostrarRetorno();
+        status("Chegou ao destino. Toque em Retornar à Portaria.");
+      } else {
+        alerta("CHEGOU_PORTARIA","Visitante retornou à portaria",{distancia_destino_metros:Math.round(dDestino)});
+        status("Visitante chegou à portaria.");
+      }
+    } else {
+      status((monitor.modo === "retorno" ? "Retorno" : "Ida") + " monitorado • rota " + Math.round(dRota) + "m • vel. " + Math.round(velocidadeKmh) + "km/h • parado " + paradoSeg + "s");
+    }
+  }
+
+  function podeAlertar(tipo){
+    const now = Date.now();
+    const last = monitor.alertas[tipo] || 0;
+    if(now - last < INTERVALO_ALERTA_MS) return false;
+    monitor.alertas[tipo] = now;
+    return true;
+  }
+
+  function alerta(tipo,titulo,extra){
+    if(!podeAlertar(tipo)) return;
+
+    const p = monitor.ultimaPosicao || {};
+    const payload = {
+      tipo_evento:tipo,
+      titulo,
+      origem:"visitante",
+      visita_id:monitor.visitaId,
+      condominio:monitor.condominioNome,
+      modo_rota:monitor.modo,
+      latitude:p.lat,
+      longitude:p.lng,
+      prioridade: tipo === "FORA_ROTA" || tipo === "PARADO_120S" ? "alta" : "media",
+      created_at:new Date().toISOString(),
+      ...(extra || {})
+    };
+
+    console.warn("[ALERTA ZAYRON]", payload);
+
+    if(typeof window.apiRequest === "function"){
+      try{ window.apiRequest("/eventos-operacionais",{method:"POST",body:JSON.stringify(payload)}); return; }catch(e){}
+    }
+
+    fetch("/eventos-operacionais",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)}).catch(()=>{});
+  }
+
+  function enviarPosicao(p){
+    const payload = {
+      tipo_entidade:"visitante",
+      entidade_id:monitor.visitaId,
+      visita_id:monitor.visitaId,
+      condominio:monitor.condominioNome,
+      modo_rota:monitor.modo,
+      latitude:p.lat,
+      longitude:p.lng,
+      velocidade_kmh:Math.max(0,Number(p.speed||0)*3.6),
+      accuracy:p.accuracy,
+      created_at:new Date().toISOString()
+    };
+
+    if(typeof window.apiRequest === "function"){
+      try{ window.apiRequest("/posicoes-tempo-real",{method:"POST",body:JSON.stringify(payload)}); return; }catch(e){}
+    }
+
+    fetch("/posicoes-tempo-real",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)}).catch(()=>{});
+  }
+
+  function mostrarRetorno(){
+    if(document.getElementById("zayron-retorno-portaria")) return;
+
+    const btn = document.createElement("button");
+    btn.id = "zayron-retorno-portaria";
+    btn.type = "button";
+    btn.innerText = "Retornar à Portaria";
+    btn.style.cssText = "position:fixed;left:14px;right:14px;bottom:calc(18px + env(safe-area-inset-bottom));z-index:99999;height:56px;border:0;border-radius:16px;background:#f59e0b;color:#111827;font-weight:900;font-size:18px;box-shadow:0 10px 28px rgba(0,0,0,.32);";
+    btn.onclick = () => window.tracarRotaRetornoPortaria();
+    document.body.appendChild(btn);
+  }
+
+  async function iniciarFluxo(destino,modo){
+    const origem = await pegarGps();
+    if(!origem){
+      alert("Permita a localização do celular para iniciar a rota.");
+      return;
+    }
+
+    monitor.modo = modo || "entrada";
+    monitor.destino = destino;
+    monitor.ativo = true;
+    monitor.ultimaMovimentacao = Date.now();
+
+    status("Calculando rota de monitoramento...");
+
+    try{
+      const rota = await calcularRota(origem,destino);
+      monitor.rota = rota.coords;
+      window.rotaAtualCoords = monitor.rota.map(p => [p.lat,p.lng]);
+      try{ rotaAtualCoords = window.rotaAtualCoords; }catch(e){}
+
+      desenharRotaInterna();
+      iniciarWatch();
+
+      status(modo === "retorno" ? "Retorno monitorado pelo Zayron." : "Ida monitorada pelo Zayron.");
+      abrirGoogleMaps(origem,destino);
+    }catch(e){
+      alert("Não consegui calcular a rota de monitoramento. Verifique internet e destino.");
+      status("Erro ao calcular rota.");
+    }
+  }
+
+  // Tela de acesso facilitada: se API falhar, continua com o nome digitado.
+  function instalarAcessoFacilitado(){
+    const input = document.querySelector("input");
+    const botoes = Array.from(document.querySelectorAll("button"));
+    const btn = botoes.find(b => String(b.innerText || "").toLowerCase().includes("continuar"));
+
+    if(!btn || btn.__zayronFacil) return;
+    btn.__zayronFacil = true;
+
+    btn.addEventListener("click", function(){
+      monitor.condominioNome = input?.value?.trim() || "Terras da Alvorada";
+      localStorage.setItem("zayron_condominio_nome", monitor.condominioNome);
+
+      setTimeout(() => {
+        const msg = Array.from(document.querySelectorAll("*")).find(el => String(el.innerText || "").includes("Failed to fetch"));
+        if(msg){
+          msg.innerText = "Modo local ativo. Continue escolhendo o destino.";
+          msg.textContent = "Modo local ativo. Continue escolhendo o destino.";
+        }
+      }, 1200);
+    }, true);
+  }
+
+  // Funções originais preservadas por nome.
+  window.tracarRotaAteDestino = function(destLat,destLng){
+    const d = destinoAtual(destLat,destLng);
+    if(!d){
+      alert("Destino sem coordenada. Verifique rua/número ou lote.");
+      return;
+    }
+    iniciarFluxo(d,"entrada");
+  };
+
+  window.tracarRotaRetornoPortaria = function(){
+    iniciarFluxo(PORTARIA_REAL,"retorno");
+  };
+
+  window.getPortariaCoords = function(){
+    return [PORTARIA_REAL.lat,PORTARIA_REAL.lng];
+  };
+
+  setInterval(instalarAcessoFacilitado,1000);
+  instalarAcessoFacilitado();
+
+  console.log("✅ ZAYRON: tela original + acesso facilitado + Google Maps + monitoramento.");
+})();
+
+
+/* ============================================================
+   ZAYRON - CORREÇÃO iPHONE ABRIR GOOGLE MAPS
+   Android: abre Google Maps normal.
+   iPhone: tenta app Google Maps com comgooglemaps://
+           se não abrir, mostra botão Apple Maps.
+============================================================ */
+(function(){
+  if(window.__ZAYRON_IOS_GOOGLE_MAPS_FIX__) return;
+  window.__ZAYRON_IOS_GOOGLE_MAPS_FIX__ = true;
+
+  function isIOS(){
+    return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  }
+
+  function abrirBotaoIOS(googleAppUrl, appleUrl, googleWebUrl){
+    let old = document.getElementById("zayron-ios-maps-panel");
+    if(old) old.remove();
+
+    const panel = document.createElement("div");
+    panel.id = "zayron-ios-maps-panel";
+    panel.style.cssText = `
+      position:fixed;
+      left:14px;
+      right:14px;
+      bottom:calc(18px + env(safe-area-inset-bottom));
+      z-index:999999;
+      background:#020617;
+      border:1px solid rgba(148,163,184,.35);
+      border-radius:20px;
+      padding:14px;
+      box-shadow:0 10px 30px rgba(0,0,0,.38);
+      font-family:Arial,sans-serif;
+    `;
+
+    panel.innerHTML = `
+      <div style="color:#fff;font-weight:900;font-size:17px;margin-bottom:10px;text-align:center">
+        Abrir navegação
+      </div>
+      <button id="zayron-open-google-ios" style="width:100%;height:54px;border:0;border-radius:14px;background:#2563eb;color:white;font-weight:900;font-size:17px;margin-bottom:10px">
+        Abrir no Google Maps
+      </button>
+      <button id="zayron-open-apple-ios" style="width:100%;height:54px;border:0;border-radius:14px;background:#f59e0b;color:#111827;font-weight:900;font-size:17px;margin-bottom:10px">
+        Abrir no Apple Maps
+      </button>
+      <button id="zayron-open-web-ios" style="width:100%;height:48px;border:0;border-radius:14px;background:#334155;color:white;font-weight:900;font-size:15px">
+        Abrir Google Maps no navegador
+      </button>
+    `;
+
+    document.body.appendChild(panel);
+
+    document.getElementById("zayron-open-google-ios").onclick = function(){
+      window.location.href = googleAppUrl;
+    };
+
+    document.getElementById("zayron-open-apple-ios").onclick = function(){
+      window.location.href = appleUrl;
+    };
+
+    document.getElementById("zayron-open-web-ios").onclick = function(){
+      window.location.href = googleWebUrl;
+    };
+  }
+
+  window.abrirGoogleMaps = function(origem, destino){
+    if(!origem || !destino) return;
+
+    const o = origem.lat + "," + origem.lng;
+    const d = destino.lat + "," + destino.lng;
+
+    const googleWebUrl =
+      "https://www.google.com/maps/dir/?api=1" +
+      "&origin=" + encodeURIComponent(o) +
+      "&destination=" + encodeURIComponent(d) +
+      "&travelmode=driving";
+
+    const googleAppUrl =
+      "comgooglemaps://?saddr=" + encodeURIComponent(o) +
+      "&daddr=" + encodeURIComponent(d) +
+      "&directionsmode=driving";
+
+    const appleUrl =
+      "http://maps.apple.com/?saddr=" + encodeURIComponent(o) +
+      "&daddr=" + encodeURIComponent(d) +
+      "&dirflg=d";
+
+    if(isIOS()){
+      // No iPhone, abertura automática costuma ser bloqueada.
+      // Mostra painel para o clique do usuário abrir o app correto.
+      abrirBotaoIOS(googleAppUrl, appleUrl, googleWebUrl);
+      return;
+    }
+
+    window.location.href = googleWebUrl;
+  };
+
+  // Também cria função alternativa para patches que chamam outro nome.
+  window.abrirMaps = window.abrirGoogleMaps;
+
+  console.log("✅ Correção iOS Google Maps aplicada.");
+})();
+
+</script>
 </body>
 </html>
