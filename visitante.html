@@ -1787,14 +1787,9 @@ async function tracarRotaAteDestino(destLat, destLng, forceRecreate = false) {
         try {
             coords = await zayronCalcularRotaOSRM(origem, destino);
         } catch (e) {
-            console.warn('OSRM falhou. Linha reta desativada para não criar rota falsa:', e);
-
+            console.warn('OSRM falhou. Não vou desenhar linha reta falsa:', e);
             const status = document.getElementById('status-rota');
-            if (status) {
-                status.innerText = 'Não foi possível calcular rota por ruas. Verifique internet ou coordenadas.';
-            }
-
-            alert('Não foi possível calcular a rota por ruas. A linha reta foi bloqueada para não mostrar caminho errado.');
+            if (status) status.innerText = 'Não foi possível calcular rota por rua.';
             return;
         }
     }
@@ -2033,22 +2028,55 @@ console.log('✅ PATCH MAPA VISITANTE APLICADO - tela original preservada');
   }
 
   async function calcularRota(origem,destino){
-    const url = "https://router.project-osrm.org/route/v1/driving/" +
-      origem.lng + "," + origem.lat + ";" + destino.lng + "," + destino.lat +
-      "?overview=full&geometries=geojson&steps=true&alternatives=false";
+    origem = {
+      lat: Number(origem?.lat),
+      lng: Number(origem?.lng)
+    };
 
-    const r = await fetch(url);
-    const j = await r.json();
-    const rt = j?.routes?.[0];
+    destino = {
+      lat: Number(destino?.lat),
+      lng: Number(destino?.lng)
+    };
 
-    if (!rt || !Array.isArray(rt.geometry?.coordinates) || rt.geometry.coordinates.length < 2) {
-      throw new Error("OSRM não retornou rota por ruas.");
+    if(!ok(origem.lat, origem.lng) || !ok(destino.lat, destino.lng)){
+      throw new Error("Origem ou destino inválido.");
+    }
+
+    const distanciaOrigemDestino = dist(origem, destino);
+    if(distanciaOrigemDestino < 20){
+      throw new Error("Destino muito perto ou igual ao ponto de partida.");
+    }
+
+    const rotaGoogle = await calcularRotaGoogle(
+      { lat: origem.lat, lng: origem.lng },
+      { lat: destino.lat, lng: destino.lng }
+    );
+
+    const encoded = rotaGoogle?.polyline?.encodedPolyline;
+    if(!encoded){
+      throw new Error("Google Maps não retornou polyline.");
+    }
+
+    const pontos = decodePolyline(encoded).map(c => ({
+      lat: Number(c[0]),
+      lng: Number(c[1])
+    })).filter(p => ok(p.lat, p.lng));
+
+    if(!Array.isArray(pontos) || pontos.length < 2){
+      throw new Error("Polyline inválida.");
+    }
+
+    const distanciaInicio = dist(origem, pontos[0]);
+    const distanciaFim = dist(destino, pontos[pontos.length - 1]);
+
+    if(distanciaInicio > 150 || distanciaFim > 150){
+      console.warn("Rota retornada longe da origem/destino:", { distanciaInicio, distanciaFim });
     }
 
     return {
-      coords: rt.geometry.coordinates.map(c => ({lat:c[1], lng:c[0]})),
-      distance: rt.distance || 0,
-      duration: rt.duration || 0
+      coords: pontos,
+      distance: rotaGoogle?.distanceMeters || 0,
+      duration: rotaGoogle?.duration || 0
     };
   }
 
