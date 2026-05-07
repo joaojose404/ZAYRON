@@ -1787,28 +1787,26 @@ async function tracarRotaAteDestino(destLat, destLng, forceRecreate = false) {
         try {
             coords = await zayronCalcularRotaOSRM(origem, destino);
         } catch (e) {
-            console.warn('OSRM falhou. Não vou desenhar linha reta:', e);
-            const status = document.getElementById('status-rota');
-            if (status) status.innerText = 'Não foi possível calcular a rota por rua.';
-            alert('Não consegui calcular a rota por rua. Verifique internet e destino.');
-            return;
+            console.warn('OSRM falhou, usando linha simples:', e);
+            coords = [[origem.lat, origem.lng], [destino.lat, destino.lng]];
         }
     }
 
- zayronDesenharRotaCorrigida(
-    coords,
-    destino.lat,
-    destino.lng,
-    rotaModo === 'retorno'
-        ? 'Rota de saída calculada.'
-        : 'Rota de entrada calculada.'
-);
+    zayronDesenharRotaCorrigida(
+        coords,
+        destino.lat,
+        destino.lng,
+        rotaModo === 'retorno'
+            ? 'Rota de saída calculada.'
+            : 'Rota de entrada calculada.'
+    );
 
-// Atualiza imediatamente o marcador colado na rota, se já houver GPS.
-if (minhaPosicaoAtual) {
-    atualizarMarcadorVisitante(minhaPosicaoAtual.lat, minhaPosicaoAtual.lng, false);
+    // Atualiza imediatamente o marcador colado na rota, se já houver GPS.
+    if (minhaPosicaoAtual) {
+        atualizarMarcadorVisitante(minhaPosicaoAtual.lat, minhaPosicaoAtual.lng, false);
+    }
 }
-}
+
 // Sobrescreve somente o marcador do visitante para não ficar jogado fora da rota.
 function atualizarMarcadorVisitante(lat, lng, centralizar = false) {
     if (!map || !zayronCoordValida(lat, lng)) return;
@@ -2029,80 +2027,18 @@ console.log('✅ PATCH MAPA VISITANTE APLICADO - tela original preservada');
   }
 
   async function calcularRota(origem,destino){
-    origem = { lat: Number(origem?.lat), lng: Number(origem?.lng) };
-    destino = { lat: Number(destino?.lat), lng: Number(destino?.lng) };
-
-    if(!ok(origem.lat, origem.lng) || !ok(destino.lat, destino.lng)){
-      throw new Error("Coordenadas inválidas para calcular rota.");
-    }
-
-    const distanciaOrigemDestino = dist(origem, destino);
-    if(distanciaOrigemDestino < 15){
-      throw new Error("Destino igual ou muito perto do ponto de partida.");
-    }
-
-    // Primeiro usa a API Google do próprio backend. Isso evita a falha do OSRM no Safari/iPhone.
-    try{
-      const rotaGoogle = await calcularRotaGoogle(
-        { lat: origem.lat, lng: origem.lng },
-        { lat: destino.lat, lng: destino.lng }
-      );
-
-      const encoded = rotaGoogle?.polyline?.encodedPolyline;
-      if(encoded){
-        const coords = decodePolyline(encoded).map(c => ({ lat: Number(c[0]), lng: Number(c[1]) }))
-          .filter(p => ok(p.lat, p.lng));
-
-        if(coords.length >= 2){
-          const distanciaPrimeiro = dist(origem, coords[0]);
-          const distanciaUltimo = dist(destino, coords[coords.length - 1]);
-
-          // Garante que a rota não ficou presa no ponto de partida.
-          if(distanciaUltimo <= Math.max(80, distanciaOrigemDestino * 0.35)){
-            return {
-              coords,
-              distance: Number(rotaGoogle?.distanceMeters || 0),
-              duration: 0
-            };
-          }
-        }
-      }
-    }catch(e){
-      console.warn("Falha ao calcular rota pelo backend Google:", e);
-    }
-
-    // Segundo recurso: OSRM. Nunca desenha linha reta se falhar.
     const url = "https://router.project-osrm.org/route/v1/driving/" +
-      encodeURIComponent(origem.lng + "," + origem.lat + ";" + destino.lng + "," + destino.lat) +
+      origem.lng + "," + origem.lat + ";" + destino.lng + "," + destino.lat +
       "?overview=full&geometries=geojson&steps=true&alternatives=false";
 
-    const r = await fetch(url, { method: "GET", cache: "no-store" });
-    if(!r.ok){
-      throw new Error("OSRM HTTP " + r.status);
-    }
-
+    const r = await fetch(url);
     const j = await r.json();
     const rt = j?.routes?.[0];
 
-    if(!rt || !Array.isArray(rt.geometry?.coordinates) || rt.geometry.coordinates.length < 2){
-      throw new Error("OSRM não retornou rota válida.");
-    }
-
-    const coords = rt.geometry.coordinates
-      .map(c => ({ lat: Number(c[1]), lng: Number(c[0]) }))
-      .filter(p => ok(p.lat, p.lng));
-
-    if(coords.length < 2){
-      throw new Error("Rota sem pontos suficientes.");
-    }
-
-    const distanciaUltimo = dist(destino, coords[coords.length - 1]);
-    if(distanciaUltimo > Math.max(80, distanciaOrigemDestino * 0.35)){
-      throw new Error("Rota calculada não chega perto do destino.");
-    }
+    if(!rt || !Array.isArray(rt.geometry?.coordinates)) throw new Error("Sem rota");
 
     return {
-      coords,
+      coords: rt.geometry.coordinates.map(c => ({lat:c[1], lng:c[0]})),
       distance: rt.distance || 0,
       duration: rt.duration || 0
     };
@@ -2270,13 +2206,6 @@ console.log('✅ PATCH MAPA VISITANTE APLICADO - tela original preservada');
     status("Calculando rota de monitoramento...");
 
     try{
-const distanciaOrigemDestino = dist(origem, destino);
-
-if (distanciaOrigemDestino < 10) {
-    alert("Destino inválido: o destino está igual ou muito perto do ponto de partida.");
-    status("Destino inválido. Selecione outro lote.");
-    return;
-}
       const rota = await calcularRota(origem,destino);
       monitor.rota = rota.coords;
       window.rotaAtualCoords = monitor.rota.map(p => [p.lat,p.lng]);
@@ -2286,19 +2215,10 @@ if (distanciaOrigemDestino < 10) {
       iniciarWatch();
 
       status(modo === "retorno" ? "Retorno monitorado pelo Zayron." : "Ida monitorada pelo Zayron.");
-      if (/iPad|iPhone|iPod/.test(navigator.userAgent)) {
-  abrirBotaoIOS(
-    `comgooglemaps://?saddr=${origem.lat},${origem.lng}&daddr=${destino.lat},${destino.lng}&directionsmode=driving`,
-    `maps://?saddr=${origem.lat},${origem.lng}&daddr=${destino.lat},${destino.lng}`,
-    `https://www.google.com/maps/dir/?api=1&origin=${origem.lat},${origem.lng}&destination=${destino.lat},${destino.lng}&travelmode=driving`
-  );
-} else {
-  abrirGoogleMaps(origem,destino);
-}
+      abrirGoogleMaps(origem,destino);
     }catch(e){
-      console.error("Erro ao calcular rota de monitoramento:", e);
       alert("Não consegui calcular a rota de monitoramento. Verifique internet e destino.");
-      status("Erro ao calcular rota: " + (e?.message || e));
+      status("Erro ao calcular rota.");
     }
   }
 
