@@ -1787,9 +1787,10 @@ async function tracarRotaAteDestino(destLat, destLng, forceRecreate = false) {
         try {
             coords = await zayronCalcularRotaOSRM(origem, destino);
         } catch (e) {
-            console.warn('OSRM falhou. Não vou desenhar linha reta falsa:', e);
+            console.warn('OSRM falhou. Não vou desenhar linha reta:', e);
             const status = document.getElementById('status-rota');
-            if (status) status.innerText = 'Não foi possível calcular rota por rua.';
+            if (status) status.innerText = 'Não foi possível calcular a rota por rua.';
+            alert('Não consegui calcular a rota por rua. Verifique internet e destino.');
             return;
         }
     }
@@ -2028,55 +2029,82 @@ console.log('✅ PATCH MAPA VISITANTE APLICADO - tela original preservada');
   }
 
   async function calcularRota(origem,destino){
-    origem = {
-      lat: Number(origem?.lat),
-      lng: Number(origem?.lng)
-    };
-
-    destino = {
-      lat: Number(destino?.lat),
-      lng: Number(destino?.lng)
-    };
+    origem = { lat: Number(origem?.lat), lng: Number(origem?.lng) };
+    destino = { lat: Number(destino?.lat), lng: Number(destino?.lng) };
 
     if(!ok(origem.lat, origem.lng) || !ok(destino.lat, destino.lng)){
-      throw new Error("Origem ou destino inválido.");
+      throw new Error("Coordenadas inválidas para calcular rota.");
     }
 
     const distanciaOrigemDestino = dist(origem, destino);
-    if(distanciaOrigemDestino < 20){
-      throw new Error("Destino muito perto ou igual ao ponto de partida.");
+    if(distanciaOrigemDestino < 15){
+      throw new Error("Destino igual ou muito perto do ponto de partida.");
     }
 
-    const rotaGoogle = await calcularRotaGoogle(
-      { lat: origem.lat, lng: origem.lng },
-      { lat: destino.lat, lng: destino.lng }
-    );
+    // Primeiro usa a API Google do próprio backend. Isso evita a falha do OSRM no Safari/iPhone.
+    try{
+      const rotaGoogle = await calcularRotaGoogle(
+        { lat: origem.lat, lng: origem.lng },
+        { lat: destino.lat, lng: destino.lng }
+      );
 
-    const encoded = rotaGoogle?.polyline?.encodedPolyline;
-    if(!encoded){
-      throw new Error("Google Maps não retornou polyline.");
+      const encoded = rotaGoogle?.polyline?.encodedPolyline;
+      if(encoded){
+        const coords = decodePolyline(encoded).map(c => ({ lat: Number(c[0]), lng: Number(c[1]) }))
+          .filter(p => ok(p.lat, p.lng));
+
+        if(coords.length >= 2){
+          const distanciaPrimeiro = dist(origem, coords[0]);
+          const distanciaUltimo = dist(destino, coords[coords.length - 1]);
+
+          // Garante que a rota não ficou presa no ponto de partida.
+          if(distanciaUltimo <= Math.max(80, distanciaOrigemDestino * 0.35)){
+            return {
+              coords,
+              distance: Number(rotaGoogle?.distanceMeters || 0),
+              duration: 0
+            };
+          }
+        }
+      }
+    }catch(e){
+      console.warn("Falha ao calcular rota pelo backend Google:", e);
     }
 
-    const pontos = decodePolyline(encoded).map(c => ({
-      lat: Number(c[0]),
-      lng: Number(c[1])
-    })).filter(p => ok(p.lat, p.lng));
+    // Segundo recurso: OSRM. Nunca desenha linha reta se falhar.
+    const url = "https://router.project-osrm.org/route/v1/driving/" +
+      encodeURIComponent(origem.lng + "," + origem.lat + ";" + destino.lng + "," + destino.lat) +
+      "?overview=full&geometries=geojson&steps=true&alternatives=false";
 
-    if(!Array.isArray(pontos) || pontos.length < 2){
-      throw new Error("Polyline inválida.");
+    const r = await fetch(url, { method: "GET", cache: "no-store" });
+    if(!r.ok){
+      throw new Error("OSRM HTTP " + r.status);
     }
 
-    const distanciaInicio = dist(origem, pontos[0]);
-    const distanciaFim = dist(destino, pontos[pontos.length - 1]);
+    const j = await r.json();
+    const rt = j?.routes?.[0];
 
-    if(distanciaInicio > 150 || distanciaFim > 150){
-      console.warn("Rota retornada longe da origem/destino:", { distanciaInicio, distanciaFim });
+    if(!rt || !Array.isArray(rt.geometry?.coordinates) || rt.geometry.coordinates.length < 2){
+      throw new Error("OSRM não retornou rota válida.");
+    }
+
+    const coords = rt.geometry.coordinates
+      .map(c => ({ lat: Number(c[1]), lng: Number(c[0]) }))
+      .filter(p => ok(p.lat, p.lng));
+
+    if(coords.length < 2){
+      throw new Error("Rota sem pontos suficientes.");
+    }
+
+    const distanciaUltimo = dist(destino, coords[coords.length - 1]);
+    if(distanciaUltimo > Math.max(80, distanciaOrigemDestino * 0.35)){
+      throw new Error("Rota calculada não chega perto do destino.");
     }
 
     return {
-      coords: pontos,
-      distance: rotaGoogle?.distanceMeters || 0,
-      duration: rotaGoogle?.duration || 0
+      coords,
+      distance: rt.distance || 0,
+      duration: rt.duration || 0
     };
   }
 
@@ -2268,8 +2296,9 @@ if (distanciaOrigemDestino < 10) {
   abrirGoogleMaps(origem,destino);
 }
     }catch(e){
+      console.error("Erro ao calcular rota de monitoramento:", e);
       alert("Não consegui calcular a rota de monitoramento. Verifique internet e destino.");
-      status("Erro ao calcular rota.");
+      status("Erro ao calcular rota: " + (e?.message || e));
     }
   }
 
