@@ -1787,8 +1787,15 @@ async function tracarRotaAteDestino(destLat, destLng, forceRecreate = false) {
         try {
             coords = await zayronCalcularRotaOSRM(origem, destino);
         } catch (e) {
-            console.warn('OSRM falhou, usando linha simples:', e);
-            coords = [[origem.lat, origem.lng], [destino.lat, destino.lng]];
+            console.warn('OSRM falhou. Linha reta desativada para não criar rota falsa:', e);
+
+            const status = document.getElementById('status-rota');
+            if (status) {
+                status.innerText = 'Não foi possível calcular rota por ruas. Verifique internet ou coordenadas.';
+            }
+
+            alert('Não foi possível calcular a rota por ruas. A linha reta foi bloqueada para não mostrar caminho errado.');
+            return;
         }
     }
 
@@ -2034,14 +2041,9 @@ console.log('✅ PATCH MAPA VISITANTE APLICADO - tela original preservada');
     const j = await r.json();
     const rt = j?.routes?.[0];
 
-    if(!rt || !Array.isArray(rt.geometry?.coordinates)) console.warn("OSRM sem rota, usando linha direta.");
-
-return {
-  coords: [
-    { lat: origem.lat, lng: origem.lng },
-    { lat: destino.lat, lng: destino.lng }
-  ]
-};
+    if (!rt || !Array.isArray(rt.geometry?.coordinates) || rt.geometry.coordinates.length < 2) {
+      throw new Error("OSRM não retornou rota por ruas.");
+    }
 
     return {
       coords: rt.geometry.coordinates.map(c => ({lat:c[1], lng:c[0]})),
