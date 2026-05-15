@@ -600,12 +600,44 @@
             const d = destino.lat + ',' + destino.lng;
 
             if (isIOS()) {
-                // iOS: abre Apple Maps direto via link universal (funciona sempre, sem bloqueio)
-                window.location.href = 'https://maps.apple.com/?saddr=' + encodeURIComponent(o) +
-                    '&daddr=' + encodeURIComponent(d) + '&dirflg=d';
+                // iOS: Safari bloqueia redirecionamentos automáticos.
+                // Mostra botão flutuante para o usuário tocar e abrir Apple Maps.
+                const velho = document.getElementById('zayron-abrir-maps-ios');
+                if (velho) velho.remove();
+
+                const url = 'maps://?saddr=' + encodeURIComponent(o) + '&daddr=' + encodeURIComponent(d) + '&dirflg=d';
+
+                const btn = document.createElement('a');
+                btn.id = 'zayron-abrir-maps-ios';
+                btn.href = url;
+                btn.innerText = '🗺️ Abrir Apple Maps';
+                btn.style.cssText = [
+                    'position:fixed',
+                    'left:14px',
+                    'right:14px',
+                    'bottom:calc(20px + env(safe-area-inset-bottom))',
+                    'z-index:99999',
+                    'display:block',
+                    'height:58px',
+                    'line-height:58px',
+                    'text-align:center',
+                    'border-radius:16px',
+                    'background:#f59e0b',
+                    'color:#111827',
+                    'font-weight:900',
+                    'font-size:18px',
+                    'text-decoration:none',
+                    'box-shadow:0 8px 24px rgba(0,0,0,.4)'
+                ].join(';');
+
+                // Some automaticamente após 15 segundos
+                btn.onclick = () => setTimeout(() => btn.remove(), 1500);
+                setTimeout(() => { if (btn.parentNode) btn.remove(); }, 15000);
+
+                document.body.appendChild(btn);
             } else {
-                // Android: abre Google Maps direto via intent
-                window.location.href = 'google.navigation:q=' + encodeURIComponent(d);
+                // Android: abre Google Maps direto via intent geo
+                window.location.href = 'geo:' + d + '?q=' + encodeURIComponent(d);
             }
         }
 
