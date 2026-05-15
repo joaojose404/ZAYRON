@@ -293,7 +293,7 @@
                     <button class="warning" onclick="retornarPortaria()">Retornar à Portaria</button>
                 </div>
                 <!-- Botão sempre visível para abrir GPS externo -->
-                <a id="btn-abrir-gps" class="btn-gps" href="#" onclick="abrirGPS(event)">
+                <a id="btn-abrir-gps" class="btn-gps" href="#" target="_blank">
                     🗺️ Abrir no GPS (Apple Maps / Google Maps)
                 </a>
             </div>
@@ -427,32 +427,25 @@
             box.innerText = '';
         }
 
-        // Abre GPS externo - sempre visível, funciona no iOS e Android
-        function abrirGPS(event) {
-            event.preventDefault();
+        // Atualiza o href do botão GPS com base no destino atual.
+        // No iOS, o Safari abre o link nativo sem bloqueio pois é um <a> com href real.
+        // No Android, o target="_blank" abre o Google Maps normalmente.
+        function atualizarBotaoGPS(destLat, destLng) {
+            const btn = document.getElementById('btn-abrir-gps');
+            if (!btn) return;
 
             const origem = minhaPosicaoAtual || { lat: getPortariaCoords()[0], lng: getPortariaCoords()[1] };
-
-            if (!destinoAtualCoords) {
-                alert('Selecione um destino primeiro.');
-                return;
-            }
-
             const o = origem.lat + ',' + origem.lng;
-            const d = destinoAtualCoords[0] + ',' + destinoAtualCoords[1];
+            const d = destLat + ',' + destLng;
 
             let url;
             if (isIOS()) {
-                // Apple Maps via scheme nativo - funciona quando o usuário toca diretamente
                 url = 'maps://?saddr=' + encodeURIComponent(o) + '&daddr=' + encodeURIComponent(d) + '&dirflg=d';
             } else {
-                // Google Maps no Android
                 url = 'https://www.google.com/maps/dir/?api=1&origin=' + encodeURIComponent(o) + '&destination=' + encodeURIComponent(d) + '&travelmode=driving';
             }
 
-            // Atualiza o href para que o toque nativo no iOS funcione corretamente
-            document.getElementById('btn-abrir-gps').href = url;
-            window.open(url, '_blank');
+            btn.href = url;
         }
 
         async function conectarCondominio() {
@@ -629,10 +622,11 @@
                 Quadra: ${escapeHtml(lote.quadra || '-')} | Lote: ${escapeHtml(lote.lote || '-')}
             `;
 
+            // Atualiza o botão GPS com o destino selecionado (iOS abre como link nativo)
+            atualizarBotaoGPS(destinoAtualCoords[0], destinoAtualCoords[1]);
+
             tracarRotaAteDestino(destinoAtualCoords[0], destinoAtualCoords[1]);
             registrarOuAtualizarVisita();
-
-            if (isMobile()) togglePainelMapa(false);
         }
 
         function obterOrigemRota() {
@@ -1163,6 +1157,9 @@
             destinoAtualCoords = [portaria[0], portaria[1]];
             modoNavegacaoAtivo = true;
 
+            // Atualiza o botão GPS para o retorno à portaria
+            atualizarBotaoGPS(portaria[0], portaria[1]);
+
             mostrarAlerta('warning', automatico ? 'Rota de retorno à portaria iniciada automaticamente.' : 'Retorno à portaria iniciado.');
             document.getElementById('info-destino').innerHTML = '<b>Retorno à portaria</b><br>Siga a rota exibida no mapa para voltar ao ponto inicial.';
 
@@ -1209,6 +1206,8 @@
             destinoChegou = false;
             rotaModo = 'destino';
             modoNavegacaoAtivo = false;
+            // Reseta o botão GPS
+            document.getElementById('btn-abrir-gps').href = '#';
             if (map) {
                 if (routingControl) { try { map.removeControl(routingControl); } catch(e) {} routingControl = null; }
                 if (window.rotaPolyline) { try { map.removeLayer(window.rotaPolyline); } catch(e) {} window.rotaPolyline = null; }
