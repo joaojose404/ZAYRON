@@ -2285,56 +2285,6 @@ console.log('✅ PATCH MAPA VISITANTE APLICADO - tela original preservada');
       (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
   }
 
-  function abrirBotaoIOS(googleAppUrl, appleUrl, googleWebUrl){
-    let old = document.getElementById("zayron-ios-maps-panel");
-    if(old) old.remove();
-
-    const panel = document.createElement("div");
-    panel.id = "zayron-ios-maps-panel";
-    panel.style.cssText = `
-      position:fixed;
-      left:14px;
-      right:14px;
-      bottom:calc(18px + env(safe-area-inset-bottom));
-      z-index:999999;
-      background:#020617;
-      border:1px solid rgba(148,163,184,.35);
-      border-radius:20px;
-      padding:14px;
-      box-shadow:0 10px 30px rgba(0,0,0,.38);
-      font-family:Arial,sans-serif;
-    `;
-
-    panel.innerHTML = `
-      <div style="color:#fff;font-weight:900;font-size:17px;margin-bottom:10px;text-align:center">
-        Abrir navegação
-      </div>
-      <button id="zayron-open-google-ios" style="width:100%;height:54px;border:0;border-radius:14px;background:#2563eb;color:white;font-weight:900;font-size:17px;margin-bottom:10px">
-        Abrir no Google Maps
-      </button>
-      <button id="zayron-open-apple-ios" style="width:100%;height:54px;border:0;border-radius:14px;background:#f59e0b;color:#111827;font-weight:900;font-size:17px;margin-bottom:10px">
-        Abrir no Apple Maps
-      </button>
-      <button id="zayron-open-web-ios" style="width:100%;height:48px;border:0;border-radius:14px;background:#334155;color:white;font-weight:900;font-size:15px">
-        Abrir Google Maps no navegador
-      </button>
-    `;
-
-    document.body.appendChild(panel);
-
-    document.getElementById("zayron-open-google-ios").onclick = function(){
-      window.location.href = googleAppUrl;
-    };
-
-    document.getElementById("zayron-open-apple-ios").onclick = function(){
-      window.location.href = appleUrl;
-    };
-
-    document.getElementById("zayron-open-web-ios").onclick = function(){
-      window.location.href = googleWebUrl;
-    };
-  }
-
   window.abrirGoogleMaps = function(origem, destino){
     if(!origem || !destino) return;
 
@@ -2348,32 +2298,35 @@ console.log('✅ PATCH MAPA VISITANTE APLICADO - tela original preservada');
       "&travelmode=driving";
 
     if(isIOS()){
-      // iOS: tenta abrir Google Maps app, se não tiver instalado cai no web
-      const googleAppUrl =
-        "comgooglemaps://?saddr=" + encodeURIComponent(o) +
-        "&daddr=" + encodeURIComponent(d) +
-        "&directionsmode=driving";
-
-      const iframe = document.createElement("iframe");
-      iframe.style.display = "none";
-      iframe.src = googleAppUrl;
-      document.body.appendChild(iframe);
-      setTimeout(() => {
-        document.body.removeChild(iframe);
-        // fallback para web se app não abriu
-      }, 500);
-
-      setTimeout(() => {
-        window.open(googleWebUrl, "_blank");
-      }, 600);
+      // Abre Apple Maps direto (confiável no iOS, sem bloqueio)
+      window.open(
+        "http://maps.apple.com/?saddr=" + encodeURIComponent(o) +
+        "&daddr=" + encodeURIComponent(d) + "&dirflg=d",
+        "_blank"
+      );
     } else {
       window.location.href = googleWebUrl;
     }
   };
-  // Também cria função alternativa para patches que chamam outro nome.
+
   window.abrirMaps = window.abrirGoogleMaps;
 
-  console.log("✅ Correção iOS Google Maps aplicada.");
+  // Corrige rotação/tamanho do mapa no iOS após orientação
+  if(isIOS()){
+    function fixMapSize(){
+      if(window.map){
+        setTimeout(() => { try{ window.map.invalidateSize(true); }catch(e){} }, 300);
+        setTimeout(() => { try{ window.map.invalidateSize(true); }catch(e){} }, 800);
+      }
+    }
+    window.addEventListener('orientationchange', fixMapSize);
+    window.addEventListener('resize', fixMapSize);
+    // Força correção inicial
+    setTimeout(fixMapSize, 1000);
+    setTimeout(fixMapSize, 2500);
+  }
+
+  console.log("✅ iOS: Apple Maps + correção de mapa aplicada.");
 })();
 
 </script>
