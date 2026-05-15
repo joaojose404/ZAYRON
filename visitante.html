@@ -231,7 +231,7 @@
                 width: auto;
                 max-width: none;
             }
-            .panel { padding: 12px; max-height: 45vh; overflow-y: auto; }
+            .panel { padding: 12px; max-height: 60vh; overflow-y: auto; }
             .panel.reduced { max-height: 46px; overflow: hidden; }
             .panel.reduced .panel-body { display: none; }
             .tab-btn { padding: 12px 8px; font-size: 10px; }
@@ -512,7 +512,7 @@
             popularFiltros();
             iniciarMapa();
 
-            if (isMobile()) togglePainelMapa(false);
+            if (isMobile() && !isIOS()) togglePainelMapa(false);
 
             if (!navigator.geolocation) { alert('Seu dispositivo não suporta localização.'); return; }
 
@@ -1164,7 +1164,7 @@
             document.getElementById('info-destino').innerHTML = '<b>Retorno à portaria</b><br>Siga a rota exibida no mapa para voltar ao ponto inicial.';
 
             await tracarRotaAteDestino(portaria[0], portaria[1]);
-            if (isMobile()) togglePainelMapa(false);
+            if (isMobile() && !isIOS()) togglePainelMapa(false);
 
             if (visitaAtualId) {
                 await apiPatch(`/public/visitas/${visitaAtualId}`, { status: 'retornando_portaria' }).catch(console.error);
