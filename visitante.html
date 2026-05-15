@@ -690,7 +690,7 @@ async function apiPatch(url, body){
             popularFiltros();
             iniciarMapa();
 
-            if (isMobile()) {
+            if (isMobile() && !isIOS()) {
                 togglePainelMapa(false);
             }
 
