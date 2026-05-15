@@ -593,26 +593,19 @@
             if (isMobile()) togglePainelMapa(true);
         }
 
-        // Abre Apple Maps (iOS) ou Google Maps (Android) em nova aba
-        // O monitoramento Zayron continua ativo na aba original
+        // Abre Apple Maps (iOS) ou Google Maps (Android)
+        // O monitoramento Zayron continua ativo nesta aba em segundo plano
         function abrirNavegacaoExterna(origem, destino) {
             const o = origem.lat + ',' + origem.lng;
             const d = destino.lat + ',' + destino.lng;
 
             if (isIOS()) {
-                window.open(
-                    'maps://?saddr=' + encodeURIComponent(o) +
-                    '&daddr=' + encodeURIComponent(d) + '&dirflg=d',
-                    '_blank'
-                );
+                // iOS: abre Apple Maps direto via link universal (funciona sempre, sem bloqueio)
+                window.location.href = 'https://maps.apple.com/?saddr=' + encodeURIComponent(o) +
+                    '&daddr=' + encodeURIComponent(d) + '&dirflg=d';
             } else {
-                window.open(
-                    'https://www.google.com/maps/dir/?api=1' +
-                    '&origin=' + encodeURIComponent(o) +
-                    '&destination=' + encodeURIComponent(d) +
-                    '&travelmode=driving',
-                    '_blank'
-                );
+                // Android: abre Google Maps direto via intent
+                window.location.href = 'google.navigation:q=' + encodeURIComponent(d);
             }
         }
 
