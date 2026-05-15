@@ -205,6 +205,23 @@
         .leaflet-popup-content-wrapper,
         .leaflet-popup-tip { background: #0f172a; color: white; }
 
+        .btn-gps {
+            display: block;
+            width: 100%;
+            height: 52px;
+            line-height: 52px;
+            text-align: center;
+            border-radius: 12px;
+            background: #7c3aed;
+            color: white;
+            font-weight: 900;
+            font-size: 15px;
+            text-decoration: none;
+            margin-top: 8px;
+            border: none;
+            cursor: pointer;
+        }
+
         @media (max-width: 700px) {
             .overlay {
                 top: auto;
@@ -214,8 +231,8 @@
                 width: auto;
                 max-width: none;
             }
-            .panel { padding: 12px; max-height: 40vh; overflow-y: auto; }
-            .panel.reduced { max-height: 72px; overflow: hidden; }
+            .panel { padding: 12px; max-height: 45vh; overflow-y: auto; }
+            .panel.reduced { max-height: 46px; overflow: hidden; }
             .panel.reduced .panel-body { display: none; }
             .tab-btn { padding: 12px 8px; font-size: 10px; }
             .container-login { width: calc(100vw - 24px); max-width: none; }
@@ -275,6 +292,10 @@
                     <button class="success" onclick="centralizarNaMinhaPosicao()">Minha posição</button>
                     <button class="warning" onclick="retornarPortaria()">Retornar à Portaria</button>
                 </div>
+                <!-- Botão sempre visível para abrir GPS externo -->
+                <a id="btn-abrir-gps" class="btn-gps" href="#" onclick="abrirGPS(event)">
+                    🗺️ Abrir no GPS (Apple Maps / Google Maps)
+                </a>
             </div>
         </div>
     </div>
@@ -406,6 +427,34 @@
             box.innerText = '';
         }
 
+        // Abre GPS externo - sempre visível, funciona no iOS e Android
+        function abrirGPS(event) {
+            event.preventDefault();
+
+            const origem = minhaPosicaoAtual || { lat: getPortariaCoords()[0], lng: getPortariaCoords()[1] };
+
+            if (!destinoAtualCoords) {
+                alert('Selecione um destino primeiro.');
+                return;
+            }
+
+            const o = origem.lat + ',' + origem.lng;
+            const d = destinoAtualCoords[0] + ',' + destinoAtualCoords[1];
+
+            let url;
+            if (isIOS()) {
+                // Apple Maps via scheme nativo - funciona quando o usuário toca diretamente
+                url = 'maps://?saddr=' + encodeURIComponent(o) + '&daddr=' + encodeURIComponent(d) + '&dirflg=d';
+            } else {
+                // Google Maps no Android
+                url = 'https://www.google.com/maps/dir/?api=1&origin=' + encodeURIComponent(o) + '&destination=' + encodeURIComponent(d) + '&travelmode=driving';
+            }
+
+            // Atualiza o href para que o toque nativo no iOS funcione corretamente
+            document.getElementById('btn-abrir-gps').href = url;
+            window.open(url, '_blank');
+        }
+
         async function conectarCondominio() {
             const nomeDigitado = document.getElementById('input-condo').value.trim();
             const nomeBusca = normalizarTexto(nomeDigitado);
@@ -521,7 +570,6 @@
                 map.flyTo(portaria, ZOOM_NAVEGACAO, { duration: 0.5 });
             }
 
-            // Corrige tamanho do mapa múltiplas vezes (especialmente iOS)
             [100, 300, 600, 1000, 2000].forEach(ms => setTimeout(() => { if (map) map.invalidateSize(true); }, ms));
         }
 
@@ -582,63 +630,9 @@
             `;
 
             tracarRotaAteDestino(destinoAtualCoords[0], destinoAtualCoords[1]);
-
-            // Abre mapa externo (Apple Maps no iOS, Google Maps no Android) em nova aba
-            // O monitoramento continua rodando nesta aba em segundo plano
-            const origemNav = minhaPosicaoAtual || { lat: getPortariaCoords()[0], lng: getPortariaCoords()[1] };
-            abrirNavegacaoExterna(origemNav, { lat: Number(lote.latitude), lng: Number(lote.longitude) });
-
             registrarOuAtualizarVisita();
 
-            if (isMobile()) togglePainelMapa(true);
-        }
-
-        // Abre Apple Maps (iOS) ou Google Maps (Android)
-        // O monitoramento Zayron continua ativo nesta aba em segundo plano
-        function abrirNavegacaoExterna(origem, destino) {
-            const o = origem.lat + ',' + origem.lng;
-            const d = destino.lat + ',' + destino.lng;
-
-            if (isIOS()) {
-                // iOS: Safari bloqueia redirecionamentos automáticos.
-                // Mostra botão flutuante para o usuário tocar e abrir Apple Maps.
-                const velho = document.getElementById('zayron-abrir-maps-ios');
-                if (velho) velho.remove();
-
-                const url = 'maps://?saddr=' + encodeURIComponent(o) + '&daddr=' + encodeURIComponent(d) + '&dirflg=d';
-
-                const btn = document.createElement('a');
-                btn.id = 'zayron-abrir-maps-ios';
-                btn.href = url;
-                btn.innerText = '🗺️ Abrir Apple Maps';
-                btn.style.cssText = [
-                    'position:fixed',
-                    'left:14px',
-                    'right:14px',
-                    'bottom:calc(20px + env(safe-area-inset-bottom))',
-                    'z-index:99999',
-                    'display:block',
-                    'height:58px',
-                    'line-height:58px',
-                    'text-align:center',
-                    'border-radius:16px',
-                    'background:#f59e0b',
-                    'color:#111827',
-                    'font-weight:900',
-                    'font-size:18px',
-                    'text-decoration:none',
-                    'box-shadow:0 8px 24px rgba(0,0,0,.4)'
-                ].join(';');
-
-                // Some automaticamente após 15 segundos
-                btn.onclick = () => setTimeout(() => btn.remove(), 1500);
-                setTimeout(() => { if (btn.parentNode) btn.remove(); }, 15000);
-
-                document.body.appendChild(btn);
-            } else {
-                // Android: abre Google Maps direto via intent geo
-                window.location.href = 'geo:' + d + '?q=' + encodeURIComponent(d);
-            }
+            if (isMobile()) togglePainelMapa(false);
         }
 
         function obterOrigemRota() {
@@ -1172,14 +1166,8 @@
             mostrarAlerta('warning', automatico ? 'Rota de retorno à portaria iniciada automaticamente.' : 'Retorno à portaria iniciado.');
             document.getElementById('info-destino').innerHTML = '<b>Retorno à portaria</b><br>Siga a rota exibida no mapa para voltar ao ponto inicial.';
 
-            // Abre mapa externo para navegação de retorno
-            abrirNavegacaoExterna(
-                { lat: Number(minhaPosicaoAtual.lat), lng: Number(minhaPosicaoAtual.lng) },
-                { lat: portaria[0], lng: portaria[1] }
-            );
-
             await tracarRotaAteDestino(portaria[0], portaria[1]);
-            if (isMobile()) togglePainelMapa(true);
+            if (isMobile()) togglePainelMapa(false);
 
             if (visitaAtualId) {
                 await apiPatch(`/public/visitas/${visitaAtualId}`, { status: 'retornando_portaria' }).catch(console.error);
@@ -1229,7 +1217,6 @@
             }
         }
 
-        // Corrige tamanho do mapa ao mudar orientação (especialmente iOS)
         window.addEventListener('orientationchange', () => {
             [300, 700, 1200].forEach(ms => setTimeout(() => { if (map) map.invalidateSize(true); }, ms));
         });
