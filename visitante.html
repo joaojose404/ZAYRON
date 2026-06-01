@@ -380,13 +380,7 @@
                     <button class="success" onclick="centralizarNaMinhaPosicao()">Minha posição</button>
                     <button class="warning" onclick="retornarPortaria()">Retornar à Portaria</button>
                 </div>
-	<button
-    id="btn-cheguei"
-    class="success"
-    onclick="confirmarChegada()"
-    style="display:none;margin-top:10px;width:100%;">
-    ✓ OK, Cheguei
-</button>
+	
 
                 <!-- Botão GPS: Android abre direto, iOS abre painel de escolha -->
                 <button onclick="abrirGPSExterno()" style="margin-top:10px;width:100%;height:52px;border:none;border-radius:12px;background:#7c3aed;color:white;font-weight:900;font-size:15px;cursor:pointer;">
@@ -1171,24 +1165,21 @@ function atualizarMarcadorVisitante(lat, lng, centralizar = false) {
 
         destinoChegou = true;
 
-        if (rotaModo === 'destino') {
+       if (rotaModo === 'destino') {
 
-            const btn = document.getElementById('btn-cheguei');
+    mostrarAlerta(
+        'success',
+        'Você chegou ao destino.'
+    );
 
-            if (btn) {
-                btn.style.display = 'block';
-            }
+    await marcarChegada();
 
-            mostrarAlerta(
-                'success',
-                'Você chegou ao destino. Clique em OK, Cheguei para iniciar o retorno.'
-            );
+    setTimeout(async () => {
+        await retornarPortaria(true);
+    }, 1000);
 
-            document.getElementById('status-rota').innerText =
-                'Destino alcançado. Confirme a chegada.';
-
-            return;
-        }
+    return;
+}
 
         if (rotaModo === 'retorno') {
 
