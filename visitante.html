@@ -1155,28 +1155,51 @@ function atualizarMarcadorVisitante(lat, lng, centralizar = false) {
             await tracarRotaAteDestino(destinoAtualCoords[0], destinoAtualCoords[1], false);
         }
 
-        function verificarChegada(lat, lng) {
-            if (!destinoAtualCoords || destinoChegou || visitaEncerradaAutomaticamente) return;
-            const dist = distanciaMetros(lat, lng, destinoAtualCoords[0], destinoAtualCoords[1]);
-            if (dist <= DISTANCIA_CHEGADA_METROS) {
-                destinoChegou = true;
-               if (rotaModo === 'destino') {
+       function verificarChegada(lat, lng) {
 
-    const btn = document.getElementById('btn-cheguei');
+    if (!destinoAtualCoords || destinoChegou || visitaEncerradaAutomaticamente)
+        return;
 
-    if (btn) {
-        btn.style.display = 'block';
-    }
-
-    mostrarAlerta(
-        'success',
-        'Você chegou ao destino. Clique em OK, Cheguei para iniciar o retorno.'
+    const dist = distanciaMetros(
+        lat,
+        lng,
+        destinoAtualCoords[0],
+        destinoAtualCoords[1]
     );
 
-    document.getElementById('status-rota').innerText =
-        'Destino alcançado. Confirme a chegada.';
+    if (dist <= DISTANCIA_CHEGADA_METROS) {
 
-    return;
+        destinoChegou = true;
+
+        if (rotaModo === 'destino') {
+
+            const btn = document.getElementById('btn-cheguei');
+
+            if (btn) {
+                btn.style.display = 'block';
+            }
+
+            mostrarAlerta(
+                'success',
+                'Você chegou ao destino. Clique em OK, Cheguei para iniciar o retorno.'
+            );
+
+            document.getElementById('status-rota').innerText =
+                'Destino alcançado. Confirme a chegada.';
+
+            return;
+        }
+
+        if (rotaModo === 'retorno') {
+
+            mostrarAlerta(
+                'success',
+                'Você chegou à portaria.'
+            );
+
+            marcarChegadaPortaria();
+        }
+    }
 }
         async function marcarChegada() {
             if (!visitaAtualId) return;
