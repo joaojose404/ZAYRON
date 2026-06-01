@@ -1149,7 +1149,7 @@ function atualizarMarcadorVisitante(lat, lng, centralizar = false) {
             await tracarRotaAteDestino(destinoAtualCoords[0], destinoAtualCoords[1], false);
         }
 
-       function verificarChegada(lat, lng) {
+       async function verificarChegada(lat, lng) {
 
     if (!destinoAtualCoords || destinoChegou || visitaEncerradaAutomaticamente)
         return;
