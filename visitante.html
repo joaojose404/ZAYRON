@@ -380,6 +380,13 @@
                     <button class="success" onclick="centralizarNaMinhaPosicao()">Minha posição</button>
                     <button class="warning" onclick="retornarPortaria()">Retornar à Portaria</button>
                 </div>
+	<button
+    id="btn-cheguei"
+    class="success"
+    onclick="confirmarChegada()"
+    style="display:none;margin-top:10px;width:100%;">
+    ✓ OK, Cheguei
+</button>
 
                 <!-- Botão GPS: Android abre direto, iOS abre painel de escolha -->
                 <button onclick="abrirGPSExterno()" style="margin-top:10px;width:100%;height:52px;border:none;border-radius:12px;background:#7c3aed;color:white;font-weight:900;font-size:15px;cursor:pointer;">
@@ -726,7 +733,7 @@ async function apiPatch(url, body){
             if (condominioAtual?.portaria_latitude != null && condominioAtual?.portaria_longitude != null) {
                 return [Number(condominioAtual.portaria_latitude), Number(condominioAtual.portaria_longitude)];
             }
-            return [-23.2066, -47.0348];
+            return [-23.201903, -47.029268];
         }
 
         function iniciarMapa() {
@@ -1417,7 +1424,26 @@ function centralizarMapaNoVisitante(lat, lng, animate=true) {
         else map.panBy([-MAPA_PAINEL_OFFSET_DESKTOP,MAPA_PAINEL_OFFSET_VERTICAL],{animate:false});
     },80);
 }
+async function confirmarChegada() {
 
+    if (rotaModo !== 'destino') return;
+
+    destinoChegou = true;
+
+    const btn = document.getElementById('btn-cheguei');
+    if (btn) btn.style.display = 'none';
+
+    mostrarAlerta(
+        'success',
+        'Chegada confirmada. Iniciando retorno à portaria.'
+    );
+
+    await marcarChegada();
+
+    retornoAutomaticoIniciado = true;
+
+    await retornarPortaria(true);
+}
 console.log('✅ visitante.html carregado - sistema iOS integrado.');
     </script>
 </body>
