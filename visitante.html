@@ -1160,26 +1160,24 @@ function atualizarMarcadorVisitante(lat, lng, centralizar = false) {
             const dist = distanciaMetros(lat, lng, destinoAtualCoords[0], destinoAtualCoords[1]);
             if (dist <= DISTANCIA_CHEGADA_METROS) {
                 destinoChegou = true;
-                if (rotaModo === 'destino') {
-                    mostrarAlerta('success', 'Você chegou ao destino. Rota de retorno à portaria iniciada automaticamente.');
-                    document.getElementById('status-rota').innerText = 'Destino alcançado. Calculando retorno à portaria...';
-                    marcarChegada();
-                    if (!avisoChegadaDestinoMostrado) {
-                        avisoChegadaDestinoMostrado = true;
-                        setTimeout(() => alert('Você chegou ao destino. Agora siga a rota de volta até a portaria.'), 250);
-                    }
-                    if (!retornoAutomaticoIniciado) {
-                        retornoAutomaticoIniciado = true;
-                        setTimeout(() => retornarPortaria(true), 1200);
-                    }
-                } else if (rotaModo === 'retorno') {
-                    mostrarAlerta('success', 'Você chegou à portaria. A visita será encerrada automaticamente.');
-                    document.getElementById('status-rota').innerText = 'Chegada à portaria confirmada. Encerrando visita...';
-                    marcarChegadaPortaria();
-                }
-            }
-        }
+               if (rotaModo === 'destino') {
 
+    const btn = document.getElementById('btn-cheguei');
+
+    if (btn) {
+        btn.style.display = 'block';
+    }
+
+    mostrarAlerta(
+        'success',
+        'Você chegou ao destino. Clique em OK, Cheguei para iniciar o retorno.'
+    );
+
+    document.getElementById('status-rota').innerText =
+        'Destino alcançado. Confirme a chegada.';
+
+    return;
+}
         async function marcarChegada() {
             if (!visitaAtualId) return;
             try {
