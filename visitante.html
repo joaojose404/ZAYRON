@@ -1031,14 +1031,10 @@ function decodePolyline(encoded) {
                     return;
                 }
             }
+const velocidadeKmh = calcularVelocidadePorGps(lat, lng, accuracy, speedMs);
 
-            const velocidadeKmh = calcularVelocidadePorGps(lat, lng, accuracy, speedMs);
-console.log(
-  'GPS VISITANTE',
-  'speedMs=', speedMs,
-  'velocidadeKmh=', velocidadeKmh,
-  'accuracy=', accuracy
-);
+document.getElementById('status-rota').innerText =
+  `speedMs=${speedMs} | kmh=${velocidadeKmh} | GPS=${Math.round(accuracy)}m`;
             minhaPosicaoAtual = novaPosicao;
             atualizarMarcadorVisitante(lat, lng, centralizar);
 
