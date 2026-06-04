@@ -1033,6 +1033,12 @@ function decodePolyline(encoded) {
             }
 
             const velocidadeKmh = calcularVelocidadePorGps(lat, lng, accuracy, speedMs);
+console.log(
+  'GPS VISITANTE',
+  'speedMs=', speedMs,
+  'velocidadeKmh=', velocidadeKmh,
+  'accuracy=', accuracy
+);
             minhaPosicaoAtual = novaPosicao;
             atualizarMarcadorVisitante(lat, lng, centralizar);
 
