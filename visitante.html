@@ -963,25 +963,43 @@ function decodePolyline(encoded) {
             return map.distance([a.lat, a.lng], [b.lat, b.lng]);
         }
 
-        function calcularVelocidadePorGps(lat, lng, accuracy, speedMs) {
-            const agora = Date.now();
-            let velocidadeKmh = 0;
-            if (typeof speedMs === 'number' && Number.isFinite(speedMs) && speedMs >= 0) {
-                velocidadeKmh = speedMs * 3.6;
-            }
-            if (ultimaPosicaoMonitoramento && ultimoTempoMonitoramento) {
-                const distancia = distanciaEntrePontos(ultimaPosicaoMonitoramento, { lat, lng });
-                const segundos = Math.max(1, (agora - ultimoTempoMonitoramento) / 1000);
-                if ((!velocidadeKmh || velocidadeKmh < 1) && accuracy <= 120 && distancia >= 4) {
-                    velocidadeKmh = (distancia / segundos) * 3.6;
-                }
-            }
-            ultimaPosicaoMonitoramento = { lat, lng };
-            ultimoTempoMonitoramento = agora;
-            ultimaVelocidadeCalculadaKmh = velocidadeKmh;
-            return velocidadeKmh;
-        }
+       function calcularVelocidadePorGps(lat, lng, accuracy, speedMs) {
+    const agora = Date.now();
+    let velocidadeKmh = 0;
 
+    if (typeof speedMs === 'number' && Number.isFinite(speedMs) && speedMs >= 0) {
+        velocidadeKmh = speedMs * 3.6;
+    }
+
+    if (ultimaPosicaoMonitoramento && ultimoTempoMonitoramento) {
+
+        const distancia = distanciaEntrePontos(
+            ultimaPosicaoMonitoramento,
+            { lat, lng }
+        );
+
+        const segundos = Math.max(
+            1,
+            (agora - ultimoTempoMonitoramento) / 1000
+        );
+
+        document.getElementById('status-rota').innerText =
+            `Dist=${distancia.toFixed(2)}m | Seg=${segundos.toFixed(1)} | SpeedMs=${speedMs}`;
+
+        if ((!velocidadeKmh || velocidadeKmh < 1)
+            && accuracy <= 120
+            && distancia >= 4) {
+
+            velocidadeKmh = (distancia / segundos) * 3.6;
+        }
+    }
+
+    ultimaPosicaoMonitoramento = { lat, lng };
+    ultimoTempoMonitoramento = agora;
+    ultimaVelocidadeCalculadaKmh = velocidadeKmh;
+
+    return velocidadeKmh;
+}
         async function verificarVisitanteParado(lat, lng) {
             const agora = Date.now();
             if (!ultimaPosicaoValida) { paradaIniciadaEm = agora; return; }
