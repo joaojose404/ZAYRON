@@ -315,30 +315,31 @@
 </head>
 <body>
 
-    <div id="step-condo" class="container-login">
-        <h2 class="title">Acesso</h2>
-        <div class="subtitle">Digite o nome do condomínio</div>
+   <div id="step-condo" class="container-login">
+    <h2 class="title">Acesso</h2>
+    <div class="subtitle">Selecione o condomínio</div>
 
-        <input
-            type="text"
-            id="input-condo"
-            placeholder="CONDOMÍNIO"
-            oninput="limparStatusCondominio()"
-            onkeydown="if(event.key==='Enter'){conectarCondominio()}"
-        />
+    <select id="input-condo" onchange="limparStatusCondominio()">
+        <option value="">Selecione o condomínio</option>
+    </select>
 
-        <button class="primary" style="margin-top:10px;" onclick="conectarCondominio()">Continuar</button>
-        <div id="status-condo" class="status-line" style="margin-top:12px;"></div>
-    </div>
+    <button class="primary" style="margin-top:10px;" onclick="conectarCondominio()">
+        Continuar
+    </button>
 
-    <div id="step-ident" class="container-login hidden">
-        <h2 class="title">Identificação</h2>
-        <div class="subtitle">Preencha seus dados para iniciar a navegação</div>
+    <div id="status-condo" class="status-line" style="margin-top:12px;"></div>
+</div>
 
+<div id="step-ident" class="container-login hidden">
+    <h2 class="title">Identificação</h2>
+    <div class="subtitle">Preencha seus dados para iniciar a navegação</div>
         <input type="text" id="input-nome" placeholder="SEU NOME" />
         <input type="text" id="input-placa" placeholder="PLACA (OBRIGATÓRIA)" />
-        <input type="text" id="input-liberado-por" placeholder="LIBERADO POR" />
-
+        <select id="input-tipo-pessoa">
+    <option value="">SELECIONE</option>
+    <option value="VISITANTE">VISITANTE</option>
+    <option value="PRESTADOR">PRESTADOR</option>
+</select>
         <button class="primary" style="margin-top:10px;" onclick="irParaMapa()">Iniciar</button>
     </div>
 
@@ -673,16 +674,47 @@ async function apiPatch(url, body){
                 status.innerText = `Falha de conexão: ${err.message}`;
             }
         }
+async function carregarCondominios() {
+
+    try {
+
+        const condominios = await apiGet('/public/condominios');
+
+        const select = document.getElementById('input-condo');
+
+        select.innerHTML =
+            '<option value="">Selecione o condomínio</option>';
+
+        condominios.forEach(cond => {
+
+            select.innerHTML += `
+                <option value="${cond.nome}">
+                    ${cond.nome}
+                </option>
+            `;
+
+        });
+
+    } catch (err) {
+
+        console.error('Erro ao carregar condomínios:', err);
+
+    }
+
+}
 
         async function irParaMapa() {
             const nome = document.getElementById('input-nome').value.trim();
             const placa = document.getElementById('input-placa').value.trim().toUpperCase();
-            const liberadoPor = document.getElementById('input-liberado-por').value.trim().toUpperCase();
-
+            const tipoPessoa =
+document.getElementById('input-tipo-pessoa')
+.value;
             if (!nome) { alert('Informe seu nome.'); return; }
             if (!placa) { alert('Informe a placa do veículo.'); return; }
-            if (!liberadoPor) { alert('Informe quem liberou a entrada.'); return; }
-
+           if (!tipoPessoa) {
+    alert('Selecione VISITANTE ou PRESTADOR.');
+    return;
+}
             horarioEntradaSistemaLocal = new Date().toISOString();
 
             document.getElementById('step-ident').classList.add('hidden');
@@ -919,36 +951,50 @@ function decodePolyline(encoded) {
 }
 
         async function registrarOuAtualizarVisita() {
-            if (!condominioAtual || !loteDestinoAtual) return;
-            const nome = document.getElementById('input-nome').value.trim().toUpperCase();
-            const placa = document.getElementById('input-placa').value.trim().toUpperCase();
-            const liberadoPor = document.getElementById('input-liberado-por').value.trim().toUpperCase();
-            try {
-                if (!visitaAtualId) {
-                    const data = await apiPost('/public/visitas', {
-                        condominio_id: condominioAtual.id,
-                        lote_id: loteDestinoAtual.id,
-                        nome_visitante: nome,
-                        placa: placa,
-                        autorizado_por: liberadoPor,
-                        destino_texto: montarDestinoTexto(loteDestinoAtual),
-                        status: 'em_rota',
-                        horario_entrada_sistema: horarioEntradaSistemaLocal || new Date().toISOString(),
-                        observacoes: 'Visita iniciada pelo sistema de navegação.'
-                    });
-                    visitaAtualId = data.id;
-                } else {
-                    await apiPatch(`/public/visitas/${visitaAtualId}`, {
-                        lote_id: loteDestinoAtual.id,
-                        placa: placa,
-                        autorizado_por: liberadoPor,
-                        destino_texto: montarDestinoTexto(loteDestinoAtual),
-                        status: 'em_rota'
-                    });
-                }
-            } catch (err) { console.error(err); }
+
+    if (!condominioAtual || !loteDestinoAtual) return;
+
+    const nome = document.getElementById('input-nome').value.trim().toUpperCase();
+
+    const placa = document.getElementById('input-placa').value.trim().toUpperCase();
+
+    const tipoPessoa = document.getElementById('input-tipo-pessoa').value;
+
+    try {
+
+        if (!visitaAtualId) {
+
+            const data = await apiPost('/public/visitas', {
+                condominio_id: condominioAtual.id,
+                lote_id: loteDestinoAtual.id,
+                nome_visitante: nome,
+                placa: placa,
+                tipo_pessoa: tipoPessoa,
+                destino_texto: montarDestinoTexto(loteDestinoAtual),
+                status: 'em_rota',
+                horario_entrada_sistema:
+                    horarioEntradaSistemaLocal || new Date().toISOString(),
+                observacoes: 'Visita iniciada pelo sistema de navegação.'
+            });
+
+            visitaAtualId = data.id;
+
+        } else {
+
+            await apiPatch(`/public/visitas/${visitaAtualId}`, {
+                lote_id: loteDestinoAtual.id,
+                placa: placa,
+                tipo_pessoa: tipoPessoa,
+                destino_texto: montarDestinoTexto(loteDestinoAtual),
+                status: 'em_rota'
+            });
+
         }
 
+    } catch (err) {
+        console.error(err);
+    }
+}
         function montarDestinoTexto(lote) {
             let txt = '';
             if (lote.rua) txt += lote.rua;
@@ -983,8 +1029,12 @@ function decodePolyline(encoded) {
             (agora - ultimoTempoMonitoramento) / 1000
         );
 
-        document.getElementById('status-rota').innerText =
-            `Dist=${distancia.toFixed(2)}m | Seg=${segundos.toFixed(1)} | SpeedMs=${speedMs}`;
+      console.log("GPS DEBUG");
+console.log("Distância:", distancia);
+console.log("Segundos:", segundos);
+console.log("Accuracy:", accuracy);
+console.log("SpeedMs:", speedMs);
+console.log("Velocidade antes:", velocidadeKmh);
 
         if ((!velocidadeKmh || velocidadeKmh < 1)
             && accuracy <= 120
@@ -997,6 +1047,8 @@ function decodePolyline(encoded) {
     ultimaPosicaoMonitoramento = { lat, lng };
     ultimoTempoMonitoramento = agora;
     ultimaVelocidadeCalculadaKmh = velocidadeKmh;
+
+console.log("Velocidade final:", velocidadeKmh);
 
     return velocidadeKmh;
 }
@@ -1476,6 +1528,7 @@ async function confirmarChegada() {
 
     await retornarPortaria(true);
 }
+carregarCondominios();
 console.log('✅ visitante.html carregado - sistema iOS integrado.');
     </script>
 </body>
