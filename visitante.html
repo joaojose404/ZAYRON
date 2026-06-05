@@ -1253,15 +1253,20 @@ function atualizarMarcadorVisitante(lat, lng, centralizar = false) {
     return;
 }
 
-        if (rotaModo === 'retorno') {
+        if (rotaModo === 'destino') {
 
-            mostrarAlerta(
-                'success',
-                'Você chegou à portaria.'
-            );
+    await marcarChegada();
 
-            marcarChegadaPortaria();
-        }
+    const confirmarRetorno = confirm(
+        'Você chegou ao destino.\n\nClique OK para retornar à portaria.'
+    );
+
+    if (confirmarRetorno) {
+        await retornarPortaria(true);
+    }
+
+    return;
+}
     }
 }
         async function marcarChegada() {
