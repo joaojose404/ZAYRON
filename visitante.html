@@ -1030,44 +1030,92 @@ function limparRotaAtual() {
     );
 }
 
-       function calcularVelocidadePorGps(lat, lng, accuracy, speedMs) {
+     function calcularVelocidadePorGps(lat, lng, accuracy, speedMs) {
+
     const agora = Date.now();
     let velocidadeKmh = 0;
+    let distancia = 0;
+    let segundos = 0;
 
-    if (typeof speedMs === 'number' && Number.isFinite(speedMs) && speedMs >= 0) {
+    // Velocidade fornecida pelo GPS do aparelho
+    if (
+        typeof speedMs === 'number' &&
+        Number.isFinite(speedMs) &&
+        speedMs >= 0
+    ) {
         velocidadeKmh = speedMs * 3.6;
     }
 
+    // Se não veio velocidade do GPS, calcula pela distância percorrida
     if (ultimaPosicaoMonitoramento && ultimoTempoMonitoramento) {
 
-        const distancia = distanciaEntrePontos(
-            ultimaPosicaoMonitoramento,
-            { lat, lng }
-        );
+        try {
 
-        const segundos = Math.max(
-            1,
-            (agora - ultimoTempoMonitoramento) / 1000
-        );
+            distancia = distanciaEntrePontos(
+                ultimaPosicaoMonitoramento,
+                { lat, lng }
+            );
 
-      console.log("GPS DEBUG");
-console.log("Distância:", distancia);
-console.log("Segundos:", segundos);
-console.log("Accuracy:", accuracy);
-console.log("SpeedMs:", speedMs);
-console.log("Velocidade antes:", velocidadeKmh);
+            segundos = Math.max(
+                1,
+                (agora - ultimoTempoMonitoramento) / 1000
+            );
 
-        if ((!velocidadeKmh || velocidadeKmh < 1)
-            && accuracy <= 120
-            && distancia >= 1) {
+            if (
+                (!velocidadeKmh || velocidadeKmh < 1) &&
+                accuracy <= 120 &&
+                distancia >= 1
+            ) {
+                velocidadeKmh =
+                    (distancia / segundos) * 3.6;
+            }
 
-            velocidadeKmh = (distancia / segundos) * 3.6;
+        } catch (err) {
+            console.error(
+                'Erro ao calcular distância:',
+                err
+            );
         }
     }
 
-    ultimaPosicaoMonitoramento = { lat, lng };
+    // Nunca permitir NaN
+    velocidadeKmh = Number(velocidadeKmh);
+
+    if (!Number.isFinite(velocidadeKmh)) {
+        velocidadeKmh = 0;
+    }
+
+    // Debug visível na tela
+    const status = document.getElementById('status-rota');
+
+    if (status) {
+
+        status.innerText =
+            `GPS=${Math.round(accuracy || 0)}m | ` +
+            `speedMs=${speedMs} | ` +
+            `dist=${Math.round(distancia)}m | ` +
+            `vel=${velocidadeKmh.toFixed(1)} km/h`;
+
+    }
+
+    console.log('GPS DEBUG');
+    console.log('Latitude:', lat);
+    console.log('Longitude:', lng);
+    console.log('Accuracy:', accuracy);
+    console.log('SpeedMs:', speedMs);
+    console.log('Distância:', distancia);
+    console.log('Segundos:', segundos);
+    console.log('Velocidade Final:', velocidadeKmh);
+
+    ultimaPosicaoMonitoramento = {
+        lat,
+        lng
+    };
+
     ultimoTempoMonitoramento = agora;
+
     ultimaVelocidadeCalculadaKmh = velocidadeKmh;
+
     return velocidadeKmh;
 }
         async function verificarVisitanteParado(lat, lng) {
