@@ -851,22 +851,21 @@ document.getElementById('input-tipo-pessoa')
             return { paddingTopLeft: [450, 30], paddingBottomRight: [30, 30] };
         }
 
-      function centralizarMapaNoVisitante(lat, lng, animate = true) {
+ function centralizarMapaNoVisitante(lat, lng) {
 
-    if (!map || lat == null || lng == null) return;
+    if (!map) return;
 
-    const posicao = {
+    const pos = {
         lat: Number(lat),
         lng: Number(lng)
     };
 
-    const zoom = isMobile()
-        ? ZOOM_NAVEGACAO_MOBILE
-        : ZOOM_NAVEGACAO;
+    map.panTo(pos);
 
-    map.setCenter(posicao);
+    if (map.getZoom() < 19) {
+        map.setZoom(19);
+    }
 
-    map.setZoom(zoom);
 }
 
 async function tracarRotaAteDestino(destLat, destLng, forceRecreate = false) {
@@ -1125,10 +1124,26 @@ const velocidadeKmh = calcularVelocidadePorGps(lat, lng, accuracy, speedMs);
 document.getElementById('status-rota').innerText =
   `speedMs=${speedMs} | kmh=${velocidadeKmh} | GPS=${Math.round(accuracy)}m`;
             minhaPosicaoAtual = novaPosicao;
-            atualizarMarcadorVisitante(lat, lng, centralizar);
+           atualizarMarcadorVisitante(lat, lng, false);
 
-            if (modoNavegacaoAtivo || destinoAtualCoords) {
-                centralizarMapaNoVisitante(lat, lng, true);
+if (modoNavegacaoAtivo || destinoAtualCoords) {
+
+    if (!window.ultimoPanMapa) {
+        window.ultimoPanMapa = 0;
+    }
+
+    const agora = Date.now();
+
+    if (agora - window.ultimoPanMapa > 1500) {
+
+        centralizarMapaNoVisitante(
+            lat,
+            lng
+        );
+
+        window.ultimoPanMapa = agora;
+    }
+
             } else if (centralizar) {
                 centralizarMapaNoVisitante(lat, lng, true);
             }
@@ -1167,41 +1182,64 @@ document.getElementById('status-rota').innerText =
 }
 
 
-function atualizarMarcadorVisitante(lat, lng, centralizar = false) {
+let ultimaPosicaoSeta = null;
+
+function atualizarMarcadorVisitante(
+    lat,
+    lng,
+    centralizar = false
+) {
 
     const posicao = {
         lat: Number(lat),
         lng: Number(lng)
     };
 
-    if (visitanteMarker) {
+    let heading = 0;
 
-        visitanteMarker.setPosition(posicao);
+    if (ultimaPosicaoSeta) {
 
-    } else {
+        heading =
+            google.maps.geometry.spherical.computeHeading(
+                new google.maps.LatLng(
+                    ultimaPosicaoSeta.lat,
+                    ultimaPosicaoSeta.lng
+                ),
+                new google.maps.LatLng(
+                    posicao.lat,
+                    posicao.lng
+                )
+            );
+    }
 
-      visitanteMarker = new google.maps.Marker({
-    position: { lat, lng },
-    map: map,
-    title: 'Sua localização',
-    icon: {
+    ultimaPosicaoSeta = posicao;
+
+    const icon = {
         path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-        scale: 6,
+        scale: 7,
         fillColor: '#2563EB',
         fillOpacity: 1,
         strokeColor: '#FFFFFF',
         strokeWeight: 2,
-        rotation: 0
-    }
-});
+        rotation: heading
+    };
 
-    }
+    if (visitanteMarker) {
 
-    if (centralizar && map) {
-        centralizarMapaNoVisitante(lat, lng, true);
+        visitanteMarker.setPosition(posicao);
+
+        visitanteMarker.setIcon(icon);
+
+    } else {
+
+        visitanteMarker =
+            new google.maps.Marker({
+                position: posicao,
+                map: map,
+                icon: icon
+            });
     }
 }
-
         function distanciaMetros(lat1, lon1, lat2, lon2) {
             const R = 6371000, toRad = deg => deg * Math.PI / 180;
             const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
