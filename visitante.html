@@ -1378,23 +1378,34 @@ function atualizarMarcadorVisitante(
             } catch (err) { console.error(err); }
         }
 
-        async function enviarPosicaoTempoReal(lat, lng, accuracy, speedKmh) {
-            if (!condominioAtual || !visitaAtualId) return;
-            try {
-                await apiPost('/posicoes-tempo-real', {
-                    condominio_id: condominioAtual.id,
-                    tipo_entidade: 'visitante',
-                    entidade_id: visitaAtualId,
-                    latitude: lat, longitude: lng,
-                    precisao: accuracy || null,
-                    velocidade: speedKmh || null,
-                    bateria: null
-                });
-                await apiPatch(`/public/visitas/${visitaAtualId}`, { latitude_atual: lat, longitude_atual: lng });
-            } catch (err) { console.error(err); }
-        }
+       async function enviarPosicaoTempoReal(lat, lng, accuracy, speedKmh) {
 
-        function centralizarNaMinhaPosicao() {
+    console.log('VELOCIDADE ENVIADA PARA API:', speedKmh);
+
+    if (!condominioAtual || !visitaAtualId) return;
+
+    try {
+        await apiPost('/posicoes-tempo-real', {
+            condominio_id: condominioAtual.id,
+            tipo_entidade: 'visitante',
+            entidade_id: visitaAtualId,
+            latitude: lat,
+            longitude: lng,
+            precisao: accuracy || null,
+            velocidade: Number(speedKmh ?? 0),
+            bateria: null
+        });
+
+        await apiPatch(`/public/visitas/${visitaAtualId}`, {
+            latitude_atual: lat,
+            longitude_atual: lng
+        });
+
+    } catch (err) {
+        console.error(err);
+    }
+}
+function centralizarNaMinhaPosicao() {
             if (!map) return;
             if (minhaPosicaoAtual) {
                 modoNavegacaoAtivo = true;
@@ -1404,6 +1415,7 @@ function atualizarMarcadorVisitante(
             const portaria = getPortariaCoords();
             map.flyTo(portaria, ZOOM_NAVEGACAO, { duration: 0.8 });
         }
+
 
         async function retornarPortaria(automatico = false) {
             if (!minhaPosicaoAtual) {
