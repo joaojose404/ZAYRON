@@ -5,11 +5,7 @@
     <title>Navegação Visitante - Secure Tech</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 
-    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.css" />
-
-    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-    <script src="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.js"></script>
+   <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBgk1MsbiRFMwPZFvZusOrE28-JHKW8iN4"></script>
     
 
     <style>
@@ -383,10 +379,7 @@
                 </div>
 	
 
-                <!-- Botão GPS: Android abre direto, iOS abre painel de escolha -->
-                <button onclick="abrirGPSExterno()" style="margin-top:10px;width:100%;height:52px;border:none;border-radius:12px;background:#7c3aed;color:white;font-weight:900;font-size:15px;cursor:pointer;">
-                    🗺️ Abrir no GPS (Apple Maps / Google Maps)
-                </button>
+             
             </div>
         </div>
     </div>
@@ -469,6 +462,8 @@ async function apiPatch(url, body){
 }
 
         let map = null;
+let directionsService;
+let directionsRenderer;
         let routingControl = null;
         let portariaMarker = null;
         let destinoMarker = null;
@@ -580,22 +575,7 @@ async function apiPatch(url, body){
             };
         }
 
-        function abrirGPSExterno() {
-            if (!destinoAtualCoords) {
-                alert('Selecione um destino primeiro.');
-                return;
-            }
-
-            if (isIOS()) {
-                // iOS: mostra painel para o usuário escolher e tocar — não há bloqueio de popup
-                document.getElementById('ios-maps-panel').classList.add('show');
-            } else {
-                // Android: abre Google Maps direto
-                const urls = buildGPSUrls();
-                if (urls) window.open(urls.googleWeb, '_blank');
-            }
-        }
-
+       
         function fecharPainelIOS() {
             document.getElementById('ios-maps-panel').classList.remove('show');
         }
@@ -762,34 +742,37 @@ document.getElementById('input-tipo-pessoa')
             return [-23.201903, -47.029268];
         }
 
-        function iniciarMapa() {
-            const portaria = getPortariaCoords();
+     function iniciarMapa() {
 
-            if (!map) {
-                map = L.map('map', {
-                    zoomControl: true,
-                    maxZoom: 22,
-                    zoomSnap: 0.25,
-                    zoomDelta: 0.5
-                }).setView(portaria, ZOOM_NAVEGACAO);
+    const portaria = getPortariaCoords();
 
-                L.tileLayer(GOOGLE_SATELLITE_TILE, {
-                    maxZoom: 22,
-                    maxNativeZoom: 22,
-                    attribution: 'Imagens © Google'
-                }).addTo(map);
+    if (!map) {
 
-                portariaMarker = L.marker(portaria)
-                    .addTo(map)
-                    .bindPopup('<b>Portaria</b>');
-            } else {
-                map.flyTo(portaria, ZOOM_NAVEGACAO, { duration: 0.5 });
+        map = new google.maps.Map(
+            document.getElementById('map'),
+            {
+                center: {
+                    lat: Number(portaria[0]),
+                    lng: Number(portaria[1])
+                },
+                zoom: ZOOM_NAVEGACAO,
+                mapTypeId: 'satellite',
+                tilt: 0
             }
+        );
 
-            map.whenReady(() => { setTimeout(() => { map.invalidateSize(); }, 500); });
-            setTimeout(() => map.invalidateSize(), 300);
-        }
+        directionsService =
+            new google.maps.DirectionsService();
 
+        directionsRenderer =
+            new google.maps.DirectionsRenderer({
+                map: map,
+                suppressMarkers: false,
+                preserveViewport: true
+            });
+
+    }
+}
         function popularFiltros() {
             const selRua = document.getElementById('select-rua');
             const selQuadra = document.getElementById('select-quadra');
@@ -868,87 +851,96 @@ document.getElementById('input-tipo-pessoa')
             return { paddingTopLeft: [450, 30], paddingBottomRight: [30, 30] };
         }
 
-        function centralizarMapaNoVisitante(lat, lng, animate = true) {
-            if (!map || lat == null || lng == null) return;
-            const zoom = isMobile() ? ZOOM_NAVEGACAO_MOBILE : ZOOM_NAVEGACAO;
-            map.setView([Number(lat), Number(lng)], zoom, { animate });
-            setTimeout(() => {
-                if (!map) return;
-                if (isMobile()) {
-                    map.panBy([0, MAPA_PAINEL_OFFSET_VERTICAL], { animate: false });
-                } else {
-                    map.panBy([-MAPA_PAINEL_OFFSET_DESKTOP, MAPA_PAINEL_OFFSET_VERTICAL], { animate: false });
-                }
-            }, 80);
-        }
+      function centralizarMapaNoVisitante(lat, lng, animate = true) {
+
+    if (!map || lat == null || lng == null) return;
+
+    const posicao = {
+        lat: Number(lat),
+        lng: Number(lng)
+    };
+
+    const zoom = isMobile()
+        ? ZOOM_NAVEGACAO_MOBILE
+        : ZOOM_NAVEGACAO;
+
+    map.setCenter(posicao);
+
+    map.setZoom(zoom);
+}
 
 async function tracarRotaAteDestino(destLat, destLng, forceRecreate = false) {
-  if (!map) return;
 
-  const origem = obterOrigemRota();
-  modoNavegacaoAtivo = true;
+    if (!map) return;
 
-  const origemLat = Number(origem[0]);
-  const origemLng = Number(origem[1]);
-  const destinoLat = Number(destLat);
-  const destinoLng = Number(destLng);
+    const origem = obterOrigemRota();
 
-  function limparRotaAtual() {
-    if (routingControl) { map.removeControl(routingControl); routingControl = null; }
-    if (window.rotaPolyline) { map.removeLayer(window.rotaPolyline); window.rotaPolyline = null; }
-    if (window.rotaPolylineBorda) { map.removeLayer(window.rotaPolylineBorda); window.rotaPolylineBorda = null; }
-    if (destinoMarker) { map.removeLayer(destinoMarker); destinoMarker = null; }
-  }
+    const origemLat = Number(origem[0]);
+    const origemLng = Number(origem[1]);
 
-  function desenharRotaGoogle(coords, mensagem) {
-    limparRotaAtual();
-    destinoMarker = L.marker([destinoLat, destinoLng]).addTo(map)
-      .bindPopup(rotaModo === 'retorno' ? '<b>Portaria / Saída</b>' : '<b>Destino</b>');
-    window.rotaPolylineBorda = L.polyline(coords, { color: '#ffffff', weight: 12, opacity: 0.95, lineJoin: 'round', lineCap: 'round' }).addTo(map);
-    window.rotaPolyline = L.polyline(coords, { color: '#2563eb', weight: 8, opacity: 1, lineJoin: 'round', lineCap: 'round' }).addTo(map);
-    rotaAtualCoords = coords;
-    window.rotaAtualCoords = coords;
-    ultimaAtualizacaoRotaEm = Date.now();
-    document.getElementById('status-rota').innerText = mensagem;
-    try { map.fitBounds(coords, getPaddingMapa()); } catch { centralizarMapaNoVisitante(origemLat, origemLng, false); }
-  }
+    const destinoLat = Number(destLat);
+    const destinoLng = Number(destLng);
 
-  try {
-    if (!Number.isFinite(origemLat) || !Number.isFinite(origemLng) || !Number.isFinite(destinoLat) || !Number.isFinite(destinoLng)) {
-      throw new Error('Coordenadas inválidas para calcular rota.');
+    document.getElementById('status-rota').innerText =
+        'Calculando rota...';
+
+    directionsService.route(
+        {
+            origin: {
+                lat: origemLat,
+                lng: origemLng
+            },
+            destination: {
+                lat: destinoLat,
+                lng: destinoLng
+            },
+            travelMode: google.maps.TravelMode.DRIVING
+        },
+        (result, status) => {
+
+            if (status === 'OK') {
+
+                directionsRenderer.setDirections(result);
+
+                document.getElementById('status-rota').innerText =
+                    rotaModo === 'retorno'
+                        ? 'Rota de retorno calculada.'
+                        : 'Rota calculada.';
+
+            } else {
+
+                console.error(
+                    'Erro Google Directions:',
+                    status
+                );
+
+                document.getElementById('status-rota').innerText =
+                    'Erro ao calcular rota';
+
+            }
+        }
+    );
+}
+function limparRotaAtual() {
+
+    if (window.rotaPolyline) {
+        window.rotaPolyline.setMap(null);
+        window.rotaPolyline = null;
     }
-    document.getElementById('status-rota').innerText = 'Calculando rota pelo Google Maps...';
-    const rotaGoogle = await calcularRotaGoogle({ lat: origemLat, lng: origemLng }, { lat: destinoLat, lng: destinoLng });
-    const encoded = rotaGoogle?.polyline?.encodedPolyline;
-    if (!encoded) throw new Error('Google Maps não retornou a rota.');
-    const coords = decodePolyline(encoded);
-    if (!coords.length || coords.length < 2) throw new Error('Polyline vazia.');
-    desenharRotaGoogle(coords, rotaModo === 'retorno' ? 'Rota de saída calculada pelo Google Maps.' : 'Rota de entrada calculada pelo Google Maps.');
-  } catch (error) {
-    console.error('Erro ao traçar rota pelo Google Maps:', error);
-    limparRotaAtual();
-    destinoMarker = L.marker([destinoLat, destinoLng]).addTo(map)
-      .bindPopup(rotaModo === 'retorno' ? '<b>Portaria / Saída</b>' : '<b>Destino</b>');
-    rotaAtualCoords = null;
-    window.rotaAtualCoords = null;
-    document.getElementById('status-rota').innerText = 'Não foi possível calcular a rota pelo Google Maps. Verifique a rota na API.';
-    centralizarMapaNoVisitante(origemLat, origemLng, false);
-  }
+
+    if (window.rotaPolylineBorda) {
+        window.rotaPolylineBorda.setMap(null);
+        window.rotaPolylineBorda = null;
+    }
+
+    if (destinoMarker) {
+        destinoMarker.setMap(null);
+        destinoMarker = null;
+    }
+
+    routingControl = null;
 }
 
-function decodePolyline(encoded) {
-  let points = [], index = 0, lat = 0, lng = 0;
-  while (index < encoded.length) {
-    let b, shift = 0, result = 0;
-    do { b = encoded.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
-    lat += (result & 1) ? ~(result >> 1) : (result >> 1);
-    shift = 0; result = 0;
-    do { b = encoded.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
-    lng += (result & 1) ? ~(result >> 1) : (result >> 1);
-    points.push([lat / 1e5, lng / 1e5]);
-  }
-  return points;
-}
 
         async function registrarOuAtualizarVisita() {
 
@@ -1047,9 +1039,6 @@ console.log("Velocidade antes:", velocidadeKmh);
     ultimaPosicaoMonitoramento = { lat, lng };
     ultimoTempoMonitoramento = agora;
     ultimaVelocidadeCalculadaKmh = velocidadeKmh;
-
-console.log("Velocidade final:", velocidadeKmh);
-
     return velocidadeKmh;
 }
         async function verificarVisitanteParado(lat, lng) {
@@ -1147,22 +1136,40 @@ document.getElementById('status-rota').innerText =
     );
 }
 
-async function calcularRotaGoogle(origem, destino) {
-  return await apiPost('/google/rota', {
-    origem: { lat: Number(origem.lat), lng: Number(origem.lng) },
-    destino: { lat: Number(destino.lat), lng: Number(destino.lng) }
-  });
-}
 
 function atualizarMarcadorVisitante(lat, lng, centralizar = false) {
+
+    const posicao = {
+        lat: Number(lat),
+        lng: Number(lng)
+    };
+
     if (visitanteMarker) {
-        visitanteMarker.setLatLng([lat, lng]);
+
+        visitanteMarker.setPosition(posicao);
+
     } else {
-        visitanteMarker = L.circleMarker([lat, lng], {
-            radius: 8, color: '#10b981', fillColor: '#10b981', fillOpacity: 0.9
-        }).addTo(map).bindPopup('<b>Você está aqui</b>');
+
+      visitanteMarker = new google.maps.Marker({
+    position: { lat, lng },
+    map: map,
+    title: 'Sua localização',
+    icon: {
+        path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+        scale: 6,
+        fillColor: '#2563EB',
+        fillOpacity: 1,
+        strokeColor: '#FFFFFF',
+        strokeWeight: 2,
+        rotation: 0
     }
-    if (centralizar && map) centralizarMapaNoVisitante(lat, lng, true);
+});
+
+    }
+
+    if (centralizar && map) {
+        centralizarMapaNoVisitante(lat, lng, true);
+    }
 }
 
         function distanciaMetros(lat1, lon1, lat2, lon2) {
@@ -1449,70 +1456,7 @@ function zayronLimparRotaAtual() {
     if (destinoMarker) { try{map.removeLayer(destinoMarker);}catch(e){} destinoMarker=null; }
 }
 
-function zayronDesenharRotaCorrigida(coords, destinoLat, destinoLng, mensagem) {
-    if (!map||!Array.isArray(coords)||coords.length<2) return;
-    zayronLimparRotaAtual();
-    destinoMarker = L.marker([destinoLat,destinoLng]).addTo(map).bindPopup(rotaModo==='retorno'?'<b>Portaria / Saída</b>':'<b>Destino</b>');
-    window.rotaPolylineBorda = L.polyline(coords,{color:'#ffffff',weight:13,opacity:.95,lineJoin:'round',lineCap:'round',smoothFactor:2}).addTo(map);
-    window.rotaPolyline = L.polyline(coords,{color:'#2563eb',weight:8,opacity:1,lineJoin:'round',lineCap:'round',smoothFactor:2}).addTo(map);
-    rotaAtualCoords=coords; window.rotaAtualCoords=coords; ultimaAtualizacaoRotaEm=Date.now();
-    const status=document.getElementById('status-rota');
-    if(status) status.innerText=mensagem||'Rota calculada.';
-    try{map.fitBounds(coords,getPaddingMapa());}catch(e){const o=obterOrigemRota();centralizarMapaNoVisitante(o[0],o[1],false);}
-}
 
-async function tracarRotaAteDestino(destLat, destLng, forceRecreate=false) {
-    if (!map) return;
-    const origemArray = obterOrigemRota();
-    modoNavegacaoAtivo = true;
-    const origem = {lat:Number(origemArray[0]),lng:Number(origemArray[1])};
-    const destino = {lat:Number(destLat),lng:Number(destLng)};
-    if (!zayronCoordValida(origem.lat,origem.lng)||!zayronCoordValida(destino.lat,destino.lng)) {
-        const s=document.getElementById('status-rota'); if(s) s.innerText='Coordenadas inválidas para calcular rota.'; return;
-    }
-    const s=document.getElementById('status-rota'); if(s) s.innerText='Calculando rota...';
-    let coords=null;
-    try {
-        const rotaGoogle = await calcularRotaGoogle({lat:origem.lat,lng:origem.lng},{lat:destino.lat,lng:destino.lng});
-        const encoded = rotaGoogle?.polyline?.encodedPolyline;
-        if (encoded) coords=decodePolyline(encoded);
-    } catch(e) { console.warn('Google/backend rota falhou, usando OSRM:',e); }
-    if (!coords||coords.length<2) {
-        try {
-            const url='https://router.project-osrm.org/route/v1/driving/'+origem.lng+','+origem.lat+';'+destino.lng+','+destino.lat+'?overview=full&geometries=geojson&steps=false';
-            const res=await fetch(url); const data=await res.json();
-            const c=data?.routes?.[0]?.geometry?.coordinates;
-            if (Array.isArray(c)&&c.length>=2) coords=c.map(p=>[p[1],p[0]]);
-        } catch(e) { console.warn('OSRM falhou, linha simples:',e); coords=[[origem.lat,origem.lng],[destino.lat,destino.lng]]; }
-    }
-    zayronDesenharRotaCorrigida(coords,destino.lat,destino.lng,rotaModo==='retorno'?'Rota de saída calculada.':'Rota de entrada calculada.');
-    if (minhaPosicaoAtual) atualizarMarcadorVisitante(minhaPosicaoAtual.lat,minhaPosicaoAtual.lng,false);
-}
-
-function atualizarMarcadorVisitante(lat, lng, centralizar=false) {
-    if (!map||!zayronCoordValida(lat,lng)) return;
-    const real={lat:Number(lat),lng:Number(lng)};
-    const exibida=zayronPosicaoExibidaVisitante(real.lat,real.lng);
-    if (visitanteMarker) { zayronAnimarMarcador(visitanteMarker,exibida); }
-    else {
-        visitanteMarker=L.circleMarker([exibida.lat,exibida.lng],{radius:10,color:'#ffffff',fillColor:'#10b981',fillOpacity:1,weight:4}).addTo(map).bindPopup('<b>Você está aqui</b>');
-    }
-    if (!visitanteMarkerRealGpsZayron) {
-        visitanteMarkerRealGpsZayron=L.circleMarker([real.lat,real.lng],{radius:4,color:'#fbbf24',fillColor:'#fbbf24',fillOpacity:.55,weight:1,opacity:.65}).addTo(map);
-    } else { visitanteMarkerRealGpsZayron.setLatLng([real.lat,real.lng]); }
-    if (centralizar&&map) centralizarMapaNoVisitante(real.lat,real.lng,true);
-}
-
-function centralizarMapaNoVisitante(lat, lng, animate=true) {
-    if (!map||lat==null||lng==null) return;
-    const zoom=isMobile()?ZOOM_NAVEGACAO_MOBILE:ZOOM_NAVEGACAO;
-    map.setView([Number(lat),Number(lng)],zoom,{animate});
-    setTimeout(()=>{
-        if(!map) return;
-        if(isMobile()) map.panBy([0,MAPA_PAINEL_OFFSET_VERTICAL],{animate:false});
-        else map.panBy([-MAPA_PAINEL_OFFSET_DESKTOP,MAPA_PAINEL_OFFSET_VERTICAL],{animate:false});
-    },80);
-}
 async function confirmarChegada() {
 
     if (rotaModo !== 'destino') return;
