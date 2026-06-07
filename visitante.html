@@ -1013,9 +1013,23 @@ function limparRotaAtual() {
 
         let ultimaPosicaoValida = null;
 
-        function distanciaEntrePontos(a, b) {
-            return map.distance([a.lat, a.lng], [b.lat, b.lng]);
-        }
+       function distanciaEntrePontos(a, b) {
+
+    const p1 = new google.maps.LatLng(
+        Number(a.lat),
+        Number(a.lng)
+    );
+
+    const p2 = new google.maps.LatLng(
+        Number(b.lat),
+        Number(b.lng)
+    );
+
+    return google.maps.geometry.spherical.computeDistanceBetween(
+        p1,
+        p2
+    );
+}
 
        function calcularVelocidadePorGps(lat, lng, accuracy, speedMs) {
     const agora = Date.now();
@@ -1109,10 +1123,7 @@ console.log("Velocidade antes:", velocidadeKmh);
 const velocidadeKmh = calcularVelocidadePorGps(lat, lng, accuracy, speedMs);
 
 document.getElementById('status-rota').innerText =
-  `Lat:${lat.toFixed(6)}
-Lng:${lng.toFixed(6)}
-GPS:${Math.round(accuracy)}m
-KMH:${Math.round(velocidadeKmh)}`;
+  `speedMs=${speedMs} | kmh=${velocidadeKmh} | GPS=${Math.round(accuracy)}m`;
             minhaPosicaoAtual = novaPosicao;
             atualizarMarcadorVisitante(lat, lng, centralizar);
 
