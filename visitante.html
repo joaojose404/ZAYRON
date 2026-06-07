@@ -902,6 +902,22 @@ async function tracarRotaAteDestino(destLat, destLng, forceRecreate = false) {
 
                 directionsRenderer.setDirections(result);
 
+                const path =
+                    result.routes[0]
+                        .overview_path
+                        .map(p => [
+                            p.lat(),
+                            p.lng()
+                        ]);
+
+                window.rotaAtualCoords = path;
+
+                console.log(
+                    'ROTA GOOGLE:',
+                    path.length,
+                    'pontos'
+                );
+
                 document.getElementById('status-rota').innerText =
                     rotaModo === 'retorno'
                         ? 'Rota de retorno calculada.'
