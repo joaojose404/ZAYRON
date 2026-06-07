@@ -1109,7 +1109,10 @@ console.log("Velocidade antes:", velocidadeKmh);
 const velocidadeKmh = calcularVelocidadePorGps(lat, lng, accuracy, speedMs);
 
 document.getElementById('status-rota').innerText =
-  `speedMs=${speedMs} | kmh=${velocidadeKmh} | GPS=${Math.round(accuracy)}m`;
+  `Lat:${lat.toFixed(6)}
+Lng:${lng.toFixed(6)}
+GPS:${Math.round(accuracy)}m
+KMH:${Math.round(velocidadeKmh)}`;
             minhaPosicaoAtual = novaPosicao;
             atualizarMarcadorVisitante(lat, lng, centralizar);
 
