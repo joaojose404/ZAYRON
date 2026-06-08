@@ -5,7 +5,7 @@
     <title>Navegação Visitante - Secure Tech</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 
-   <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBgk1MsbiRFMwPZFvZusOrE28-JHKW8iN4"></script>
+   <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBgk1MsbiRFMwPZFvZusOrE28-JHKW8iN4&libraries=geometry"></script>
     
 
     <style>
@@ -748,18 +748,26 @@ document.getElementById('input-tipo-pessoa')
 
     if (!map) {
 
-        map = new google.maps.Map(
-            document.getElementById('map'),
-            {
-                center: {
-                    lat: Number(portaria[0]),
-                    lng: Number(portaria[1])
-                },
-                zoom: ZOOM_NAVEGACAO,
-                mapTypeId: 'satellite',
-                tilt: 0
-            }
-        );
+       map = new google.maps.Map(
+    document.getElementById('map'),
+    {
+        center: {
+            lat: Number(portaria[0]),
+            lng: Number(portaria[1])
+        },
+        zoom: ZOOM_NAVEGACAO,
+        mapTypeId: 'satellite',
+
+        tilt: 45,
+        heading: 0,
+
+        rotateControl: true,
+        fullscreenControl: true,
+
+        mapTypeControl: false,
+        streetViewControl: false
+    }
+);
 
         directionsService =
             new google.maps.DirectionsService();
@@ -851,7 +859,11 @@ document.getElementById('input-tipo-pessoa')
             return { paddingTopLeft: [450, 30], paddingBottomRight: [30, 30] };
         }
 
- function centralizarMapaNoVisitante(lat, lng) {
+function centralizarMapaNoVisitante(
+    lat,
+    lng,
+    heading = null
+) {
 
     if (!map) return;
 
@@ -866,8 +878,27 @@ document.getElementById('input-tipo-pessoa')
         map.setZoom(19);
     }
 
-}
+    if (
+        heading !== null &&
+        !isNaN(heading)
+    ) {
 
+        try {
+
+            map.setHeading(
+                Number(heading)
+            );
+
+            map.setTilt(45);
+
+        } catch (e) {
+            console.log(
+                'Rotação não suportada',
+                e
+            );
+        }
+    }
+}
 async function tracarRotaAteDestino(destLat, destLng, forceRecreate = false) {
 
     if (!map) return;
@@ -1154,9 +1185,13 @@ function limparRotaAtual() {
                 document.getElementById('status-rota').innerText = `GPS muito fraco (${Math.round(accuracy)}m). Aguarde melhorar.`;
                 return;
             }
-            if (accuracy > 50) {
-                document.getElementById('status-rota').innerText = `GPS aproximado (${Math.round(accuracy)}m).`;
-            }
+           if (accuracy > 20) {
+
+    document.getElementById('status-rota').innerText =
+        `GPS impreciso (${Math.round(accuracy)}m).`;
+
+    return;
+}
 
             const novaPosicao = { lat, lng };
 
@@ -1172,7 +1207,11 @@ const velocidadeKmh = calcularVelocidadePorGps(lat, lng, accuracy, speedMs);
 document.getElementById('status-rota').innerText =
   `speedMs=${speedMs} | kmh=${velocidadeKmh} | GPS=${Math.round(accuracy)}m`;
             minhaPosicaoAtual = novaPosicao;
-           atualizarMarcadorVisitante(lat, lng, false);
+           atualizarMarcadorVisitante(
+    lat,
+    lng,
+    position.coords.heading
+);
 
 if (modoNavegacaoAtivo || destinoAtualCoords) {
 
@@ -1184,10 +1223,11 @@ if (modoNavegacaoAtivo || destinoAtualCoords) {
 
     if (agora - window.ultimoPanMapa > 1500) {
 
-        centralizarMapaNoVisitante(
-            lat,
-            lng
-        );
+       centralizarMapaNoVisitante(
+    lat,
+    lng,
+    position.coords.heading
+);
 
         window.ultimoPanMapa = agora;
     }
@@ -1209,7 +1249,35 @@ if (modoNavegacaoAtivo || destinoAtualCoords) {
                 verificarChegada(lat, lng);
                 await verificarDesvio(lat, lng, accuracy);
             }
+		
 
+		if (
+    rotaModo === 'retorno' &&
+    visitaAtualId
+) {
+
+    const portaria = getPortariaCoords();
+
+    const distanciaPortaria =
+        distanciaEntrePontos(
+            { lat, lng },
+            {
+                lat: portaria[0],
+                lng: portaria[1]
+            }
+        );
+
+    if (distanciaPortaria <= 20) {
+
+        console.log(
+            'VISITANTE CHEGOU NA PORTARIA'
+        );
+
+        await encerrarVisita(true);
+
+        return;
+    }
+}
             ultimaPosicaoValida = novaPosicao;
 
             const agora = Date.now();
@@ -1235,7 +1303,7 @@ let ultimaPosicaoSeta = null;
 function atualizarMarcadorVisitante(
     lat,
     lng,
-    centralizar = false
+    headingGps = null
 ) {
 
     const posicao = {
@@ -1245,10 +1313,26 @@ function atualizarMarcadorVisitante(
 
     let heading = 0;
 
-    if (ultimaPosicaoSeta) {
+    // PRIORIDADE 1:
+    // Direção real fornecida pelo GPS
 
-        heading =
-            google.maps.geometry.spherical.computeHeading(
+    if (
+        headingGps !== null &&
+        headingGps !== undefined &&
+        !isNaN(headingGps)
+    ) {
+
+        heading = headingGps;
+
+    }
+
+    // PRIORIDADE 2:
+    // Calcula somente se não existir heading do GPS
+
+    else if (ultimaPosicaoSeta) {
+
+        const distancia =
+            google.maps.geometry.spherical.computeDistanceBetween(
                 new google.maps.LatLng(
                     ultimaPosicaoSeta.lat,
                     ultimaPosicaoSeta.lng
@@ -1258,13 +1342,30 @@ function atualizarMarcadorVisitante(
                     posicao.lng
                 )
             );
+
+        // Evita girar seta por pequenos saltos do GPS
+
+        if (distancia > 8) {
+
+            heading =
+                google.maps.geometry.spherical.computeHeading(
+                    new google.maps.LatLng(
+                        ultimaPosicaoSeta.lat,
+                        ultimaPosicaoSeta.lng
+                    ),
+                    new google.maps.LatLng(
+                        posicao.lat,
+                        posicao.lng
+                    )
+                );
+        }
     }
 
     ultimaPosicaoSeta = posicao;
 
     const icon = {
         path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-        scale: 7,
+        scale: 8,
         fillColor: '#2563EB',
         fillOpacity: 1,
         strokeColor: '#FFFFFF',
@@ -1284,7 +1385,7 @@ function atualizarMarcadorVisitante(
             new google.maps.Marker({
                 position: posicao,
                 map: map,
-                icon: icon
+                icon
             });
     }
 }
