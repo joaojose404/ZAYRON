@@ -482,6 +482,7 @@ let directionsRenderer;
         let portariaMarker = null;
         let destinoMarker = null;
         let visitanteMarker = null;
+let ultimoHeadingValido = 0;
 
         let condominioAtual = null;
         let lotesCondominio = [];
@@ -510,8 +511,8 @@ let directionsRenderer;
         const DISTANCIA_CHEGADA_METROS = 35;
         const DISTANCIA_DESVIO_METROS = 35;
         const INTERVALO_RECALCULO_ROTA_MS = 12000;
-        const ZOOM_NAVEGACAO = 20;
-        const ZOOM_NAVEGACAO_MOBILE = 20;
+       const ZOOM_NAVEGACAO = 18;
+const ZOOM_NAVEGACAO_MOBILE = 18;
         const MAPA_PAINEL_OFFSET_DESKTOP = 210;
         const MAPA_PAINEL_OFFSET_VERTICAL = 130;
         const GOOGLE_SATELLITE_TILE = 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}';
@@ -903,7 +904,7 @@ function centralizarMapaNoVisitante(
                 Number(heading)
             );
 
-            map.setTilt(45);
+            map.setTilt(0);
 
         } catch (e) {
             console.log(
@@ -1194,12 +1195,24 @@ function limparRotaAtual() {
             const lng = position.coords.longitude;
             const accuracy = position.coords.accuracy || 999;
             const speedMs = position.coords.speed;
+console.log(
+    'LAT:',
+    lat,
+    'LNG:',
+    lng,
+    'ACC:',
+    accuracy,
+    'HEADING:',
+    position.coords.heading,
+    'SPEED:',
+    speedMs
+);
 
             if (accuracy > 200) {
                 document.getElementById('status-rota').innerText = `GPS muito fraco (${Math.round(accuracy)}m). Aguarde melhorar.`;
                 return;
             }
-           if (accuracy > 20) {
+           if (accuracy > 80) {
 
     document.getElementById('status-rota').innerText =
         `GPS impreciso (${Math.round(accuracy)}m).`;
@@ -1237,10 +1250,15 @@ if (modoNavegacaoAtivo || destinoAtualCoords) {
 
     if (agora - window.ultimoPanMapa > 1500) {
 
-       centralizarMapaNoVisitante(
+      const headingValido =
+    velocidadeKmh > 8
+        ? position.coords.heading
+        : null;
+
+centralizarMapaNoVisitante(
     lat,
     lng,
-    position.coords.heading
+    headingValido
 );
 
         window.ultimoPanMapa = agora;
@@ -1314,6 +1332,7 @@ if (modoNavegacaoAtivo || destinoAtualCoords) {
 
 let ultimaPosicaoSeta = null;
 
+
 function atualizarMarcadorVisitante(
     lat,
     lng,
@@ -1325,10 +1344,11 @@ function atualizarMarcadorVisitante(
         lng: Number(lng)
     };
 
-    let heading = 0;
+    let heading =
+    Number(ultimoHeadingValido) || 0;
 
-    // PRIORIDADE 1:
-    // Direção real fornecida pelo GPS
+    // PRIORIDADE 1
+    // GPS forneceu heading válido
 
     if (
         headingGps !== null &&
@@ -1336,12 +1356,12 @@ function atualizarMarcadorVisitante(
         !isNaN(headingGps)
     ) {
 
-        heading = headingGps;
-
+        ultimoHeadingValido = headingGps;
+        heading = ultimoHeadingValido;
     }
 
-    // PRIORIDADE 2:
-    // Calcula somente se não existir heading do GPS
+    // PRIORIDADE 2
+    // Calcula direção pelo deslocamento
 
     else if (ultimaPosicaoSeta) {
 
@@ -1357,11 +1377,11 @@ function atualizarMarcadorVisitante(
                 )
             );
 
-        // Evita girar seta por pequenos saltos do GPS
+        // Só recalcula direção se realmente se moveu
 
-        if (distancia > 8) {
+        if (distancia > 40) {
 
-            heading =
+            const headingCalculado =
                 google.maps.geometry.spherical.computeHeading(
                     new google.maps.LatLng(
                         ultimaPosicaoSeta.lat,
@@ -1372,11 +1392,31 @@ function atualizarMarcadorVisitante(
                         posicao.lng
                     )
                 );
+
+            if (!isNaN(headingCalculado)) {
+
+                ultimoHeadingValido =
+                    headingCalculado;
+
+                heading =
+                    ultimoHeadingValido;
+            }
         }
     }
 
     ultimaPosicaoSeta = posicao;
 
+    console.log(
+        'HEADING FINAL:',
+        heading,
+        'HEADING GPS:',
+        headingGps
+    );
+heading = Number(heading);
+
+if (isNaN(heading)) {
+    heading = 0;
+}
     const icon = {
         path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
         scale: 8,
@@ -1390,7 +1430,6 @@ function atualizarMarcadorVisitante(
     if (visitanteMarker) {
 
         visitanteMarker.setPosition(posicao);
-
         visitanteMarker.setIcon(icon);
 
     } else {
