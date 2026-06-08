@@ -373,10 +373,24 @@
                 <div class="status-line" id="status-rota" style="margin-top:10px;"></div>
                 <div id="alerta-box" class="alert-box"></div>
 
-                <div style="margin-top:10px; display:flex; gap:8px;">
-                    <button class="success" onclick="centralizarNaMinhaPosicao()">Minha posição</button>
-                    <button class="warning" onclick="retornarPortaria()">Retornar à Portaria</button>
-                </div>
+                <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+
+    <button class="success"
+        onclick="centralizarNaMinhaPosicao()">
+        Minha posição
+    </button>
+
+    <button class="warning"
+        onclick="retornarPortaria()">
+        Retornar à Portaria
+    </button>
+
+    <button class="success"
+        onclick="abrirGoogleMapsNavegacao()">
+        🗺️ Abrir Google Maps
+    </button>
+
+</div>
 	
 
              
@@ -1555,16 +1569,30 @@ function atualizarMarcadorVisitante(
     }
 }
 function centralizarNaMinhaPosicao() {
-            if (!map) return;
-            if (minhaPosicaoAtual) {
-                modoNavegacaoAtivo = true;
-                centralizarMapaNoVisitante(minhaPosicaoAtual.lat, minhaPosicaoAtual.lng, true);
-                return;
-            }
-            const portaria = getPortariaCoords();
-            map.flyTo(portaria, ZOOM_NAVEGACAO, { duration: 0.8 });
-        }
 
+    if (!map) return;
+
+    if (minhaPosicaoAtual) {
+
+        modoNavegacaoAtivo = true;
+
+        centralizarMapaNoVisitante(
+            minhaPosicaoAtual.lat,
+            minhaPosicaoAtual.lng
+        );
+
+        return;
+    }
+
+    const portaria = getPortariaCoords();
+
+    map.panTo({
+        lat: Number(portaria[0]),
+        lng: Number(portaria[1])
+    });
+
+    map.setZoom(ZOOM_NAVEGACAO);
+}
 
         async function retornarPortaria(automatico = false) {
             if (!minhaPosicaoAtual) {
@@ -1705,6 +1733,33 @@ async function confirmarChegada() {
     retornoAutomaticoIniciado = true;
 
     await retornarPortaria(true);
+}
+
+function abrirGoogleMapsNavegacao() {
+
+    if (!destinoAtualCoords) {
+        alert('Destino não definido.');
+        return;
+    }
+
+    if (!minhaPosicaoAtual) {
+        alert('Localização atual não encontrada.');
+        return;
+    }
+
+    const origemLat = minhaPosicaoAtual.lat;
+    const origemLng = minhaPosicaoAtual.lng;
+
+    const destinoLat = destinoAtualCoords[0];
+    const destinoLng = destinoAtualCoords[1];
+
+    const url =
+        `https://www.google.com/maps/dir/?api=1` +
+        `&origin=${origemLat},${origemLng}` +
+        `&destination=${destinoLat},${destinoLng}` +
+        `&travelmode=driving`;
+
+    window.open(url, '_blank');
 }
 carregarCondominios();
 console.log('✅ visitante.html carregado - sistema iOS integrado.');
