@@ -2,107 +2,117 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Teste Google Maps</title>
+<title>Teste Mapbox</title>
+
+<meta name="viewport"
+content="width=device-width, initial-scale=1.0">
+
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.5.0/mapbox-gl.css"
+rel="stylesheet">
 
 <style>
-html, body, #map {
+html, body {
+    margin: 0;
+    padding: 0;
     width: 100%;
     height: 100%;
-    margin: 0;
+}
+
+#map {
+    width: 100%;
+    height: 100%;
 }
 </style>
-
-<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBgk1MsbiRFMwPZFvZusOrE28-JHKW8iN4"></script>
-
 </head>
+
 <body>
 
 <div id="map"></div>
 
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.5.0/mapbox-gl.js"></script>
+
 <script>
 
-const map = new google.maps.Map(
-  document.getElementById("map"),
-  {
-    zoom: 19,
-    center: {
-      lat: -23.578216,
-      lng: -46.439685
-    },
-    mapTypeId: "satellite"
-  }
-);
+mapboxgl.accessToken =
+'pk.eyJ1Ijoiam9hb2pvc2UzMjciLCJhIjoiY21saDIxbXp5MDRmZzNjb212bmh3cHBnYSJ9.ECEzBuvW7wicahEyvcyQCQ';
 
-const marker = new google.maps.Marker({
-  position: {
-    lat:-23.578216,
-    lng:-46.439685
-  },
-  map
+const map =
+new mapboxgl.Map({
+    container: 'map',
+
+    style:
+    'mapbox://styles/mapbox/satellite-streets-v12',
+
+    center: [-46.439, -23.578],
+
+    zoom: 18,
+
+    pitch: 60,
+
+    bearing: 0
 });
 
-navigator.geolocation.watchPosition(
-  function(pos){
+let marker = null;
 
-    const lat = pos.coords.latitude;
-    const lng = pos.coords.longitude;
+navigator.geolocation.watchPosition(
+
+(position) => {
+
+    const lat =
+        position.coords.latitude;
+
+    const lng =
+        position.coords.longitude;
+
+    const heading =
+        position.coords.heading || 0;
+
+    if (!marker) {
+
+        marker =
+            new mapboxgl.Marker()
+            .setLngLat([lng, lat])
+            .addTo(map);
+
+    } else {
+
+        marker.setLngLat([
+            lng,
+            lat
+        ]);
+    }
+
+    map.easeTo({
+
+        center: [lng, lat],
+
+        bearing: heading,
+
+        pitch: 60,
+
+        zoom: 19,
+
+        duration: 1000
+    });
 
     console.log(
-      'LAT:',
-      lat,
-      'LNG:',
-      lng,
-      'SPEED:',
-      pos.coords.speed
+        'GPS',
+        lat,
+        lng,
+        heading
     );
 
-    marker.setPosition({
-      lat,
-      lng
-    });
+},
 
-    map.panTo({
-      lat,
-      lng
-    });
+(err) => {
 
-  },
-  function(err){
     console.error(err);
-  },
-  {
-    enableHighAccuracy:true,
-    maximumAge:0,
-    timeout:10000
-  }
-);
 
-navigator.geolocation.watchPosition(
-  function(pos){
+},
 
-    const lat = pos.coords.latitude;
-    const lng = pos.coords.longitude;
-
-    marker.setPosition({
-      lat,
-      lng
-    });
-
-    map.panTo({
-      lat,
-      lng
-    });
-
-  },
-  function(err){
-    console.error(err);
-  },
-  {
-    enableHighAccuracy: true,
-    maximumAge: 0,
-    timeout: 10000
-  }
-);
+{
+    enableHighAccuracy: true
+});
 
 </script>
 
