@@ -5,7 +5,9 @@
     <title>Navegação Visitante - Secure Tech</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 
-   <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBgk1MsbiRFMwPZFvZusOrE28-JHKW8iN4&libraries=geometry"></script>
+  <link href="https://api.mapbox.com/mapbox-gl-js/v3.5.0/mapbox-gl.css" rel="stylesheet">
+
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.5.0/mapbox-gl.js"></script>
     
 
     <style>
@@ -307,6 +309,21 @@
                 max-width: none;
             }
         }
+.btn-bussola{
+    position:absolute;
+    right:20px;
+    bottom:120px;
+    z-index:9999;
+
+    width:50px;
+    height:50px;
+
+    border:none;
+    border-radius:50%;
+
+    font-size:24px;
+    cursor:pointer;
+}
     </style>
 </head>
 <body>
@@ -399,6 +416,9 @@
     </div>
 
     <div id="map"></div>
+<button id="btnBussola" class="btn-bussola">
+🧭
+</button>
 
     <!-- Painel iOS somente (aparece via JS quando detecta iPhone) -->
     <div id="ios-maps-panel">
@@ -413,6 +433,7 @@
 
     <script>
        const API = "https://zayron-api-1011701557501.southamerica-east1.run.app";
+mapboxgl.accessToken = 'pk.eyJ1Ijoiam9hb2pvc2UzMjciLCJhIjoiY21saDIxbXp5MDRmZzNjb212bmh3cHBnYSJ9.ECEzBuvW7wicahEyvcyQCQ';
 
 function normalizarTexto(valor) {
   return String(valor || '')
@@ -482,6 +503,7 @@ let directionsRenderer;
         let portariaMarker = null;
         let destinoMarker = null;
         let visitanteMarker = null;
+let rotacaoManual = 0;
 let ultimoHeadingValido = 0;
 
         let condominioAtual = null;
@@ -757,44 +779,52 @@ document.getElementById('input-tipo-pessoa')
             return [-23.201903, -47.029268];
         }
 
-     function iniciarMapa() {
+    function iniciarMapa() {
 
-    const portaria = getPortariaCoords();
+    const portaria =
+        getPortariaCoords();
 
-    if (!map) {
+    if (map) return;
 
-       map = new google.maps.Map(
-    document.getElementById('map'),
-    {
-        center: {
-            lat: Number(portaria[0]),
-            lng: Number(portaria[1])
-        },
-        zoom: ZOOM_NAVEGACAO,
-        mapTypeId: 'satellite',
+    map =
+        new mapboxgl.Map({
+            container: 'map',
 
-        tilt: 45,
-        heading: 0,
+            style:
+            'mapbox://styles/mapbox/satellite-streets-v12',
 
-        rotateControl: true,
-        fullscreenControl: true,
+            center: [
+                Number(portaria[1]),
+                Number(portaria[0])
+            ],
 
-        mapTypeControl: false,
-        streetViewControl: false
-    }
-);
+            zoom: 19,
 
-        directionsService =
-            new google.maps.DirectionsService();
+            pitch: 60,
 
-        directionsRenderer =
-            new google.maps.DirectionsRenderer({
-                map: map,
-                suppressMarkers: false,
-                preserveViewport: true
-            });
+            bearing: 0
+        });
 
-    }
+    document
+    .getElementById('btnBussola')
+    .addEventListener('click', () => {
+
+        rotacaoManual += 45;
+
+        if (
+            rotacaoManual >= 360
+        ) {
+            rotacaoManual = 0;
+        }
+
+        map.easeTo({
+            bearing:
+                rotacaoManual,
+            duration: 500
+        });
+
+    });
+
 }
         function popularFiltros() {
             const selRua = document.getElementById('select-rua');
@@ -882,105 +912,85 @@ function centralizarMapaNoVisitante(
 
     if (!map) return;
 
-    const pos = {
-        lat: Number(lat),
-        lng: Number(lng)
+    const config = {
+
+        center: [
+            Number(lng),
+            Number(lat)
+        ],
+
+        zoom: 19,
+
+        duration: 1000
     };
-
-    map.panTo(pos);
-
-    if (map.getZoom() < 19) {
-        map.setZoom(19);
-    }
 
     if (
         heading !== null &&
         !isNaN(heading)
     ) {
 
-        try {
+        config.bearing =
+            Number(heading);
 
-            map.setHeading(
-                Number(heading)
-            );
-
-            map.setTilt(0);
-
-        } catch (e) {
-            console.log(
-                'Rotação não suportada',
-                e
-            );
-        }
+        config.pitch = 60;
     }
-}
-async function tracarRotaAteDestino(destLat, destLng, forceRecreate = false) {
 
-    if (!map) return;
+    map.easeTo(config);
+}
+async function tracarRotaAteDestino(destLat, destLng) {
 
     const origem = obterOrigemRota();
 
-    const origemLat = Number(origem[0]);
-    const origemLng = Number(origem[1]);
+    const url =
+`https://api.mapbox.com/directions/v5/mapbox/driving/
+${origem[1]},${origem[0]};
+${destLng},${destLat}
+?geometries=geojson
+&overview=full
+&access_token=${mapboxgl.accessToken}`;
 
-    const destinoLat = Number(destLat);
-    const destinoLng = Number(destLng);
+    const response =
+        await fetch(url);
 
-    document.getElementById('status-rota').innerText =
-        'Calculando rota...';
+    const data =
+        await response.json();
 
-    directionsService.route(
-        {
-            origin: {
-                lat: origemLat,
-                lng: origemLng
-            },
-            destination: {
-                lat: destinoLat,
-                lng: destinoLng
-            },
-            travelMode: google.maps.TravelMode.DRIVING
-        },
-        (result, status) => {
+    const rota =
+        data.routes[0].geometry;
 
-            if (status === 'OK') {
+    if (
+        map.getSource('rota')
+    ) {
 
-                directionsRenderer.setDirections(result);
+        map.getSource('rota')
+            .setData({
+                type: 'Feature',
+                geometry: rota
+            });
 
-                const path =
-                    result.routes[0]
-                        .overview_path
-                        .map(p => [
-                            p.lat(),
-                            p.lng()
-                        ]);
+    } else {
 
-                window.rotaAtualCoords = path;
-
-                console.log(
-                    'ROTA GOOGLE:',
-                    path.length,
-                    'pontos'
-                );
-
-                document.getElementById('status-rota').innerText =
-                    rotaModo === 'retorno'
-                        ? 'Rota de retorno calculada.'
-                        : 'Rota calculada.';
-
-            } else {
-
-                console.error(
-                    'Erro Google Directions:',
-                    status
-                );
-
-                document.getElementById('status-rota').innerText =
-                    'Erro ao calcular rota';
-
+        map.addSource(
+            'rota',
+            {
+                type: 'geojson',
+                data: {
+                    type: 'Feature',
+                    geometry: rota
+                }
             }
-        }
-    );
+        );
+
+        map.addLayer({
+            id: 'rota',
+            type: 'line',
+            source: 'rota',
+            paint: {
+                'line-color': '#2563EB',
+                'line-width': 6
+            }
+        });
+    }
 }
 function limparRotaAtual() {
 
@@ -1330,8 +1340,7 @@ centralizarMapaNoVisitante(
 }
 
 
-let ultimaPosicaoSeta = null;
-
+let elementoSeta = null;
 
 function atualizarMarcadorVisitante(
     lat,
@@ -1339,108 +1348,68 @@ function atualizarMarcadorVisitante(
     headingGps = null
 ) {
 
-    const posicao = {
-        lat: Number(lat),
-        lng: Number(lng)
-    };
+    const posicao = [
+        Number(lng),
+        Number(lat)
+    ];
 
     let heading =
-    Number(ultimoHeadingValido) || 0;
+        Number(headingGps);
 
-    // PRIORIDADE 1
-    // GPS forneceu heading válido
-
-    if (
-        headingGps !== null &&
-        headingGps !== undefined &&
-        !isNaN(headingGps)
-    ) {
-
-        ultimoHeadingValido = headingGps;
-        heading = ultimoHeadingValido;
+    if (isNaN(heading)) {
+        heading = 0;
     }
-
-    // PRIORIDADE 2
-    // Calcula direção pelo deslocamento
-
-    else if (ultimaPosicaoSeta) {
-
-        const distancia =
-            google.maps.geometry.spherical.computeDistanceBetween(
-                new google.maps.LatLng(
-                    ultimaPosicaoSeta.lat,
-                    ultimaPosicaoSeta.lng
-                ),
-                new google.maps.LatLng(
-                    posicao.lat,
-                    posicao.lng
-                )
-            );
-
-        // Só recalcula direção se realmente se moveu
-
-        if (distancia > 40) {
-
-            const headingCalculado =
-                google.maps.geometry.spherical.computeHeading(
-                    new google.maps.LatLng(
-                        ultimaPosicaoSeta.lat,
-                        ultimaPosicaoSeta.lng
-                    ),
-                    new google.maps.LatLng(
-                        posicao.lat,
-                        posicao.lng
-                    )
-                );
-
-            if (!isNaN(headingCalculado)) {
-
-                ultimoHeadingValido =
-                    headingCalculado;
-
-                heading =
-                    ultimoHeadingValido;
-            }
-        }
-    }
-
-    ultimaPosicaoSeta = posicao;
-
-    console.log(
-        'HEADING FINAL:',
-        heading,
-        'HEADING GPS:',
-        headingGps
-    );
-heading = Number(heading);
-
-if (isNaN(heading)) {
-    heading = 0;
-}
-    const icon = {
-        path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-        scale: 8,
-        fillColor: '#2563EB',
-        fillOpacity: 1,
-        strokeColor: '#FFFFFF',
-        strokeWeight: 2,
-        rotation: heading
-    };
 
     if (visitanteMarker) {
 
-        visitanteMarker.setPosition(posicao);
-        visitanteMarker.setIcon(icon);
+        visitanteMarker.setLngLat(
+            posicao
+        );
+
+        if (elementoSeta) {
+
+            elementoSeta.style.transform =
+                `rotate(${heading}deg)`;
+        }
 
     } else {
 
+        elementoSeta =
+            document.createElement('div');
+
+        elementoSeta.innerHTML = '▲';
+
+        elementoSeta.style.fontSize =
+            '36px';
+
+        elementoSeta.style.color =
+            '#2563EB';
+
+        elementoSeta.style.textShadow =
+            '0 0 5px #FFFFFF';
+
+        elementoSeta.style.transformOrigin =
+            'center center';
+
+        elementoSeta.style.transform =
+            `rotate(${heading}deg)`;
+
         visitanteMarker =
-            new google.maps.Marker({
-                position: posicao,
-                map: map,
-                icon
-            });
+            new mapboxgl.Marker({
+                element: elementoSeta
+            })
+            .setLngLat(posicao)
+            .addTo(map);
     }
+
+    console.log(
+        'LAT:',
+        lat,
+        'LNG:',
+        lng,
+        'HEADING:',
+        heading
+    );
 }
         function distanciaMetros(lat1, lon1, lat2, lon2) {
             const R = 6371000, toRad = deg => deg * Math.PI / 180;
