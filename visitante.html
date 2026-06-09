@@ -402,7 +402,7 @@
         Retornar à Portaria
     </button>
 
-    
+  
 </div>
 	
 
@@ -951,8 +951,30 @@ ${destLng},${destLat}
     const data =
         await response.json();
 
+    if (
+        !data.routes ||
+        !data.routes.length
+    ) {
+        console.error(
+            'Nenhuma rota encontrada'
+        );
+        return;
+    }
+
     const rota =
         data.routes[0].geometry;
+
+    // IMPORTANTE
+    // Salva a rota no formato que o Zayron usa:
+    // [lat,lng]
+
+    window.rotaAtualCoords =
+        rota.coordinates.map(
+            p => [
+                Number(p[1]),
+                Number(p[0])
+            ]
+        );
 
     if (
         map.getSource('rota')
@@ -1212,6 +1234,13 @@ function limparRotaAtual() {
             const lat = position.coords.latitude;
             const lng = position.coords.longitude;
             const accuracy = position.coords.accuracy || 999;
+console.log(
+    'GPS REAL:',
+    lat,
+    lng,
+    'ACC:',
+    accuracy
+);
             const speedMs = position.coords.speed;
 console.log(
     'LAT:',
