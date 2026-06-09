@@ -402,11 +402,7 @@
         Retornar à Portaria
     </button>
 
-    <button class="success"
-        onclick="abrirGoogleMapsNavegacao()">
-        🗺️ Abrir Google Maps
-    </button>
-
+    
 </div>
 	
 
@@ -1721,32 +1717,7 @@ async function confirmarChegada() {
     await retornarPortaria(true);
 }
 
-function abrirGoogleMapsNavegacao() {
 
-    if (!destinoAtualCoords) {
-        alert('Destino não definido.');
-        return;
-    }
-
-    if (!minhaPosicaoAtual) {
-        alert('Localização atual não encontrada.');
-        return;
-    }
-
-    const origemLat = minhaPosicaoAtual.lat;
-    const origemLng = minhaPosicaoAtual.lng;
-
-    const destinoLat = destinoAtualCoords[0];
-    const destinoLng = destinoAtualCoords[1];
-
-    const url =
-        `https://www.google.com/maps/dir/?api=1` +
-        `&origin=${origemLat},${origemLng}` +
-        `&destination=${destinoLat},${destinoLng}` +
-        `&travelmode=driving`;
-
-    window.open(url, '_blank');
-}
 carregarCondominios();
 console.log('✅ visitante.html carregado - sistema iOS integrado.');
     </script>
