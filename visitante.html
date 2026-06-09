@@ -919,7 +919,7 @@ function centralizarMapaNoVisitante(
             Number(lat)
         ],
 
-        zoom: 19,
+        zoom: 20,
 
         duration: 1000
     };
@@ -932,7 +932,7 @@ function centralizarMapaNoVisitante(
         config.bearing =
             Number(heading);
 
-        config.pitch = 60;
+        config.pitch = 0;
     }
 
     map.easeTo(config);
@@ -1390,39 +1390,19 @@ function atualizarMarcadorVisitante(
         elementoSeta =
             document.createElement('div');
 
-        elementoSeta.innerHTML = '🚗';
+        elementoSeta.innerHTML = '🔴';
 
         elementoSeta.style.fontSize =
-            '36px';
-
-        elementoSeta.style.color =
-            '#2563EB';
-
-        elementoSeta.style.textShadow =
-            '0 0 5px #FFFFFF';
-
-        elementoSeta.style.transformOrigin =
-            'center center';
-
-        elementoSeta.style.transform =
-            `rotate(${heading}deg)`;
-
-console.log(
-    'MOVENDO PARA',
-    posicao
-);
+            '18px';
 
         visitanteMarker =
             new mapboxgl.Marker({
-                element: elementoSeta
+                element: elementoSeta,
+                anchor: 'center'
             })
             .setLngLat(posicao)
             .addTo(map);
     }
-
-    console.log(
-    'MARCADOR CRIADO'
-);
 }
         function distanciaMetros(lat1, lon1, lat2, lon2) {
             const R = 6371000, toRad = deg => deg * Math.PI / 180;
@@ -1710,22 +1690,7 @@ function zayronPosicaoExibidaVisitante(lat, lng) {
     return {lat:Number(lat),lng:Number(lng)};
 }
 
-function zayronAnimarMarcador(marker, destino) {
-    if (!marker||!destino) return;
-    const atual = marker.getLatLng();
-    const inicio = {lat:atual.lat,lng:atual.lng};
-    const fim = {lat:Number(destino.lat),lng:Number(destino.lng)};
-    if (!zayronCoordValida(fim.lat,fim.lng)) return;
-    const frames = 14; let frame = 0;
-    if (marker._zayronAnimTimer) clearInterval(marker._zayronAnimTimer);
-    marker._zayronAnimTimer = setInterval(() => {
-        frame++;
-        const t = Math.min(1,frame/frames);
-        const ease = t<0.5 ? 2*t*t : -1+(4-2*t)*t;
-        marker.setLatLng([inicio.lat+(fim.lat-inicio.lat)*ease,inicio.lng+(fim.lng-inicio.lng)*ease]);
-        if (frame>=frames) { clearInterval(marker._zayronAnimTimer); marker._zayronAnimTimer=null; }
-    }, 24);
-}
+
 
 function zayronLimparRotaAtual() {
     if (routingControl) { try{map.removeControl(routingControl);}catch(e){} routingControl=null; }
