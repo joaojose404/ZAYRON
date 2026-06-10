@@ -501,6 +501,7 @@ let directionsRenderer;
         let visitanteMarker = null;
 let rotacaoManual = 0;
 let ultimoHeadingValido = 0;
+let wakeLock = null;
 
         let condominioAtual = null;
         let lotesCondominio = [];
@@ -731,10 +732,12 @@ document.getElementById('input-tipo-pessoa')
             horarioEntradaSistemaLocal = new Date().toISOString();
 
             document.getElementById('step-ident').classList.add('hidden');
-            document.getElementById('step-mapa').classList.remove('hidden');
+           document.getElementById('step-mapa').classList.remove('hidden');
 
-            popularFiltros();
-            iniciarMapa();
+popularFiltros();
+iniciarMapa();
+
+ativarWakeLock();
 
             if (isMobile() && !isIOS()) {
                 togglePainelMapa(false);
@@ -1649,6 +1652,10 @@ function centralizarNaMinhaPosicao() {
                 if (geolocationWatchId) { navigator.geolocation.clearWatch(geolocationWatchId); geolocationWatchId = null; }
                 mostrarAlerta('success', automatico ? 'Visita encerrada automaticamente na portaria.' : 'Visita encerrada com sucesso.');
                 alert(automatico ? 'Você chegou à portaria. Visita encerrada automaticamente.' : 'Visita encerrada com sucesso.');
+if (wakeLock) {
+    await wakeLock.release();
+    wakeLock = null;
+}
                 location.reload();
             } catch (err) { console.error(err); alert('Erro ao encerrar visita.'); }
         }
@@ -1745,7 +1752,53 @@ async function confirmarChegada() {
 
     await retornarPortaria(true);
 }
+async function ativarWakeLock() {
 
+    try {
+
+        if ('wakeLock' in navigator) {
+
+            wakeLock =
+                await navigator.wakeLock.request(
+                    'screen'
+                );
+
+            console.log(
+                'Wake Lock ativado'
+            );
+
+            wakeLock.addEventListener(
+                'release',
+                () => {
+                    console.log(
+                        'Wake Lock liberado'
+                    );
+                }
+            );
+        }
+
+    } catch (err) {
+
+        console.error(
+            'Erro Wake Lock:',
+            err
+        );
+    }
+}
+
+document.addEventListener(
+    'visibilitychange',
+    async () => {
+
+        if (
+            wakeLock === null &&
+            document.visibilityState === 'visible'
+        ) {
+
+            await ativarWakeLock();
+        }
+    }
+);
 
 carregarCondominios();
 console.log('✅ visitante.html carregado - sistema iOS integrado.');
