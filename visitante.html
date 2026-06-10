@@ -918,9 +918,11 @@ function centralizarMapaNoVisitante(
             Number(lat)
         ],
 
-        zoom: 20,
+        zoom: 16,
 
-        duration: 1000
+        duration: 500,
+
+        offset: [0, 220]
     };
 
     if (
@@ -931,11 +933,13 @@ function centralizarMapaNoVisitante(
         config.bearing =
             Number(heading);
 
-        config.pitch = 0;
+        config.pitch = 20;
     }
 
     map.easeTo(config);
 }
+
+
 async function tracarRotaAteDestino(destLat, destLng) {
 
     const origem = obterOrigemRota();
@@ -966,10 +970,6 @@ ${destLng},${destLat}
 
     const rota =
         data.routes[0].geometry;
-
-    // IMPORTANTE
-    // Salva a rota no formato que o Zayron usa:
-    // [lat,lng]
 
     window.rotaAtualCoords =
         rota.coordinates.map(
@@ -1012,7 +1012,32 @@ ${destLng},${destLat}
             }
         });
     }
+
+    // MARCADOR DO DESTINO
+
+    if (destinoMarker) {
+        destinoMarker.remove();
+    }
+
+    const elDestino =
+        document.createElement('div');
+
+    elDestino.innerHTML = '🏠';
+
+    elDestino.style.fontSize = '40px';
+
+    destinoMarker =
+        new mapboxgl.Marker({
+            element: elDestino
+        })
+        .setLngLat([
+            Number(destLng),
+            Number(destLat)
+        ])
+        .addTo(map);
 }
+
+
 function limparRotaAtual() {
 
     if (window.rotaPolyline) {
@@ -1800,6 +1825,37 @@ document.addEventListener(
     }
 );
 
+document.addEventListener('contextmenu', e => {
+    e.preventDefault();
+});
+
+document.addEventListener('keydown', function(e) {
+
+    if (e.key === 'F12') {
+        e.preventDefault();
+        return false;
+    }
+
+    if (e.ctrlKey && e.shiftKey && e.key === 'I') {
+        e.preventDefault();
+        return false;
+    }
+
+    if (e.ctrlKey && e.shiftKey && e.key === 'J') {
+        e.preventDefault();
+        return false;
+    }
+
+    if (e.ctrlKey && e.key === 'U') {
+        e.preventDefault();
+        return false;
+    }
+
+    if (e.ctrlKey && e.shiftKey && e.key === 'C') {
+        e.preventDefault();
+        return false;
+    }
+});
 carregarCondominios();
 console.log('✅ visitante.html carregado - sistema iOS integrado.');
     </script>
