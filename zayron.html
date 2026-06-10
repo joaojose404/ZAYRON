@@ -1451,20 +1451,33 @@
           <input type="password" id="op_user_pass" placeholder="Senha" />
           <select id="op_user_tipo">
             <option value="operador" selected>Operador</option>
-            <option value="portaria">Portaria</option>
-            <option value="encomendas">Encomendas</option>
-          </select>
+                     </select>
           <button class="btn btn-pink" onclick="salvarUserOperador()">Cadastrar Usuário</button>
           <div class="muted">O usuário será criado vinculado ao mesmo condomínio deste operador.</div>
         </div>
 
-        <div class="card">
-          <div class="section-header">Relatórios</div>
-          <div class="row">
-            <button class="btn btn-success" onclick="gerarRelatorioPDF()">Exportar PDF</button>
-            <button class="btn btn-warning" onclick="atualizarTudo()">Atualizar</button>
-          </div>
-        </div>
+      <div class="card">
+  <div class="section-header">Relatórios</div>
+
+  <div class="row">
+
+    <button class="btn btn-primary"
+      onclick="abrirRelatoriosVisitantes()">
+      Relatórios Visitantes
+    </button>
+
+    <button class="btn btn-primary"
+      onclick="abrirRelatoriosRondas()">
+      Relatórios Rondas
+    </button>
+
+    <button class="btn btn-warning"
+      onclick="atualizarTudo()">
+      Atualizar
+    </button>
+
+  </div>
+</div>
 
         <div id="operator-report-slot"></div>
       </div>
@@ -1514,6 +1527,10 @@
 
       <div id="visitantes-card" class="card hidden">
         <div class="section-header">Entregadores / Visitantes</div>
+<button class="btn btn-danger"
+        onclick="limparVisitantesTravados()">
+    EXCLUIR TODOS OS VISITANTES
+</button>
         <div id="lista-visitantes" class="scroll-list"></div>
       </div>
 
@@ -2291,102 +2308,7 @@ function renderizarVisitantesPortaria() {
             condominio_id: condominioId
           }
         ],
-        lotes: [
-          { id: 'l1', condominio_id: condominioId, rua: 'ALAMEDA CENTRAL', numero: '100', quadra: 'A', lote: '01', latitude: -23.206700, longitude: -47.034500 },
-          { id: 'l2', condominio_id: condominioId, rua: 'ALAMEDA CENTRAL', numero: '120', quadra: 'A', lote: '02', latitude: -23.206820, longitude: -47.034350 },
-          { id: 'l3', condominio_id: condominioId, rua: 'RUA DAS PALMEIRAS', numero: '25', quadra: 'B', lote: '08', latitude: -23.206950, longitude: -47.034100 }
-        ],
-        moradores_cadastro: [
-          { id: 'mc1', condominio_id: condominioId, nome: 'JOÃO JOSÉ', unidade: 'A-01', placa: 'QZX1A23', telefone: '(11) 99999-1111', status_facial: 'ativo', latitude: -23.206730, longitude: -47.034470, created_at: new Date(agora - 86400000).toISOString() },
-          { id: 'mc2', condominio_id: condominioId, nome: 'PAULA FERREIRA', unidade: 'A-02', placa: 'KLM4P90', telefone: '(11) 99999-2222', status_facial: 'ativo', latitude: -23.206840, longitude: -47.034320, created_at: new Date(agora - 82000000).toISOString() },
-          { id: 'mc3', condominio_id: condominioId, nome: 'MARIA LIMA', unidade: 'B-08', placa: 'AAA0A08', telefone: '(11) 99999-3333', status_facial: 'pendente', latitude: -23.206960, longitude: -47.034130, created_at: new Date(agora - 72000000).toISOString() }
-        ],
-        cameras_cadastro: [
-          { id: 'cam1', condominio_id: condominioId, nome: 'CÂMERA PORTARIA 01', tipo: 'acesso', setor: 'PORTARIA', identificador: 'CAM-001', limite_kmh: 20, latitude: -23.206560, longitude: -47.034920, created_at: new Date(agora - 64000000).toISOString() },
-          { id: 'cam2', condominio_id: condominioId, nome: 'CÂMERA ALAMEDA CENTRAL', tipo: 'ia', setor: 'ALAMEDA CENTRAL', identificador: 'CAM-002', limite_kmh: 20, latitude: -23.206740, longitude: -47.034580, created_at: new Date(agora - 63000000).toISOString() },
-          { id: 'cam3', condominio_id: condominioId, nome: 'CÂMERA PRAÇA 01', tipo: 'cftv', setor: 'PRAÇA', identificador: 'CAM-003', limite_kmh: 15, latitude: -23.206880, longitude: -47.034500, created_at: new Date(agora - 62000000).toISOString() },
-          { id: 'cam4', condominio_id: condominioId, nome: 'CÂMERA PERÍMETRO NORTE', tipo: 'perimetro', setor: 'PERÍMETRO NORTE', identificador: 'CAM-004', limite_kmh: 20, monitorar_fumaca: true, monitorar_fogo: true, latitude: -23.207050, longitude: -47.034980, created_at: new Date(agora - 61000000).toISOString() }
-        ],
-        nvrs_cadastro: [
-          { id: 'nvr1', condominio_id: condominioId, nome: 'NVR PORTARIA', fabricante: 'dahua', modelo: 'NVR5216', ip: '192.168.0.200', porta: 37777, usuario: 'admin', senha: '12345', driver: 'driver_dahua_sdk', canais: 16, status: 'online', created_at: new Date(agora - 60000000).toISOString() },
-          { id: 'nvr2', condominio_id: condominioId, nome: 'NVR PERÍMETRO', fabricante: 'hikvision', modelo: 'DS-7608', ip: '192.168.0.201', porta: 8000, usuario: 'admin', senha: '12345', driver: 'driver_hikvision_isapi', canais: 8, status: 'online', created_at: new Date(agora - 59000000).toISOString() }
-        ],
-        access_devices: [
-          { id: 'acc1', condominio_id: condominioId, nome: 'CONTROLADORA PORTÃO SOCIAL', fabricante: 'controlid', tipo: 'controladora', ip: '192.168.0.210', porta: 80, usuario: 'admin', senha: '12345', driver: 'driver_access_sdk', porta_nome: 'PORTÃO SOCIAL', modo_offline: true, coacao_silenciosa: true, status: 'online', created_at: new Date(agora - 58000000).toISOString() },
-          { id: 'acc2', condominio_id: condominioId, nome: 'LEITOR FACIAL PORTARIA', fabricante: 'hikvision', tipo: 'facial', ip: '192.168.0.211', porta: 80, usuario: 'admin', senha: '12345', driver: 'driver_access_http_api', porta_nome: 'PORTARIA PRINCIPAL', modo_offline: true, coacao_silenciosa: true, status: 'online', created_at: new Date(agora - 57000000).toISOString() }
-        ],
-        visitas: [
-          { id: 'v1', condominio_id: condominioId, nome_visitante: 'CARLOS SILVA', placa: 'ABC1D23', liberado_por: 'PORTARIA', status: 'em_rota', created_at: new Date(agora - 12*60*1000).toISOString(), updated_at: new Date(agora - 60*1000).toISOString(), lote_id: 'l1' },
-          { id: 'v2', condominio_id: condominioId, nome_visitante: 'ANA SOUZA', placa: 'XYZ9K88', liberado_por: 'MORADOR', status: 'chegou', created_at: new Date(agora - 30*60*1000).toISOString(), updated_at: new Date(agora - 5*60*1000).toISOString(), lote_id: 'l2' }
-        ],
-        correspondencias: [
-          { id: 'co1', condominio_id: condominioId, morador_nome: 'JOÃO JOSÉ', unidade: 'A-01', tipo: 'encomenda', status: 'recebido', recebido_por: 'PORTARIA', observacao: 'Caixa pequena recebida na portaria.', created_at: new Date(agora - 40*60*1000).toISOString() },
-          { id: 'co2', condominio_id: condominioId, morador_nome: 'PAULA FERREIRA', unidade: 'A-02', tipo: 'delivery', status: 'entregue', recebido_por: 'PORTARIA', observacao: 'Pedido entregue ao morador.', created_at: new Date(agora - 90*60*1000).toISOString() }
-        ],
-        visitante_posicoes: [
-          { id: 'vp1', visita_id: 'v1', condominio_id: condominioId, latitude: -23.206620, longitude: -47.034760, created_at: new Date(agora - 40*1000).toISOString() },
-          { id: 'vp2', visita_id: 'v1', condominio_id: condominioId, latitude: -23.206650, longitude: -47.034700, created_at: new Date(agora - 10*1000).toISOString() },
-          { id: 'vp3', visita_id: 'v2', condominio_id: condominioId, latitude: -23.206810, longitude: -47.034420, created_at: new Date(agora - 4*60*1000).toISOString() }
-        ],
-        visitante_eventos: [
-          { id: 've1', visita_id: 'v1', condominio_id: condominioId, tipo: 'desvio_rota', titulo: 'Desvio identificado', descricao: 'Visitante saiu da rota por alguns metros.', prioridade: 'media', created_at: new Date(agora - 3*60*1000).toISOString() }
-        ],
-        ronda_pontos: [
-          { id: 'rp1', condominio_id: condominioId, nome_ponto: 'PORTARIA', latitude: -23.206560, longitude: -47.034930, ordem: 1 },
-          { id: 'rp2', condominio_id: condominioId, nome_ponto: 'PRAÇA CENTRAL', latitude: -23.206880, longitude: -47.034500, ordem: 2 }
-        ],
-        ronda_sessoes: [
-          { id: 'rs1', condominio_id: condominioId, vigilante_login: 'operador', vigilante_nome: 'RONDA DEMO', entidade_id: 'RONDA_01', status: 'em_andamento', iniciado_em: new Date(agora - 35*60*1000).toISOString(), finalizado_em: null, panico_acionado: false, observacoes: '' }
-        ],
-        ronda_posicoes: [
-          { id: 'rpos1', sessao_id: 'rs1', condominio_id: condominioId, latitude: -23.206820, longitude: -47.034620, bateria: 78, created_at: new Date(agora - 30*1000).toISOString() }
-        ],
-        ronda_checkpoints: [
-          { id: 'rc1', sessao_id: 'rs1', ponto_id: 'rp1', nome_ponto: 'PORTARIA', latitude: -23.206560, longitude: -47.034930, concluido_em: new Date(agora - 30*60*1000).toISOString(), tempo_no_ponto_segundos: 45 },
-          { id: 'rc2', sessao_id: 'rs1', ponto_id: 'rp2', nome_ponto: 'PRAÇA CENTRAL', latitude: -23.206880, longitude: -47.034500, concluido_em: null, tempo_no_ponto_segundos: 0 }
-        ],
-        ronda_relatorios: [
-          { id: 'rr1', sessao_id: 'rs1', condominio_id: condominioId, vigilante_nome: 'RONDA DEMO', texto: 'Ronda em andamento sem anormalidades.', created_at: new Date(agora - 15*60*1000).toISOString() }
-        ],
-        ronda_eventos: [
-          { id: 're1', sessao_id: 'rs1', condominio_id: condominioId, tipo: 'acesso_ronda', titulo: 'Ronda iniciada', prioridade: 'normal', detalhe: 'Acesso realizado na viatura 01.', origem: 'ronda', created_at: new Date(agora - 35*60*1000).toISOString() }
-        ],
-        eventos_velocidade: [
-          { id: 'ev1', condominio_id: condominioId, morador_nome: 'JOÃO JOSÉ', placa: 'QZX1A23', camera_origem_nome: 'CÂMERA 01', camera_destino_nome: 'CÂMERA 02', trecho: 'CÂMERA 01 → CÂMERA 02', velocidade_kmh: 42, limite_kmh: 20, excesso_kmh: 22, latitude: -23.206740, longitude: -47.034580, created_at: new Date(agora - 6*60*1000).toISOString() },
-          { id: 'ev2', condominio_id: condominioId, morador_nome: 'MARCOS LIMA', placa: 'BRA2B45', camera_origem_nome: 'CÂMERA 02', camera_destino_nome: 'CÂMERA 03', trecho: 'CÂMERA 02 → CÂMERA 03', velocidade_kmh: 31, limite_kmh: 20, excesso_kmh: 11, latitude: -23.206900, longitude: -47.034400, created_at: new Date(agora - 18*60*1000).toISOString() }
-        ],
-        moradores_acessos: [
-          { id: 'ma1', condominio_id: condominioId, morador_nome: 'JOÃO JOSÉ', unidade: 'A-01', placa: 'QZX1A23', tipo_acesso: 'facial + placa', status: 'liberado', confianca: 98, latitude: -23.206565, longitude: -47.034910, created_at: new Date(agora - 8*60*1000).toISOString() },
-          { id: 'ma2', condominio_id: condominioId, morador_nome: 'PAULA FERREIRA', unidade: 'A-02', placa: 'KLM4P90', tipo_acesso: 'facial', status: 'validado', confianca: 96, latitude: -23.206570, longitude: -47.034900, created_at: new Date(agora - 21*60*1000).toISOString() },
-          { id: 'ma3', condominio_id: condominioId, morador_nome: 'VISITANTE VIP', unidade: 'B-08', placa: 'SEM PLACA', tipo_acesso: 'facial visitante', status: 'pendente validação', confianca: 82, latitude: -23.206575, longitude: -47.034890, created_at: new Date(agora - 3*60*1000).toISOString() }
-        ],
-        cameras_ia_eventos: [
-          { id: 'ci1', condominio_id: condominioId, camera_nome: 'CÂMERA PRAÇA 01', tipo: 'queda', prioridade: 'critica', descricao: 'Pessoa caída próxima ao playground.', latitude: -23.206870, longitude: -47.034520, created_at: new Date(agora - 2*60*1000).toISOString() },
-          { id: 'ci2', condominio_id: condominioId, camera_nome: 'CÂMERA ACADEMIA', tipo: 'mal_subito', prioridade: 'critica', descricao: 'Indício de mal súbito na área fitness.', latitude: -23.206780, longitude: -47.034300, created_at: new Date(agora - 9*60*1000).toISOString() },
-          { id: 'ci3', condominio_id: condominioId, camera_nome: 'CÂMERA ALAMEDA CENTRAL', tipo: 'briga', prioridade: 'alta', descricao: 'Possível briga detectada por análise de comportamento.', latitude: -23.206720, longitude: -47.034650, created_at: new Date(agora - 14*60*1000).toISOString() },
-          { id: 'ci4', condominio_id: condominioId, camera_nome: 'CÂMERA PERÍMETRO NORTE', tipo: 'fumaca', prioridade: 'critica', descricao: 'Fumaça detectada no perímetro norte. Verificar possível princípio de incêndio.', latitude: -23.207050, longitude: -47.034980, created_at: new Date(agora - 75*1000).toISOString() },
-          { id: 'ci5', condominio_id: condominioId, camera_nome: 'CÂMERA PERÍMETRO NORTE', tipo: 'fogo', prioridade: 'critica', descricao: 'Vestígio de chama detectado em área de vegetação próxima ao muro.', latitude: -23.207040, longitude: -47.034970, created_at: new Date(agora - 45*1000).toISOString() }
-        ],
-        alarmes_eventos: [
-          { id: 'ae1', condominio_id: condominioId, dispositivo_nome: 'CERCA ELÉTRICA NORTE', tipo: 'perimetral', prioridade: 'alta', status: 'disparado', descricao: 'Violação do perímetro norte.', latitude: -23.206980, longitude: -47.034850, created_at: new Date(agora - 7*60*1000).toISOString() },
-          { id: 'ae2', condominio_id: condominioId, dispositivo_nome: 'SENSOR PORTA SOCIAL', tipo: 'porta', prioridade: 'media', status: 'aberto fora de rotina', descricao: 'Porta social aberta fora do horário esperado.', latitude: -23.206610, longitude: -47.034950, created_at: new Date(agora - 12*60*1000).toISOString() }
-        ],
-        emergencias_morador: [
-          { id: 'em1', condominio_id: condominioId, morador_nome: 'MARIA LIMA', unidade: 'B-08', tipo: 'botao_panico', prioridade: 'critica', descricao: 'Botão de pânico acionado pelo aplicativo.', latitude: -23.206950, longitude: -47.034120, created_at: new Date(agora - 90*1000).toISOString() },
-          { id: 'em2', condominio_id: condominioId, morador_nome: 'ROBERTO SOUZA', unidade: 'A-10', tipo: 'coacao_silenciosa', prioridade: 'critica', descricao: 'Possível entrada sob coação detectada no acesso.', latitude: -23.206640, longitude: -47.034780, created_at: new Date(agora - 11*60*1000).toISOString() }
-        ],
-        devices_discovery: [
-          { id: 'dd1', condominio_id: condominioId, tipo: 'camera', nome: 'CÂMERA PRAÇA 01', ip: '192.168.0.120', fabricante: 'Hikvision', driver: 'driver_hikvision_isapi', fallback: 'driver_generic_rtsp', status: 'online', ultima_checagem: new Date(agora - 30*1000).toISOString() },
-          { id: 'dd2', condominio_id: condominioId, tipo: 'nvr', nome: 'NVR PORTARIA', ip: '192.168.0.200', fabricante: 'Dahua', driver: 'driver_dahua_sdk', fallback: 'driver_onvif', status: 'online', ultima_checagem: new Date(agora - 50*1000).toISOString() },
-          { id: 'dd3', condominio_id: condominioId, tipo: 'acesso', nome: 'CONTROLADORA PORTÃO SOCIAL', ip: '192.168.0.210', fabricante: 'Control iD', driver: 'driver_access_sdk', fallback: 'driver_access_osdp', status: 'degradado', ultima_checagem: new Date(agora - 75*1000).toISOString() }
-        ],
-        infra_local: [
-          { id: 'il1', nome: 'Cache local', tipo: 'cache', status: 'ativo', detalhe: 'Moradores, visitantes, regras e credenciais em memória local.', prioridade: 'normal' },
-          { id: 'il2', nome: 'Fila local de eventos', tipo: 'fila', status: 'ativo', detalhe: '42 eventos pendentes / 0 falhas críticas.', prioridade: 'normal' },
-          { id: 'il3', nome: 'Worker de câmeras', tipo: 'worker', status: 'ativo', detalhe: '4 câmeras conectadas / 1 em retry controlado.', prioridade: 'normal' },
-          { id: 'il4', nome: 'Worker de acesso', tipo: 'worker', status: 'ativo', detalhe: 'Controladora em modo local-first com fallback offline.', prioridade: 'normal' },
-          { id: 'il5', nome: 'Sync com nuvem', tipo: 'sync', status: 'standby', detalhe: 'Modo local no momento. Sincronização preparada para ativação futura.', prioridade: 'baixa' }
-        ]
+        
       };
     }
 
@@ -2492,22 +2414,26 @@ function renderizarVisitantesPortaria() {
 
     ensureDefaultUsersByRole();
 
-    const API_DEFAULT_BASE = 'http://127.0.0.1:3000';
+  const API_LOCAL = 'http://127.0.0.1:3000';
+const API_NUVEM = 'https://zayron-api-1011701557501.southamerica-east1.run.app';
+
     let currentSession = null;
 
-    function getApiBase() {
-      try {
-        return localStorage.getItem('zayron_api_base') || API_DEFAULT_BASE;
-      } catch (e) {
-        return API_DEFAULT_BASE;
-      }
-    }
+   function getModoAPI() {
+  try {
+    const modo = localStorage.getItem('modo_api');
+    if (modo === 'local' || modo === 'nuvem') return modo;
+  localStorage.setItem('modo_api', 'nuvem');
+return 'nuvem';
+  } catch (e) {
+    return 'local';
+  }
+}
 
-    function setApiBase(base) {
-      try {
-        localStorage.setItem('zayron_api_base', base || API_DEFAULT_BASE);
-      } catch (e) {}
-    }
+function getApiBase() {
+  return getModoAPI() === 'nuvem' ? API_NUVEM : API_LOCAL;
+}
+
 
     function loadCurrentSession() {
       try {
@@ -2779,6 +2705,7 @@ function renderizarVisitantesPortaria() {
     let recentVisitorTracks = new Map();
     let latestVisitorAlerts = new Map();
     let latestVisitsById = new Map();
+let visitanteMonitoradoId = null;
     let latestSpeedEvents = [];
     let latestMoradorAccessEvents = [];
     let latestCameraIAEvents = [];
@@ -3991,7 +3918,7 @@ function renderizarVisitantesPortaria() {
 
     async function carregarCondominios() {
       try {
-        const apiData = await apiRequest('/condominios');
+        const apiData = await apiRequest('/public/condominios');
         const data = Array.isArray(apiData?.data) ? apiData.data : [];
         condosCache = currentRole !== 'admin' && currentCondoId
           ? data.filter(item => item.id === currentCondoId)
@@ -4363,93 +4290,135 @@ function renderizarVisitantesPortaria() {
       }
     }
 
-    async function carregarPosicoes() {
-      let query = sb
-        .from('posicoes_tempo_real')
-        .select(`
-          id,
-          condominio_id,
-          tipo_entidade,
-          entidade_id,
-          latitude,
-          longitude,
-          precisao,
-          velocidade,
-          bateria,
-          created_at
-        `)
-        .order('created_at', { ascending: false })
-        .limit(6000);
+  async function carregarPosicoes() {
 
-      const condoFilterId = getCondoFilterId();
-      if (condoFilterId) query = query.eq('condominio_id', condoFilterId);
+  const condoFilterId = getCondoFilterId();
 
-      const { data, error } = await query;
-      if (error) {
-        showError('Erro ao carregar posições.', error);
-        return;
-      }
+  try {
 
-      visitantesLayer.clearLayers();
-      vigilantesLayer.clearLayers();
-      latestVisitorPositions = new Map();
-      latestRondaPositions = new Map();
-      recentVisitorTracks = new Map();
+    const resposta = await apiRequest(
+      `/posicoes-tempo-real?condominio_id=${encodeURIComponent(condoFilterId || '')}`
+    );
 
-      const latestByEntity = new Map();
+    const data = resposta?.data || [];
 
-      (data || []).forEach(item => {
-        const key = `${item.tipo_entidade}_${item.entidade_id}`;
-        if (!latestByEntity.has(key)) latestByEntity.set(key, item);
+    console.log('POSICOES TEMPO REAL:', data);
 
-        if (item.tipo_entidade === 'visitante') {
-          if (!recentVisitorTracks.has(item.entidade_id)) {
-            recentVisitorTracks.set(item.entidade_id, []);
-          }
-          recentVisitorTracks.get(item.entidade_id).push(item);
+    visitantesLayer.clearLayers();
+    vigilantesLayer.clearLayers();
+
+    latestVisitorPositions = new Map();
+    latestRondaPositions = new Map();
+    recentVisitorTracks = new Map();
+
+    const latestByEntity = new Map();
+data.sort(
+  (a,b) =>
+    new Date(a.created_at) -
+    new Date(b.created_at)
+);
+
+
+    data.forEach(item => {
+
+      console.log(
+        'VISITANTE:',
+        item.entidade_id,
+        'VEL:',
+        item.velocidade,
+        'LAT:',
+        item.latitude,
+        'LNG:',
+        item.longitude,
+        'DATA:',
+        item.created_at
+      );
+
+      const key =
+        `${item.tipo_entidade}_${item.entidade_id}`;
+
+      // SEMPRE mantém o registro mais recente recebido
+
+console.log(
+  'SETANDO',
+  key,
+  item.latitude,
+  item.longitude,
+  item.created_at
+);
+      latestByEntity.set(key, item);
+
+      if (item.tipo_entidade === 'visitante') {
+
+        if (!recentVisitorTracks.has(item.entidade_id)) {
+          recentVisitorTracks.set(item.entidade_id, []);
         }
-      });
 
-      recentVisitorTracks.forEach((list, key) => {
-        list.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-        if (list.length > 150) recentVisitorTracks.set(key, list.slice(list.length - 150));
-      });
+        recentVisitorTracks.get(item.entidade_id)
+          .push(item);
+      }
+    });
+console.log('LATEST MAP');
+console.table(
+  [...latestByEntity.values()].map(x => ({
+    entidade: x.entidade_id,
+    lat: x.latitude,
+    lng: x.longitude,
+    data: x.created_at,
+    tipo: x.tipo_entidade
+  }))
+);
 
-      latestByEntity.forEach(item => {
-        const popup = `
-          <b>${item.tipo_entidade.toUpperCase()}</b><br>
-          ID: ${escapeHtml(item.entidade_id)}<br>
-          Lat: ${Number(item.latitude).toFixed(6)}<br>
-          Lng: ${Number(item.longitude).toFixed(6)}<br>
-          Precisão: ${escapeHtml(item.precisao ?? '-')}<br>
-          Velocidade: ${escapeHtml(item.velocidade ?? '-')} km/h<br>
-          Última atualização: ${formatDateTime(item.created_at)}
-        `;
+    latestByEntity.forEach(item => {
 
-        if (item.tipo_entidade === 'visitante') {
-          latestVisitorPositions.set(item.entidade_id, item);
+      if (item.tipo_entidade === 'visitante') {
 
-          L.circleMarker([item.latitude, item.longitude], {
+     latestVisitorPositions.set(
+  item.entidade_id,
+  item
+);
+
+        L.circleMarker(
+          [Number(item.latitude), Number(item.longitude)],
+          {
             radius: 8,
             color: '#3b82f6',
             fillColor: '#3b82f6',
             fillOpacity: 0.85
-          }).addTo(visitantesLayer).bindPopup(popup);
+          }
+        )
+        .addTo(visitantesLayer);
 
-        } else if (item.tipo_entidade === 'vigilante') {
-          latestRondaPositions.set(item.entidade_id, item);
+      } else if (
+        item.tipo_entidade === 'vigilante'
+      ) {
 
-          L.circleMarker([item.latitude, item.longitude], {
+        latestRondaPositions.set(
+          String(item.entidade_id),
+          item
+        );
+
+        L.circleMarker(
+          [Number(item.latitude), Number(item.longitude)],
+          {
             radius: 8,
             color: '#10b981',
             fillColor: '#10b981',
             fillOpacity: 0.85
-          }).addTo(vigilantesLayer).bindPopup(popup);
-        }
-      });
-    }
+          }
+        )
+        .addTo(vigilantesLayer);
+      }
+    });
 
+  } catch (e) {
 
+    console.error(
+      'Erro ao carregar posições',
+      e
+    );
+  }
+}
     function criarEventoVelocidadeDemo(offsetLat = 0, offsetLng = 0, idx = 1) {
       const agora = Date.now();
       const createdAt = new Date(agora - (idx * 6 * 60 * 1000)).toISOString();
@@ -5416,89 +5385,88 @@ async function salvarSetorCerca() {
         </div>`).join('') : '<div class="muted">Sem eventos críticos correlacionados no momento.</div>';
     }
 
-    async function carregarEventosVelocidade() {
-      if (currentRole === 'admin') return;
+  async function carregarEventosVelocidade() {
+    if (currentRole === 'admin') return;
 
-      const lista = document.getElementById('lista-velocidade');
-      if (!lista) return;
+    const lista = document.getElementById('lista-velocidade');
+    if (!lista) return;
 
-      let eventos = [];
-      let usandoDemo = false;
+    let eventos = [];
 
-      try {
+    try {
+
         let query = sb
-          .from('eventos_velocidade')
-          .select('*')
-          .order('created_at', { ascending: false })
-          .limit(80);
+            .from('eventos_velocidade')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(80);
 
         if (currentCondoId) {
-          query = query.eq('condominio_id', currentCondoId);
+            query = query.eq('condominio_id', currentCondoId);
         }
 
         const { data, error } = await query;
 
         if (error) {
-          usandoDemo = true;
-          eventos = obterEventosVelocidadeMock();
+            console.error(error);
+            eventos = [];
         } else {
-          eventos = (data || []).map((item, index) => normalizarEventoVelocidade(item, index));
-          if (!eventos.length) {
-            usandoDemo = true;
-            eventos = obterEventosVelocidadeMock();
-          }
+            eventos = (data || []).map((item, index) =>
+                normalizarEventoVelocidade(item, index)
+            );
         }
-      } catch (err) {
-        usandoDemo = true;
-        eventos = obterEventosVelocidadeMock();
-      }
 
-      latestSpeedEvents = eventos;
+    } catch (err) {
 
-      if (!eventos.length) {
-        lista.innerHTML = '<div class="muted">Nenhum evento de velocidade encontrado.</div>';
+        console.error(err);
+        eventos = [];
+
+    }
+
+    latestSpeedEvents = eventos;
+
+    if (!eventos.length) {
+
+        lista.innerHTML =
+            '<div class="muted">Nenhum evento de velocidade encontrado.</div>';
+
         document.getElementById('count-velocidade').innerText = '0';
+
         renderizarEventosVelocidadeNoMapa();
+
         return;
-      }
+    }
 
-      document.getElementById('count-velocidade').innerText = eventos.length;
+    document.getElementById('count-velocidade').innerText =
+        eventos.length;
 
-      const avisoDemo = usandoDemo
-        ? '<div class="muted" style="margin-bottom:8px;">Visual de velocidade pronto. Quando a tabela <b>eventos_velocidade</b> existir, os dados reais entram automaticamente.</div>'
-        : '';
+    lista.innerHTML = eventos.map((ev, index) => {
 
-      lista.innerHTML = avisoDemo + eventos.map((ev, index) => {
-        const classe = ev.prioridade === 'critica'
-          ? 'item-lista alerta'
-          : (ev.prioridade === 'alta' ? 'item-lista warning' : 'item-lista');
+        const classe =
+            ev.prioridade === 'critica'
+                ? 'item-lista alerta'
+                : (ev.prioridade === 'alta'
+                    ? 'item-lista warning'
+                    : 'item-lista');
 
         const badges = [
-          `<span class="alert-badge ${ev.prioridade === 'critica' ? 'badge-danger' : 'badge-warning'}">${escapeHtml(ev.velocidade_kmh)} KM/H</span>`,
-          `<span class="alert-badge badge-danger">LIMITE ${escapeHtml(ev.limite_kmh)}</span>`,
-          ev.evidencias ? `<span class="alert-badge badge-success">${escapeHtml(ev.evidencias)} EVID.</span>` : ''
+            `<span class="alert-badge ${ev.prioridade === 'critica' ? 'badge-danger' : 'badge-warning'}">${escapeHtml(ev.velocidade_kmh)} KM/H</span>`,
+            `<span class="alert-badge badge-danger">LIMITE ${escapeHtml(ev.limite_kmh)}</span>`
         ].join('');
 
         return `
-          <div class="${classe}">
-            <div>
-              <button class="btn-link" onclick="localizarEventoVelocidade(${index})">${escapeHtml(ev.morador_nome)}</button>
-              <small>Placa: ${escapeHtml(ev.placa)}</small>
-              <small>Trecho: ${escapeHtml(ev.trecho_nome)}</small>
-              <small>Origem: ${escapeHtml(ev.camera_origem_nome)} · Destino: ${escapeHtml(ev.camera_destino_nome)}</small>
-              <small>Velocidade: ${escapeHtml(ev.velocidade_kmh)} km/h · Limite: ${escapeHtml(ev.limite_kmh)} km/h · Excesso: ${escapeHtml(ev.excesso_kmh)} km/h</small>
-              <small>Detectado em: ${formatDateTime(ev.created_at)}</small>
-              ${badges}
+            <div class="${classe}">
+                <div>
+                    <button class="btn-link" onclick="localizarEventoVelocidade(${index})">
+                        ${escapeHtml(ev.morador_nome)}
+                    </button>
+                </div>
             </div>
-            <div class="actions-inline">
-              <button class="btn-mini" onclick="localizarEventoVelocidade(${index})">Ver Trecho</button>
-            </div>
-          </div>
         `;
-      }).join('');
+    }).join('');
 
-      renderizarEventosVelocidadeNoMapa();
-    }
+    renderizarEventosVelocidadeNoMapa();
+}
 
     async function carregarEstatisticas() {
       const condoFilterId = getCondoFilterId();
@@ -5540,7 +5508,8 @@ async function salvarSetorCerca() {
     }
 
     function getPosicaoVisitantePainel(visitId) {
-      const posRealtime = latestVisitorPositions.get(visitId);
+      const posRealtime =
+    latestVisitorPositions.get(String(visitId));
       const visit = latestVisitsById.get(visitId);
 
       if (posRealtime) {
@@ -5621,260 +5590,365 @@ async function salvarSetorCerca() {
     }
 
     async function carregarVisitantes() {
-      if (currentRole === 'admin') return;
 
-      let visitsQuery = sb
-        .from('visitas')
-        .select(`
-          id,
-          condominio_id,
-          nome_visitante,
-          placa,
-          destino_texto,
-          status,
-          autorizado_por,
-          created_at,
-          updated_at,
-          latitude_atual,
-          longitude_atual,
-          oculto_operador
-        `)
-        .eq('oculto_operador', false)
-        .order('created_at', { ascending: false })
-        .limit(120);
+  if (currentRole === 'admin') return;
 
-      let eventsQuery = sb
-        .from('eventos_operacionais')
-        .select('id, origem_id, tipo_evento, titulo, prioridade, created_at')
-        .eq('tipo_origem', 'visitante')
-        .order('created_at', { ascending: false })
-        .limit(1000);
+  const lista = document.getElementById('lista-visitantes');
+  if (!lista) return;
 
-      if (currentCondoId) {
-        visitsQuery = visitsQuery.eq('condominio_id', currentCondoId);
-        eventsQuery = eventsQuery.eq('condominio_id', currentCondoId);
+  try {
+/*
+    let visitsQuery = sb
+      .from('visitas')
+      .select(`
+        id,
+        condominio_id,
+        nome_visitante,
+        placa,
+        destino_texto,
+        status,
+        autorizado_por,
+        created_at,
+        updated_at,
+        latitude_atual,
+        longitude_atual,
+        oculto_operador
+      `)
+      .eq('oculto_operador', false)
+      .order('created_at', { ascending: false })
+      .limit(120);
+*/
+    let eventsQuery = sb
+      .from('eventos_operacionais')
+      .select('id, origem_id, tipo_evento, titulo, prioridade, created_at')
+      .eq('tipo_origem', 'visitante')
+      .order('created_at', { ascending: false })
+      .limit(1000);
+
+ if (currentCondoId) {
+  eventsQuery = eventsQuery.eq('condominio_id', currentCondoId);
+}
+
+   let visits = [];
+let error = null;
+
+try {
+
+  const apiData = await apiRequest(
+    `/public/visitas?condominio_id=${encodeURIComponent(currentCondoId || '')}`
+  );
+
+  visits = Array.isArray(apiData?.data)
+    ? apiData.data
+    : [];
+
+} catch (e) {
+
+  error = e;
+
+}
+
+const {
+  data: events,
+  error: eventsError
+} = await eventsQuery;
+
+    console.log('=================================');
+    console.log('CONDOMINIO:', currentCondoId);
+    console.log('VISITAS:', visits);
+    console.log('TOTAL VISITAS:', visits?.length || 0);
+    console.log('ERRO:', error);
+    console.log('=================================');
+
+    if (error || eventsError) {
+      console.error(error || eventsError);
+      lista.innerHTML =
+        '<div class="muted">Erro ao carregar visitantes.</div>';
+
+      document.getElementById('count-visitantes').innerText = '0';
+      document.getElementById('count-alertas').innerText = '0';
+      return;
+    }
+
+   const visitantes =
+    (visits || []).filter(
+        v => v.status !== 'finalizada'
+    );
+
+    document.getElementById('count-visitantes').innerText =
+      visitantes.length;
+
+    latestVisitsById = new Map();
+    latestVisitorAlerts = new Map();
+    latestVisitorEvents = visitantes;
+
+    const eventsByVisitId = new Map();
+
+    (events || []).forEach(ev => {
+      if (!ev.origem_id) return;
+
+      if (!eventsByVisitId.has(ev.origem_id)) {
+        eventsByVisitId.set(ev.origem_id, []);
       }
 
-      const [{ data: visits, error }, { data: events, error: eventsError }] = await Promise.all([
-        visitsQuery,
-        eventsQuery
-      ]);
+      eventsByVisitId.get(ev.origem_id).push(ev);
+    });
 
-      const lista = document.getElementById('lista-visitantes');
-      if (!lista) return;
+    if (!visitantes.length) {
+      lista.innerHTML =
+        '<div class="muted">Nenhum visitante encontrado.</div>';
 
-      if (error || eventsError) {
-        lista.innerHTML = '<div class="muted">Erro ao carregar visitantes.</div>';
-        return;
-      }
+      document.getElementById('count-alertas').innerText = '0';
+      return;
+    }
 
-      latestVisitsById = new Map();
-      latestVisitorAlerts = new Map();
-      latestVisitorEvents = visits || [];
+    let totalAlertas = 0;
+    let html = '';
 
-      const eventsByVisitId = new Map();
-      (events || []).forEach(ev => {
-        if (!ev.origem_id) return;
-        if (!eventsByVisitId.has(ev.origem_id)) eventsByVisitId.set(ev.origem_id, []);
-        eventsByVisitId.get(ev.origem_id).push(ev);
+    visitantes.forEach(item => {
+
+      latestVisitsById.set(item.id, item);
+
+      const pos = getPosicaoVisitantePainel(item.id);
+console.log(
+  'VISITANTE:',
+  item.nome_visitante,
+  'VELOCIDADE:',
+  pos?.velocidade
+);
+      const visitEvents = eventsByVisitId.get(item.id) || [];
+
+      const hasSpeed =
+        (
+          pos?.velocidade != null &&
+          Number(pos.velocidade) > LIMITE_VELOCIDADE_KMH
+        ) ||
+        visitEvents.some(
+          ev => ev.tipo_evento === 'excesso_velocidade'
+        );
+
+      const hasDeviation =
+        item.status === 'desvio' ||
+        visitEvents.some(
+          ev => ev.tipo_evento === 'desvio_rota'
+        );
+
+      const stopped =
+        calcularAlertaParado(item.id, item.status);
+
+      const hasStopped = stopped.active;
+
+      const alertList = [];
+
+      if (hasDeviation) alertList.push('SAIU DA ROTA');
+      if (hasSpeed) alertList.push('ACIMA DE 30 KM/H');
+      if (hasStopped) alertList.push(
+        `PARADO HÁ ${stopped.seconds}s`
+      );
+
+      const alertLevel =
+        hasDeviation || hasSpeed
+          ? 'danger'
+          : hasStopped
+            ? 'warning'
+            : 'normal';
+
+      totalAlertas += alertList.length;
+
+      latestVisitorAlerts.set(item.id, {
+        deviation: hasDeviation,
+        speed: hasSpeed,
+        stopped: hasStopped,
+        stoppedSeconds: stopped.seconds,
+        level: alertLevel
       });
 
-      if (!(visits || []).length) {
-        lista.innerHTML = '<div class="muted">Nenhum visitante encontrado.</div>';
-        document.getElementById('count-alertas').innerText = 0;
-        return;
-      }
+      const itemClass =
+        alertLevel === 'danger'
+          ? 'item-lista alerta'
+          : alertLevel === 'warning'
+            ? 'item-lista warning'
+            : 'item-lista';
 
-      let totalAlertas = 0;
-      let html = '';
+      const locationText = pos
+        ? `Lat: ${Number(pos.latitude).toFixed(6)} | Lng: ${Number(pos.longitude).toFixed(6)}`
+        : 'Sem posição recente';
 
-      (visits || []).forEach(item => {
-        latestVisitsById.set(item.id, item);
+      const badges = [
+        hasDeviation
+          ? '<span class="alert-badge badge-danger">SAIU DA ROTA</span>'
+          : '',
+        hasSpeed
+          ? '<span class="alert-badge badge-danger">VELOCIDADE</span>'
+          : '',
+        hasStopped
+          ? '<span class="alert-badge badge-warning">PARADO</span>'
+          : '',
+        !alertList.length
+          ? '<span class="alert-badge badge-success">NORMAL</span>'
+          : ''
+      ].join('');
 
-        const pos = getPosicaoVisitantePainel(item.id);
-        const visitEvents = eventsByVisitId.get(item.id) || [];
+      html += `
+        <div class="${itemClass}">
+          <div>
+            <button class="btn-link"
+              onclick="localizarVisitante('${item.id}')">
+              ${escapeHtml(item.nome_visitante || 'Sem nome')}
+            </button>
 
-        const hasSpeed = !!(
-          (pos?.velocidade != null && Number(pos.velocidade) > LIMITE_VELOCIDADE_KMH) ||
-          visitEvents.some(ev => ev.tipo_evento === 'excesso_velocidade')
-        );
+            <small>Status: ${escapeHtml(item.status || '-')}</small>
+            <small>Placa: ${escapeHtml(item.placa || '-')}</small>
+            <small>Destino: ${escapeHtml(item.destino_texto || '-')}</small>
+            <small>Liberado por: ${escapeHtml(item.autorizado_por || '-')}</small>
+            <small>Posição: ${escapeHtml(locationText)}</small>
+		<small>Velocidade: ${escapeHtml(pos?.velocidade ?? 0)} km/h</small>
 
-        const hasDeviation = !!(
-          item.status === 'desvio' ||
-          visitEvents.some(ev => ev.tipo_evento === 'desvio_rota')
-        );
-
-        const stopped = calcularAlertaParado(item.id, item.status);
-        const hasStopped = stopped.active;
-
-        const alertList = [];
-        if (hasDeviation) alertList.push('SAIU DA ROTA');
-        if (hasSpeed) alertList.push('ACIMA DE 30 KM/H');
-        if (hasStopped) alertList.push(`PARADO HÁ ${stopped.seconds}s`);
-
-        const alertLevel = hasDeviation || hasSpeed ? 'danger' : (hasStopped ? 'warning' : 'normal');
-        totalAlertas += alertList.length;
-
-        latestVisitorAlerts.set(item.id, {
-          deviation: hasDeviation,
-          speed: hasSpeed,
-          stopped: hasStopped,
-          stoppedSeconds: stopped.seconds,
-          level: alertLevel
-        });
-
-        const itemClass =
-          alertLevel === 'danger' ? 'item-lista alerta' :
-          alertLevel === 'warning' ? 'item-lista warning' :
-          'item-lista';
-
-        const locationText = pos
-          ? `Lat: ${Number(pos.latitude).toFixed(6)} | Lng: ${Number(pos.longitude).toFixed(6)}`
-          : 'Sem posição recente';
-
-        const badges = [
-          hasDeviation ? `<span class="alert-badge badge-danger">SAIU DA ROTA</span>` : '',
-          hasSpeed ? `<span class="alert-badge badge-danger">VELOCIDADE</span>` : '',
-          hasStopped ? `<span class="alert-badge badge-warning">PARADO</span>` : '',
-          !alertList.length ? `<span class="alert-badge badge-success">NORMAL</span>` : ''
-        ].join('');
-
-        html += `
-          <div class="${itemClass}">
-            <div>
-              <button class="btn-link" onclick="localizarVisitante('${item.id}')">${escapeHtml(item.nome_visitante || 'Sem nome')}</button>
-              <small>Status: ${escapeHtml(item.status || '-')}</small>
-              <small>Placa: ${escapeHtml(item.placa || '-')}</small>
-              <small>Destino: ${escapeHtml(item.destino_texto || '-')}</small>
-              <small>Liberado por: ${escapeHtml(item.autorizado_por || '-')}</small>
-              <small>Posição exata: ${escapeHtml(locationText)}</small>
-              <small>Atualizado em: ${pos ? formatDateTime(pos.created_at) : '-'}</small>
-              ${badges}
-            </div>
-            <div class="actions-inline">
-              <button class="btn-mini" onclick="localizarVisitante('${item.id}')">Ver Local</button>
-              <button class="btn-mini" onclick="editarVisitante('${item.id}')">Editar</button>
-              <button class="btn-del" onclick="excluirVisitante('${item.id}')">Excluir</button>
-            </div>
+            ${badges}
           </div>
-        `;
-      });
 
-      lista.innerHTML = html;
-      document.getElementById('count-alertas').innerText = totalAlertas;
+          <div class="actions-inline">
 
-      if (totalAlertas > ultimoTotalAlertasOperador) {
-        dispararBeepAlerta();
-      }
-      ultimoTotalAlertasOperador = totalAlertas;
+
+
+  
+
+  <div class="actions-inline">
+
+    <button
+        class="btn-mini"
+        onclick="localizarVisitante('${item.id}')">
+
+        Ver Local
+
+    </button>
+
+</div>
+
+</div>
+        </div>
+      `;
+    });
+
+    lista.innerHTML = html;
+
+    document.getElementById('count-alertas').innerText =
+      totalAlertas;
+
+    if (totalAlertas > ultimoTotalAlertasOperador) {
+      dispararBeepAlerta();
     }
 
-    function localizarVisitante(visitId) {
-      const pos = getPosicaoVisitantePainel(visitId);
-      const visit = latestVisitsById.get(visitId);
-      const visitorAlerts = latestVisitorAlerts.get(visitId);
+    ultimoTotalAlertasOperador = totalAlertas;
 
-      if (!pos) {
-        alert('Este visitante não possui posição conhecida.');
-        return;
-      }
+  } catch (e) {
 
-      if (destaqueVisitorMarker) map.removeLayer(destaqueVisitorMarker);
+    console.error('ERRO CARREGAR VISITANTES:', e);
 
-      destaqueVisitorMarker = L.circleMarker([pos.latitude, pos.longitude], {
-        radius: 12,
-        color: '#f59e0b',
-        fillColor: '#f59e0b',
-        fillOpacity: 0.35,
-        weight: 3
-      }).addTo(map);
+    document.getElementById('count-visitantes').innerText = '0';
 
-      const alertasTexto = [];
-      if (visitorAlerts?.deviation) alertasTexto.push('Saiu da rota');
-      if (visitorAlerts?.speed) alertasTexto.push('Acima de 30 km/h');
-      if (visitorAlerts?.stopped) alertasTexto.push(`Parado há ${visitorAlerts.stoppedSeconds}s`);
+    lista.innerHTML =
+      '<div class="muted">Erro ao carregar visitantes.</div>';
+  }
+}
 
-      destaqueVisitorMarker.bindPopup(`
-        <b>${escapeHtml(visit?.nome_visitante || 'Visitante')}</b><br>
-        Placa: ${escapeHtml(visit?.placa || '-')}<br>
-        Status: ${escapeHtml(visit?.status || '-')}<br>
-        Lat: ${Number(pos.latitude).toFixed(6)}<br>
-        Lng: ${Number(pos.longitude).toFixed(6)}<br>
-        Precisão: ${escapeHtml(pos.precisao ?? '-')}<br>
-        Velocidade: ${escapeHtml(pos.velocidade ?? '-')} km/h<br>
-        Atualizado em: ${formatDateTime(pos.created_at)}<br>
-        Origem da posição: ${escapeHtml(pos.origem || 'desconhecida')}<br>
-        Alertas: ${escapeHtml(alertasTexto.join(' | ') || 'Nenhum')}
-      `).openPopup();
+   function localizarVisitante(visitId) {
 
-      map.flyTo([pos.latitude, pos.longitude], 20, { duration: 0.8 });
+  visitanteMonitoradoId = visitId;
+
+  const pos = getPosicaoVisitantePainel(visitId);
+  const visit = latestVisitsById.get(visitId);
+  const visitorAlerts = latestVisitorAlerts.get(visitId);
+
+  if (!pos) {
+    alert('Este visitante não possui posição conhecida.');
+    return;
+  }
+
+  if (destaqueVisitorMarker) {
+    map.removeLayer(destaqueVisitorMarker);
+  }
+
+  destaqueVisitorMarker = L.circleMarker(
+    [Number(pos.latitude), Number(pos.longitude)],
+    {
+      radius: 12,
+      color: '#f59e0b',
+      fillColor: '#f59e0b',
+      fillOpacity: 0.35,
+      weight: 3
     }
+  ).addTo(map);
 
-    async function editarVisitante(id) {
-      const { data, error } = await sb.from('visitas').select('*').eq('id', id).single();
+  const alertasTexto = [];
 
-      if (error || !data) {
-        alert('Erro ao carregar visitante.');
-        return;
+  if (visitorAlerts?.deviation) {
+    alertasTexto.push('Saiu da rota');
+  }
+
+  if (visitorAlerts?.speed) {
+    alertasTexto.push('Acima de 30 km/h');
+  }
+
+  if (visitorAlerts?.stopped) {
+    alertasTexto.push(`Parado há ${visitorAlerts.stoppedSeconds}s`);
+  }
+
+  destaqueVisitorMarker.bindPopup(`
+    <b>${escapeHtml(visit?.nome_visitante || 'Visitante')}</b><br>
+    Placa: ${escapeHtml(visit?.placa || '-')}<br>
+    Status: ${escapeHtml(visit?.status || '-')}<br>
+    Lat: ${Number(pos.latitude).toFixed(6)}<br>
+    Lng: ${Number(pos.longitude).toFixed(6)}<br>
+    Precisão: ${escapeHtml(pos.precisao ?? '-')}<br>
+    Velocidade: ${escapeHtml(pos.velocidade ?? '-')} km/h<br>
+    Atualizado em: ${formatDateTime(pos.created_at)}<br>
+    Origem da posição: ${escapeHtml(pos.origem || 'desconhecida')}<br>
+    Alertas: ${escapeHtml(alertasTexto.join(' | ') || 'Nenhum')}
+  `).openPopup();
+
+  map.flyTo(
+    [Number(pos.latitude), Number(pos.longitude)],
+    20,
+    { duration: 0.8 }
+  );
+}
+async function excluirVisitante(id) {
+
+  if (!confirm(
+    'Deseja excluir este visitante e remover sua posição do mapa?'
+  )) return;
+
+  try {
+
+    console.log('API BASE:', getApiBase());
+    console.log('ID:', id);
+
+    const resultado = await apiRequest(
+      `/public/visitas/${id}`,
+      {
+        method: 'DELETE'
       }
+    );
 
-      const nome_visitante = prompt('Nome do visitante:', data.nome_visitante || '');
-      if (nome_visitante === null) return;
+    console.log('DELETE OK:', resultado);
 
-      const placa = prompt('Placa:', data.placa || '');
-      if (placa === null) return;
+    await carregarVisitantes();
+    await carregarPosicoes();
+    await carregarEstatisticas();
 
-      const destino_texto = prompt('Destino:', data.destino_texto || '');
-      if (destino_texto === null) return;
+    alert('Visitante removido.');
 
-      const autorizado_por = prompt('Liberado por:', data.autorizado_por || '');
-      if (autorizado_por === null) return;
+  } catch (err) {
 
-      const status = prompt('Status (aguardando, em_rota, chegou, desvio, finalizada, cancelada):', data.status || 'aguardando');
-      if (status === null) return;
+    console.error(err);
 
-      const { error: updateError } = await sb
-        .from('visitas')
-        .update({
-          nome_visitante,
-          placa,
-          destino_texto,
-          autorizado_por,
-          status,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', id);
-
-      if (updateError) {
-        alert('Erro ao editar visitante: ' + updateError.message);
-        return;
-      }
-
-      await carregarVisitantes();
-      await carregarEstatisticas();
-      alert('Visitante atualizado com sucesso.');
-    }
-
-    async function excluirVisitante(id) {
-      if (!confirm('Deseja remover este visitante do painel? O registro continuará salvo para relatórios.')) return;
-
-      const { error } = await sb
-        .from('visitas')
-        .update({
-          oculto_operador: true,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', id);
-
-      if (error) {
-        alert('Erro ao remover visitante do painel: ' + error.message);
-        return;
-      }
-
-      await carregarVisitantes();
-      await carregarEstatisticas();
-      alert('Visitante removido do painel, mas mantido no histórico.');
-    }
+    alert(
+      'Erro ao excluir visitante: ' +
+      err.message
+    );
+  }
+}
 
    async function salvarPontoRonda() {
   if (currentRole !== 'admin') {
@@ -7003,7 +7077,9 @@ async function salvarSetorCerca() {
           { data: posicoes, error: posicoesError },
           { data: eventos, error: eventosError }
         ] = await Promise.all([visitasQuery, posicoesQuery, eventosQuery]);
-
+console.log("CONDOMINIO PDF:", condoId);
+console.log("VISITAS PDF:", visitas);
+console.log("ERRO VISITAS:", visitasError);
         if (visitasError || posicoesError || eventosError) {
           alert('Erro ao gerar relatório.');
           console.error(visitasError, posicoesError, eventosError);
@@ -7134,6 +7210,9 @@ async function salvarSetorCerca() {
 
         addHeaderToPdf(doc, 'Relatório Geral de Auditoria');
 
+console.log("AUTOTABLE:", typeof doc.autoTable);
+console.log("LINHAS:", (visitas || []).length);
+
         doc.autoTable({
           startY: 42,
           head: [[
@@ -7148,18 +7227,34 @@ async function salvarSetorCerca() {
             'Saída Portaria',
             'Infrações'
           ]],
-          body: (visitas || []).map(v => [
-            v.nome_visitante || '',
-            v.placa || '',
-            v.destino_texto || '',
-            v.status || '',
-            calcularStatusVelocidade(v.id),
-            calcularParado(v.id, v.status),
-            calcularSaiuDaRota(v.id, v.status),
-            formatDateTime(v.horario_entrada_sistema || v.created_at),
-            formatDateTime(v.horario_saida_portaria),
-            calcularInfracoes(v.id, v.status)
-          ]),
+         body: (visitas || []).map(v => {
+  let statusVel = '';
+  let parado = '';
+  let saiuRota = '';
+  let infracoes = '';
+
+  try { statusVel = calcularStatusVelocidade(v.id); } catch(e) {}
+  try { parado = calcularParado(v.id, v.status); } catch(e) {}
+  try { saiuRota = calcularSaiuDaRota(v.id, v.status); } catch(e) {}
+  try { infracoes = calcularInfracoes(v.id, v.status); } catch(e) {}
+
+  return [
+    v.nome_visitante || '',
+    v.placa || '',
+    v.destino_texto || '',
+    v.status || '',
+    statusVel,
+    parado,
+    saiuRota,
+    v.horario_entrada_sistema
+      ? formatDateTime(v.horario_entrada_sistema)
+      : '',
+    v.horario_saida_portaria
+      ? formatDateTime(v.horario_saida_portaria)
+      : '',
+    infracoes
+  ];
+}),
           styles: { fontSize: 8 },
           headStyles: { fillColor: [30, 41, 59] }
         });
@@ -10434,7 +10529,500 @@ window.excluirCondominio = async function(id, nome) {
     showError('Erro ao excluir condomínio.', error);
   }
 };
-</script>
 
+async function abrirRelatoriosVisitantes() {
+
+    const modal =
+        document.getElementById(
+            'modal-relatorios-visitantes'
+        );
+
+    if (!modal) return;
+
+    modal.style.display = 'block';
+
+    const container =
+        document.getElementById(
+            'lista-relatorios-visitantes'
+        );
+
+    if (!container) return;
+
+    container.innerHTML =
+        'Carregando visitantes...';
+
+    try {
+
+        const apiData = await apiRequest(
+            `/public/visitas?condominio_id=${encodeURIComponent(currentCondoId || '')}`
+        );
+
+        const visitas = Array.isArray(apiData?.data)
+            ? apiData.data
+            : [];
+
+        let html = `
+        <table style="
+            width:100%;
+            color:#000;
+            border-collapse:collapse;
+        ">
+            <thead>
+                <tr>
+                    <th>Nome</th>
+                    <th>Placa</th>
+                    <th>Status</th>
+                    <th>Entrada</th>
+                    <th>Saída</th>
+                    <th>Velocidade</th>
+                    <th>Parado</th>
+                    <th>Fora Rota</th>
+                    <th>Infrações</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+        `;
+
+        visitas.forEach(v => {
+
+            const alerta =
+                latestVisitorAlerts?.get(v.id);
+
+            const pos =
+                getPosicaoVisitantePainel(v.id);
+
+            const velocidade =
+                Number(pos?.velocidade || 0);
+
+            const parado =
+    alerta?.stopped ||
+    v.status === 'parado';
+
+            const foraRota =
+                alerta?.deviation || false;
+
+            const excesso =
+                alerta?.speed || false;
+
+            let infracoes = [];
+
+            if (parado)
+                infracoes.push('PARADO');
+
+            if (foraRota)
+                infracoes.push('FORA DA ROTA');
+
+            if (excesso)
+                infracoes.push('VELOCIDADE');
+
+            html += `
+            <tr>
+
+                <td>
+                    ${v.nome_visitante || '-'}
+                </td>
+
+                <td>
+                    ${v.placa || '-'}
+                </td>
+
+                <td>
+                    ${v.status || '-'}
+                </td>
+
+                <td>
+                    ${
+                        v.horario_entrada_sistema
+                            ? formatDateTime(
+                                  v.horario_entrada_sistema
+                              )
+                            : '-'
+                    }
+                </td>
+
+                <td>
+                    ${
+                        v.horario_saida_portaria
+                            ? formatDateTime(
+                                  v.horario_saida_portaria
+                              )
+                            : '-'
+                    }
+                </td>
+
+                <td>
+                    ${velocidade.toFixed(2)} km/h
+                </td>
+
+                <td>
+                    ${parado ? 'SIM' : 'NÃO'}
+                </td>
+
+                <td>
+                    ${foraRota ? 'SIM' : 'NÃO'}
+                </td>
+
+                <td>
+                    ${
+                        infracoes.length
+                            ? infracoes.join(', ')
+                            : 'Nenhuma'
+                    }
+                </td>
+
+                <td>
+
+                    <button
+                        class="btn btn-success"
+                        onclick="gerarPdfVisitante('${v.id}')">
+
+                        PDF
+
+                    </button>
+
+                </td>
+
+            </tr>
+            `;
+        });
+
+        html += `
+            </tbody>
+        </table>
+        `;
+
+        container.innerHTML = html;
+
+    } catch (err) {
+
+        console.error(err);
+
+        container.innerHTML =
+            'Erro ao carregar relatórios.';
+    }
+}
+function fecharRelatoriosVisitantes() {
+
+    const modal =
+        document.getElementById(
+            'modal-relatorios-visitantes'
+        );
+
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+async function gerarPdfVisitante(id) {
+
+    try {
+
+        const { jsPDF } = window.jspdf;
+
+        const doc = new jsPDF();
+
+        const apiData = await apiRequest(
+            `/public/visitas?condominio_id=${encodeURIComponent(currentCondoId || '')}`
+        );
+
+        const visitas = Array.isArray(apiData?.data)
+            ? apiData.data
+            : [];
+
+        const visitante =
+            visitas.find(v => v.id === id);
+
+        if (!visitante) {
+
+            alert(
+                'Visitante não encontrado.'
+            );
+
+            return;
+        }
+
+        const alerta =
+            latestVisitorAlerts?.get(id);
+
+        const pos =
+            getPosicaoVisitantePainel(id);
+
+        const velocidade =
+            Number(pos?.velocidade || 0);
+
+        let infracoes = [];
+
+        const parado =
+    alerta?.stopped ||
+    visitante.status === 'parado';
+
+if (parado)
+    infracoes.push('PARADO');
+        if (alerta?.deviation)
+            infracoes.push('FORA DA ROTA');
+
+        if (alerta?.speed)
+            infracoes.push('VELOCIDADE');
+
+        let y = 20;
+
+        doc.setFontSize(18);
+
+        doc.text(
+            'RELATORIO COMPLETO DO VISITANTE',
+            20,
+            y
+        );
+
+        y += 15;
+
+        doc.setFontSize(11);
+
+        doc.text(
+            `Nome: ${visitante.nome_visitante || '-'}`,
+            20,
+            y
+        );
+
+        y += 8;
+
+        doc.text(
+            `Placa: ${visitante.placa || '-'}`,
+            20,
+            y
+        );
+
+        y += 8;
+
+        doc.text(
+            `Destino: ${visitante.destino_texto || '-'}`,
+            20,
+            y
+        );
+
+        y += 8;
+
+        doc.text(
+            `Status: ${visitante.status || '-'}`,
+            20,
+            y
+        );
+
+        y += 8;
+
+        doc.text(
+            `Autorizado por: ${visitante.autorizado_por || '-'}`,
+            20,
+            y
+        );
+
+        y += 8;
+
+        doc.text(
+            `Entrada: ${visitante.horario_entrada_sistema || '-'}`,
+            20,
+            y
+        );
+
+        y += 8;
+
+        doc.text(
+            `Saida: ${visitante.horario_saida_portaria || '-'}`,
+            20,
+            y
+        );
+
+        y += 8;
+
+        doc.text(
+            `Velocidade Atual: ${velocidade.toFixed(2)} km/h`,
+            20,
+            y
+        );
+
+        y += 8;
+
+       doc.text(
+    `Parado: ${parado ? 'SIM' : 'NAO'}`,
+    20,
+    y
+);
+
+        y += 8;
+
+        doc.text(
+            `Fora da Rota: ${alerta?.deviation ? 'SIM' : 'NAO'}`,
+            20,
+            y
+        );
+
+        y += 8;
+
+        doc.text(
+            `Excesso Velocidade: ${alerta?.speed ? 'SIM' : 'NAO'}`,
+            20,
+            y
+        );
+
+        y += 8;
+
+        doc.text(
+            `Infracoes: ${
+                infracoes.length
+                    ? infracoes.join(', ')
+                    : 'Nenhuma'
+            }`,
+            20,
+            y
+        );
+
+        y += 15;
+
+        doc.text(
+            `Latitude: ${pos?.latitude || '-'}`,
+            20,
+            y
+        );
+
+        y += 8;
+
+        doc.text(
+            `Longitude: ${pos?.longitude || '-'}`,
+            20,
+            y
+        );
+
+        y += 15;
+
+        doc.text(
+            `Gerado em: ${new Date().toLocaleString()}`,
+            20,
+            y
+        );
+
+        doc.save(
+            `relatorio_visitante_${id}.pdf`
+        );
+
+    } catch (err) {
+
+        console.error(err);
+
+        alert(
+            'Erro ao gerar PDF.'
+        );
+    }
+}
+async function limparVisitantesTravados() {
+
+    if (!confirm('Remover visitantes da operação sem apagar histórico?')) {
+        return;
+    }
+
+    try {
+
+        const { data: visitas, error } = await sb
+            .from('visitas')
+            .select('*');
+
+        if (error) {
+            console.error(error);
+            alert('Erro ao buscar visitantes.');
+            return;
+        }
+
+        console.log('VISITAS ENCONTRADAS:', visitas);
+
+        for (const v of (visitas || [])) {
+
+            const { error: updateError } = await sb
+                .from('visitas')
+                .update({
+                    status: 'encerrado',
+                    oculto_operador: true,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', v.id);
+
+            if (updateError) {
+                console.error('ERRO UPDATE:', updateError);
+            }
+        }
+
+        await carregarVisitantes();
+
+        if (typeof renderizarVisitantesPortaria === 'function') {
+            renderizarVisitantesPortaria();
+        }
+
+        alert('Visitantes removidos da operação e mantidos no histórico.');
+
+    } catch (erro) {
+
+        console.error(erro);
+
+        alert('ERRO: ' + erro.message);
+    }
+}
+function excluirTodosVisitantes() {
+    alert('Botão funcionando!');
+}
+
+document.addEventListener('contextmenu', e => {
+    e.preventDefault();
+});
+
+document.addEventListener('keydown', function(e) {
+
+    if (e.key === 'F12') {
+        e.preventDefault();
+        return false;
+    }
+
+    if (e.ctrlKey && e.shiftKey && e.key === 'I') {
+        e.preventDefault();
+        return false;
+    }
+
+    if (e.ctrlKey && e.shiftKey && e.key === 'J') {
+        e.preventDefault();
+        return false;
+    }
+
+    if (e.ctrlKey && e.key === 'U') {
+        e.preventDefault();
+        return false;
+    }
+
+    if (e.ctrlKey && e.shiftKey && e.key === 'C') {
+        e.preventDefault();
+        return false;
+    }
+});
+</script>
+<div id="modal-relatorios-visitantes"
+     style="display:none;
+            position:fixed;
+            top:5%;
+            left:5%;
+            width:90%;
+            height:85%;
+            background:#fff;
+            z-index:99999;
+            overflow:auto;
+            padding:20px;
+            border-radius:10px;">
+
+    <h2>Relatórios de Visitantes</h2>
+
+    <button class="btn btn-danger"
+        onclick="fecharRelatoriosVisitantes()">
+        Fechar
+    </button>
+
+    <div id="lista-relatorios-visitantes"></div>
+
+</div>
 </body>
 </html>
