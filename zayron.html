@@ -2721,6 +2721,11 @@ let visitanteMonitoradoId = null;
     let latestRondaCheckpointsBySessao = new Map();
     let latestPontosRonda = [];
     let condosCache = [];
+let visitantesOcultosTela = new Set(
+    JSON.parse(
+        localStorage.getItem('visitantesOcultosTela') || '[]'
+    )
+);
     let ultimoTotalAlertasOperador = 0;
     let pollingAtualizacao = null;
     let atualizandoAgora = false;
@@ -5670,11 +5675,21 @@ const {
       return;
     }
 
-   const visitantes =
-    (visits || []).filter(
-        v => v.status !== 'finalizada'
-    );
+  const visitantes =
+    (visits || []).filter(v => {
 
+        if (visitantesOcultosTela.has(v.id)) {
+            return false;
+        }
+
+        const status = String(v.status || '').toLowerCase();
+
+        return (
+            status !== 'finalizada' &&
+            status !== 'encerrado'
+        );
+
+    });
     document.getElementById('count-visitantes').innerText =
       visitantes.length;
 
@@ -8936,14 +8951,26 @@ function obterCamerasOperador() {
       });
     }
 
-    function removerVisitantePortaria(id) {
-      if (!confirm('Excluir este visitante?')) return;
-      sb.from('visitas').delete().eq('id', id).then(() => {
-        renderizarVisitantesPortaria();
-        carregarVisitantes();
-      });
-    }
+   function removerVisitantePortaria(id) {
 
+  if (!confirm('Encerrar visitante?')) return;
+
+  sb.from('visitas')
+    .update({
+      status: 'encerrado',
+      oculto_operador: true,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', id)
+    .then(() => {
+
+      renderizarVisitantesPortaria();
+
+      carregarVisitantes();
+
+    });
+
+}
     function renderizarVisitantesPortaria() {
       const lista = document.getElementById('lista-visitantes-portaria');
       if (!lista) return;
@@ -10631,25 +10658,21 @@ async function abrirRelatoriosVisitantes() {
                     ${v.status || '-'}
                 </td>
 
-                <td>
-                    ${
-                        v.horario_entrada_sistema
-                            ? formatDateTime(
-                                  v.horario_entrada_sistema
-                              )
-                            : '-'
-                    }
-                </td>
+              <td>
+    ${
+        v.created_at
+            ? formatDateTime(v.created_at)
+            : '-'
+    }
+</td>
 
-                <td>
-                    ${
-                        v.horario_saida_portaria
-                            ? formatDateTime(
-                                  v.horario_saida_portaria
-                              )
-                            : '-'
-                    }
-                </td>
+<td>
+    ${
+        v.saida_em
+            ? formatDateTime(v.saida_em)
+            : '-'
+    }
+</td>
 
                 <td>
                     ${velocidade.toFixed(2)} km/h
@@ -10916,90 +10939,35 @@ if (parado)
 }
 async function limparVisitantesTravados() {
 
-    if (!confirm('Remover visitantes da operação sem apagar histórico?')) {
+    if (!confirm('Remover visitantes da tela do operador?')) {
         return;
     }
 
-    try {
+    latestVisitorEvents.forEach(v => {
+        visitantesOcultosTela.add(v.id);
+    });
 
-        const { data: visitas, error } = await sb
-            .from('visitas')
-            .select('*');
+    localStorage.setItem(
+        'visitantesOcultosTela',
+        JSON.stringify([...visitantesOcultosTela])
+    );
 
-        if (error) {
-            console.error(error);
-            alert('Erro ao buscar visitantes.');
-            return;
-        }
+    await carregarVisitantes();
 
-        console.log('VISITAS ENCONTRADAS:', visitas);
+    alert('Visitantes ocultados da tela.');
 
-        for (const v of (visitas || [])) {
-
-            const { error: updateError } = await sb
-                .from('visitas')
-                .update({
-                    status: 'encerrado',
-                    oculto_operador: true,
-                    updated_at: new Date().toISOString()
-                })
-                .eq('id', v.id);
-
-            if (updateError) {
-                console.error('ERRO UPDATE:', updateError);
-            }
-        }
-
-        await carregarVisitantes();
-
-        if (typeof renderizarVisitantesPortaria === 'function') {
-            renderizarVisitantesPortaria();
-        }
-
-        alert('Visitantes removidos da operação e mantidos no histórico.');
-
-    } catch (erro) {
-
-        console.error(erro);
-
-        alert('ERRO: ' + erro.message);
-    }
 }
 function excluirTodosVisitantes() {
-    alert('Botão funcionando!');
+
+    alert('FUNÇÃO EXECUTOU');
+
+    const lista = document.getElementById('lista-visitantes');
+
+    if (lista) {
+        lista.innerHTML = '';
+    }
+
 }
-
-document.addEventListener('contextmenu', e => {
-    e.preventDefault();
-});
-
-document.addEventListener('keydown', function(e) {
-
-    if (e.key === 'F12') {
-        e.preventDefault();
-        return false;
-    }
-
-    if (e.ctrlKey && e.shiftKey && e.key === 'I') {
-        e.preventDefault();
-        return false;
-    }
-
-    if (e.ctrlKey && e.shiftKey && e.key === 'J') {
-        e.preventDefault();
-        return false;
-    }
-
-    if (e.ctrlKey && e.key === 'U') {
-        e.preventDefault();
-        return false;
-    }
-
-    if (e.ctrlKey && e.shiftKey && e.key === 'C') {
-        e.preventDefault();
-        return false;
-    }
-});
 </script>
 <div id="modal-relatorios-visitantes"
      style="display:none;
