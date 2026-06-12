@@ -101,34 +101,54 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <script>
-    const API_BASE_URL = 'http://127.0.0.1:3000';
+   const API = 'https://zayron-api-1011701557501.southamerica-east1.run.app';
 
-    async function apiGet(path){
-      const res = await fetch(`${API_BASE_URL}${path}`);
-      const json = await res.json();
-      if(!res.ok || json.success === false) throw new Error(json.message || 'Erro na API');
-      return json.data ?? json;
+async function apiGet(path) {
+  const res = await fetch(`${API}${path}`, {
+    method: 'GET',
+    headers: {
+      'Accept': 'application/json'
     }
+  });
+
+  const json = await res.json().catch(() => ({}));
+
+  if (!res.ok || json.success === false) {
+    throw new Error(json.message || json.details || 'Erro na API');
+  }
+
+  return json.data ?? json;
+}
 
     async function apiPost(path, body){
-      const res = await fetch(`${API_BASE_URL}${path}`, {
+      const res = await fetch(`${API}${path}`, {
         method:'POST',
-        headers:{'Content-Type':'application/json'},
+        headers:{
+          'Content-Type':'application/json',
+          'Accept':'application/json'
+        },
         body:JSON.stringify(body)
       });
-      const json = await res.json();
-      if(!res.ok || json.success === false) throw new Error(json.message || 'Erro na API');
+      const json = await res.json().catch(() => ({}));
+      if(!res.ok || json.success === false) {
+        throw new Error(json.message || json.details || 'Erro na API');
+      }
       return json.data ?? json;
     }
 
     async function apiPatch(path, body = {}){
-      const res = await fetch(`${API_BASE_URL}${path}`, {
+      const res = await fetch(`${API}${path}`, {
         method:'PATCH',
-        headers:{'Content-Type':'application/json'},
+        headers:{
+          'Content-Type':'application/json',
+          'Accept':'application/json'
+        },
         body:JSON.stringify(body)
       });
-      const json = await res.json();
-      if(!res.ok || json.success === false) throw new Error(json.message || 'Erro na API');
+      const json = await res.json().catch(() => ({}));
+      if(!res.ok || json.success === false) {
+        throw new Error(json.message || json.details || 'Erro na API');
+      }
       return json.data ?? json;
     }
 
@@ -158,6 +178,12 @@
     let eventosSessao = [];
     let ultimaPosicao = null;
     let prefixoViatura = '';
+    let ultimaPosicaoParado = null;
+    let inicioParadoMs = null;
+    let ultimoAlarmeParadoMs = 0;
+
+    const TEMPO_PARADO_ALARME_MS = 120000; // 120 segundos
+    const DISTANCIA_PARADO_METROS = 5;
     let condominiosCache = [];
     let ultimoEnvioPosicaoMs = 0;
     let rondaSessaoId = null;
@@ -427,24 +453,61 @@
       }
     }
 
-    async function criarSessaoRonda(){
-      try{
-        const data = await apiPost('/ronda-sessoes', {
-          condominio_id:currentCondoId,
-          vigilante_login:prefixoViatura,
-          vigilante_nome:currentUser?.nome || '',
-          entidade_id:entidadeId,
-          observacoes:`Sessão ${sessionCodigo}`
-        });
+   async function criarSessaoRonda() {
+  try {
 
-        rondaSessaoId = data.id;
-        return true;
-      }catch(error){
-        console.error('Erro ao criar sessão da ronda:', error);
-        alert('Falha ao iniciar ronda.\n' + error.message);
-        return false;
-      }
+    console.log('==============================');
+    console.log('CRIANDO SESSAO DE RONDA');
+    console.log('Condomínio:', currentCondoId);
+    console.log('Vigilante:', currentUser?.nome);
+    console.log('Viatura:', prefixoViatura);
+    console.log('Entidade:', entidadeId);
+    console.log('Sessão:', sessionCodigo);
+    console.log('==============================');
+
+   const payload = {
+  condominio_id: currentCondoId,
+  vigilante_login: prefixoViatura,
+  vigilante_nome: currentUser?.nome || '',
+  observacoes: `Sessão ${sessionCodigo}`
+};
+
+    console.log('Payload enviado:', payload);
+
+    const data = await apiPost('/ronda-sessoes', payload);
+
+    console.log('SESSAO CRIADA COM SUCESSO');
+    console.log(data);
+
+    if (!data || !data.id) {
+      throw new Error('API retornou sessão sem ID.');
     }
+
+    rondaSessaoId = data.id;
+
+    console.log('ID DA SESSAO:', rondaSessaoId);
+
+    adicionarEventoLocal(
+      'inicio_ronda',
+      'Sessão criada',
+      `ID: ${rondaSessaoId}`
+    );
+
+    return true;
+
+  } catch (error) {
+
+    console.error('ERRO AO CRIAR SESSAO');
+    console.error(error);
+
+    alert(
+      'Falha ao iniciar ronda.\n\n' +
+      (error?.message || 'Erro desconhecido')
+    );
+
+    return false;
+  }
+}
 
     async function iniciarCheckpointRonda(ponto){
       if(!rondaSessaoId || !ponto) return false;
@@ -508,32 +571,98 @@
       }
     }
 
-    async function atualizarPosicaoRealtime(lat, lng, extra={}){
-      if(!entidadeId || !currentCondoId || !emRonda) return;
+  async function atualizarPosicaoRealtime(lat, lng, extra = {}) {
+  if (!rondaSessaoId || !currentCondoId || !emRonda) return;
 
-      const agora = Date.now();
-      if(agora - ultimoEnvioPosicaoMs < 2500) return;
-      ultimoEnvioPosicaoMs = agora;
+  const agora = Date.now();
+  if (agora - ultimoEnvioPosicaoMs < 2500) return;
+  ultimoEnvioPosicaoMs = agora;
 
-      try{
-        await apiPost('/posicoes-tempo-real', {
-          condominio_id:currentCondoId,
-          tipo_entidade:'vigilante',
-          entidade_id:entidadeId,
-          latitude:lat,
-          longitude:lng,
-          precisao:extra.precisao ?? null,
-          velocidade:extra.velocidadeKmh ?? 0,
-          bateria:bateriaInfo.level != null ? Math.round(bateriaInfo.level * 100) : null,
-          status:'online'
-        });
-      }catch(error){
-        console.error('Erro posição realtime:', error);
-      }
-    }
+  // 🔒 Garante que entidade_id é um UUID válido
+  const entidadeIdUUID = entidadeId && isValidUUID(entidadeId) 
+    ? entidadeId 
+    : rondaSessaoId; // fallback para o UUID da sessão
+
+  try {
+    const payload = {
+      condominio_id: currentCondoId,
+      tipo_entidade: 'vigilante',
+      entidade_id: entidadeIdUUID,        // ← UUID válido obrigatório
+      latitude: lat,
+      longitude: lng,
+      precisao: extra.precisao ?? null,
+      velocidade: extra.velocidadeKmh ?? 0,
+      bateria: bateriaInfo.level != null 
+        ? Math.round(bateriaInfo.level * 100) 
+        : null,
+      status: 'em_andamento'
+    };
+
+    await apiPost('/posicoes-tempo-real', payload);
+
+  } catch (error) {
+    console.error('Erro posição realtime:', error);
+  }
+}
+
+// ─── Helper para validar UUID ───
+function isValidUUID(str) {
+  const regex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return regex.test(str);
+}
 
     async function limparPosicaoRealtime(){
       return true;
+    }
+
+    async function verificarVigilanteParado(lat, lng) {
+      if (!emRonda || !currentCondoId || !entidadeId) return;
+
+      const agora = Date.now();
+
+      if (!ultimaPosicaoParado) {
+        ultimaPosicaoParado = { lat, lng };
+        inicioParadoMs = agora;
+        return;
+      }
+
+      const distancia = map.distance(
+        [lat, lng],
+        [ultimaPosicaoParado.lat, ultimaPosicaoParado.lng]
+      );
+
+      if (distancia <= DISTANCIA_PARADO_METROS) {
+        if (!inicioParadoMs) inicioParadoMs = agora;
+
+        const tempoParado = agora - inicioParadoMs;
+
+        if (
+          tempoParado >= TEMPO_PARADO_ALARME_MS &&
+          agora - ultimoAlarmeParadoMs > TEMPO_PARADO_ALARME_MS
+        ) {
+          ultimoAlarmeParadoMs = agora;
+
+          setStatus('ALERTA: vigilante parado há mais de 120 segundos', 'var(--danger)');
+
+          await registrarEvento(
+            'vigilante_parado',
+            `ALERTA: vigilante parado · ${currentUser?.nome || ''}`,
+            'critica',
+            `Vigilante/viatura ${prefixoViatura} permaneceu parado por mais de 120 segundos durante a ronda.`
+          );
+
+          adicionarEventoLocal(
+            'panico_ronda',
+            'Alerta de vigilante parado',
+            'Vigilante parado há mais de 120 segundos. Verificar imediatamente.'
+          );
+        }
+
+        return;
+      }
+
+      ultimaPosicaoParado = { lat, lng };
+      inicioParadoMs = agora;
     }
 
     function verificarPontoAtual(lat,lng){
@@ -783,9 +912,10 @@
             precisao:Math.round(pos.coords.accuracy || 0),
             velocidadeKmh
           });
-        }
 
-        if(emRonda) verificarPontoAtual(lat,lng);
+          await verificarVigilanteParado(lat, lng);
+          verificarPontoAtual(lat, lng);
+        }
       }, err => {
         console.error(err);
         setStatus('Erro ao obter GPS','var(--danger)');
@@ -824,7 +954,7 @@
       currentCondoId = condo.id;
       currentCondoNome = condo.nome;
       prefixoViatura = numero;
-      entidadeId = `RONDA_${prefixoViatura}`;
+      entidadeId = crypto.randomUUID();
 
       els.nomeCondominio.value = currentCondoNome;
       els.userInfo.textContent = `${currentUser.nome} · ${currentCondoNome}`;
