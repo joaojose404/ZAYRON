@@ -2454,20 +2454,18 @@ function renderizarVisitantesPortaria() {
 
     limparUsuariosDemoESenhasLocais();
 
-  const API_LOCAL = 'http://127.0.0.1:3000';
-const API_NUVEM = 'https://zayron-api-1011701557501.southamerica-east1.run.app';
+  const API_LOCAL = 'https://zayron-api-1011701557501.southamerica-east1.run.app';
+const API_NUVEM = window.ZAYRON_API_BASE || (
+  window.location && /^https?:$/.test(window.location.protocol)
+    ? window.location.origin
+    : 'https://zayron-api-1011701557501.southamerica-east1.run.app'
+);
 
     let currentSession = null;
 
    function getModoAPI() {
-  try {
-    const modo = localStorage.getItem('modo_api');
-    if (modo === 'local' || modo === 'nuvem') return modo;
-  localStorage.setItem('modo_api', 'nuvem');
-return 'nuvem';
-  } catch (e) {
-    return 'local';
-  }
+  try { localStorage.setItem('modo_api', 'nuvem'); } catch (e) {}
+  return 'nuvem';
 }
 
 function getApiBase() {
@@ -14245,6 +14243,391 @@ document.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('DOMContentLoaded', agendaCorrecaoV51);
   setInterval(window.zayronCorrigirRondasGerenteV51, 1200);
   agendaCorrecaoV51();
+})();
+</script>
+<script>
+/* ===== PATCH CLOUD V54 - gerente usando empresas reais da API ===== */
+(function(){
+  if (window.__ZAYRON_CLOUD_V54__) return;
+  window.__ZAYRON_CLOUD_V54__ = true;
+
+  function idsPossiveisEmpresaV54(usuario) {
+    const listas = [
+      usuario?.clientes_vinculados,
+      usuario?.clientes_monitorados,
+      usuario?.condominios_vinculados,
+      usuario?.empresas_vinculadas,
+      usuario?.empresas_monitoradas
+    ];
+    const ids = [];
+    listas.forEach(lista => {
+      if (Array.isArray(lista)) {
+        lista.forEach(item => {
+          if (typeof item === 'object' && item) ids.push(item.id || item.condominio_id || item.empresa_id);
+          else ids.push(item);
+        });
+      }
+    });
+    if (usuario?.condominio_id) ids.push(usuario.condominio_id);
+    return [...new Set(ids.filter(Boolean).map(String))];
+  }
+
+  async function carregarUsuariosGerenteV54() {
+    if (typeof apiRequest !== 'function') return;
+    try {
+      const resp = await apiRequest('/usuarios');
+      const usuarios = Array.isArray(resp?.data) ? resp.data : [];
+      if (!usuarios.length) return;
+      if (!Array.isArray(MOCK_DB.usuarios)) MOCK_DB.usuarios = [];
+      usuarios.forEach(apiUser => {
+        const normalizado = {
+          ...apiUser,
+          tipo: String(apiUser.tipo || apiUser.tipo_usuario || '').toLowerCase(),
+          tipo_usuario: String(apiUser.tipo_usuario || apiUser.tipo || '').toLowerCase()
+        };
+        const idx = MOCK_DB.usuarios.findIndex(u =>
+          String(u.id || '') === String(normalizado.id || '') ||
+          String(u.login || '').toLowerCase() === String(normalizado.login || '').toLowerCase()
+        );
+        if (idx >= 0) MOCK_DB.usuarios[idx] = { ...MOCK_DB.usuarios[idx], ...normalizado };
+        else MOCK_DB.usuarios.push(normalizado);
+      });
+      if (window.currentUser) {
+        const remoto = usuarios.find(u =>
+          String(u.id || '') === String(window.currentUser.id || '') ||
+          String(u.login || '').toLowerCase() === String(window.currentUser.login || '').toLowerCase()
+        );
+        if (remoto) window.currentUser = { ...window.currentUser, ...remoto };
+      }
+    } catch (error) {
+      console.warn('V54: nao foi possivel carregar usuarios para vinculo do gerente:', error?.message || error);
+    }
+  }
+
+  function aplicarVinculosGerenteV54() {
+    if (window.currentRole !== 'gerente' || !window.currentUser) return;
+    const todosCondominios = (MOCK_DB.condominios || [])
+      .filter(c => c && !String(c.nome || '').toUpperCase().includes('DEMO'));
+    let ids = idsPossiveisEmpresaV54(window.currentUser);
+    const local = (MOCK_DB.usuarios || []).find(u =>
+      String(u.id || '') === String(window.currentUser.id || '') ||
+      String(u.login || '').toLowerCase() === String(window.currentUser.login || '').toLowerCase()
+    );
+    ids = [...new Set([...ids, ...idsPossiveisEmpresaV54(local)])];
+    if (!ids.length && todosCondominios.length) {
+      ids = todosCondominios.map(c => String(c.id));
+    }
+    window.currentUser.clientes_vinculados = ids;
+    if (local) local.clientes_vinculados = ids;
+    try { if (typeof persistMockDb === 'function') persistMockDb(); } catch (e) {}
+  }
+
+  const getEmpresasOriginalV54 = window.getEmpresasVinculadasDoGerente;
+  window.getEmpresasVinculadasDoGerente = function() {
+    let empresas = [];
+    try {
+      if (typeof getEmpresasOriginalV54 === 'function') empresas = getEmpresasOriginalV54();
+    } catch (error) {
+      console.warn('V54: falha no getEmpresas original:', error?.message || error);
+    }
+    if (empresas.length || window.currentRole !== 'gerente') return empresas;
+    aplicarVinculosGerenteV54();
+    const ids = new Set((window.currentUser?.clientes_vinculados || []).map(String));
+    return aplicarCoordenadasSalvasCondominios(MOCK_DB.condominios || [])
+      .filter(c => !String(c.nome || '').toUpperCase().includes('DEMO'))
+      .filter(c => !ids.size || ids.has(String(c.id)))
+      .map(c => {
+        const coord = typeof getCoordenadasCondominio === 'function' ? getCoordenadasCondominio(c) : null;
+        return {
+          ...c,
+          nome: c.nome || c.nome_condominio || c.razao_social || 'Empresa sem nome',
+          latitude: coord ? coord.lat : (c.latitude ?? null),
+          longitude: coord ? coord.lng : (c.longitude ?? null),
+          vinculada: true
+        };
+      });
+  };
+
+  window.sincronizarGerenteCloudV54 = async function() {
+    if (window.currentRole !== 'gerente') return;
+    try {
+      if (typeof carregarCondominios === 'function') await carregarCondominios();
+      await carregarUsuariosGerenteV54();
+      aplicarVinculosGerenteV54();
+      if (typeof renderizarEmpresasMonitoradasGerente === 'function') renderizarEmpresasMonitoradasGerente();
+      if (typeof renderizarEmpresasNoMapaGerente === 'function') renderizarEmpresasNoMapaGerente();
+      if (typeof atualizarPainelGerenteCompleto === 'function') atualizarPainelGerenteCompleto();
+    } catch (error) {
+      console.warn('V54: falha ao sincronizar gerente:', error?.message || error);
+    }
+  };
+
+  const carregarAppOriginalV54 = window.carregarApp;
+  if (typeof carregarAppOriginalV54 === 'function' && !carregarAppOriginalV54.__cloudV54) {
+    window.carregarApp = function() {
+      const resultado = carregarAppOriginalV54.apply(this, arguments);
+      setTimeout(() => window.sincronizarGerenteCloudV54(), 500);
+      setTimeout(() => window.sincronizarGerenteCloudV54(), 1800);
+      return resultado;
+    };
+    window.carregarApp.__cloudV54 = true;
+  }
+
+  const atualizarTudoOriginalV54 = window.atualizarTudo;
+  if (typeof atualizarTudoOriginalV54 === 'function' && !atualizarTudoOriginalV54.__cloudV54) {
+    window.atualizarTudo = async function() {
+      const resultado = await atualizarTudoOriginalV54.apply(this, arguments);
+      await window.sincronizarGerenteCloudV54();
+      return resultado;
+    };
+    window.atualizarTudo.__cloudV54 = true;
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => window.sincronizarGerenteCloudV54(), 1000);
+  });
+})();
+</script>
+<script>
+/* ===== PATCH CLOUD V56 - salvar cameras e cerca na API, nao so local ===== */
+(function(){
+  if (window.__ZAYRON_CLOUD_V56__) return;
+  window.__ZAYRON_CLOUD_V56__ = true;
+
+  function valorV56(id) {
+    return document.getElementById(id)?.value?.trim() || '';
+  }
+
+  function numeroV56(id, padrao = null) {
+    const bruto = valorV56(id);
+    const n = Number(String(bruto).replace(',', '.'));
+    return Number.isFinite(n) ? n : padrao;
+  }
+
+  function condoAtualV56(selectId = 'sel_condo_dispositivo') {
+    if (typeof getCurrentFormCondoId === 'function') {
+      return getCurrentFormCondoId(selectId) || getCurrentFormCondoId('sel_condo_camera') || window.currentCondoId || '';
+    }
+    return window.currentCondoId || '';
+  }
+
+  function pontoLinhaV56(lat, lng, desloc = 0.00005) {
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return [];
+    return [
+      [lat - desloc, lng - desloc],
+      [lat + desloc, lng + desloc]
+    ];
+  }
+
+  function upsertCameraLocalV56(camera, extra = {}) {
+    if (!Array.isArray(MOCK_DB.cameras_cadastro)) MOCK_DB.cameras_cadastro = [];
+    const item = { ...camera, ...extra };
+    const idx = MOCK_DB.cameras_cadastro.findIndex(c => String(c.id) === String(item.id));
+    if (idx >= 0) MOCK_DB.cameras_cadastro[idx] = { ...MOCK_DB.cameras_cadastro[idx], ...item };
+    else MOCK_DB.cameras_cadastro.push(item);
+    try { if (typeof persistMockDb === 'function') persistMockDb(); } catch (e) {}
+    return item;
+  }
+
+  async function salvarCameraApiV56(payload, extra = {}) {
+    if (typeof apiRequest !== 'function') throw new Error('API nao inicializada.');
+    const resposta = await apiRequest('/cameras', {
+      method: 'POST',
+      body: {
+        condominio_id: payload.condominio_id,
+        setor_cerca_id: payload.setor_cerca_id || null,
+        nome: payload.nome,
+        descricao: payload.descricao || payload.setor || payload.stream_path || '',
+        tipo_camera: payload.tipo_camera || payload.tipo || 'ip',
+        fabricante: payload.fabricante || 'generic',
+        ip: payload.ip || null,
+        porta: payload.porta || null
+      }
+    });
+    const salva = resposta?.data || {};
+    return upsertCameraLocalV56(salva, {
+      ...extra,
+      condominio_id: payload.condominio_id,
+      nome: salva.nome || payload.nome,
+      tipo: payload.tipo || payload.tipo_camera || salva.tipo_camera || 'cftv',
+      setor: payload.setor || extra.setor || salva.descricao || '',
+      identificador: payload.identificador || extra.identificador || '',
+      stream_tipo: payload.stream_tipo || extra.stream_tipo || 'rtsp',
+      stream_path: payload.stream_path || extra.stream_path || '',
+      latitude: payload.latitude ?? extra.latitude ?? salva.latitude ?? null,
+      longitude: payload.longitude ?? extra.longitude ?? salva.longitude ?? null,
+      canal: payload.canal ?? extra.canal ?? null,
+      status: 'online'
+    });
+  }
+
+  window.salvarCameraCadastro = async function() {
+    try {
+      const condominio_id = condoAtualV56('sel_condo_camera');
+      const nome = valorV56('camera_nome_cadastro');
+      if (!condominio_id) return alert('Selecione um condominio.');
+      if (!nome) return alert('Informe o nome da camera.');
+
+      const payload = {
+        condominio_id,
+        nome,
+        tipo: valorV56('camera_tipo_cadastro') || 'cftv',
+        setor: valorV56('camera_setor_cadastro'),
+        identificador: valorV56('camera_identificador_cadastro'),
+        ip: valorV56('camera_ip_cadastro') || null,
+        porta: numeroV56('camera_porta_cadastro'),
+        stream_tipo: valorV56('camera_stream_tipo_cadastro') || 'rtsp',
+        stream_path: valorV56('camera_stream_path_cadastro'),
+        latitude: numeroV56('camera_latitude_cadastro'),
+        longitude: numeroV56('camera_longitude_cadastro'),
+        descricao: [
+          valorV56('camera_setor_cadastro') ? `setor=${valorV56('camera_setor_cadastro')}` : '',
+          valorV56('camera_identificador_cadastro') ? `identificador=${valorV56('camera_identificador_cadastro')}` : '',
+          valorV56('camera_stream_path_cadastro') ? `stream=${valorV56('camera_stream_path_cadastro')}` : ''
+        ].filter(Boolean).join(' | ')
+      };
+
+      await salvarCameraApiV56(payload);
+      ['camera_nome_cadastro','camera_setor_cadastro','camera_identificador_cadastro','camera_limite_cadastro','camera_ip_cadastro','camera_porta_cadastro','camera_usuario_cadastro','camera_senha_cadastro','camera_stream_path_cadastro','camera_latitude_cadastro','camera_longitude_cadastro'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+      });
+      if (document.getElementById('camera_stream_tipo_cadastro')) document.getElementById('camera_stream_tipo_cadastro').value = 'rtsp';
+      if (typeof carregarCameras === 'function') await carregarCameras(condominio_id);
+      if (typeof renderizarCamerasAdmin === 'function') renderizarCamerasAdmin();
+      if (typeof renderizarCamerasIANoMapa === 'function') renderizarCamerasIANoMapa();
+      alert('Camera salva na nuvem com sucesso.');
+    } catch (error) {
+      console.error(error);
+      alert('Erro ao salvar camera na nuvem: ' + (error?.message || error));
+    }
+  };
+
+  const salvarDispositivoAnteriorV56 = window.salvarDispositivoCadastro;
+  window.salvarDispositivoCadastro = async function() {
+    const tipo = document.getElementById('device_tipo_cadastro')?.value || 'camera';
+    if (tipo !== 'cerca') {
+      return salvarDispositivoAnteriorV56.apply(this, arguments);
+    }
+
+    try {
+      const condominio_id = condoAtualV56('sel_condo_dispositivo');
+      const nome = valorV56('device_nome_cadastro');
+      const ip = valorV56('device_ip_cadastro') || null;
+      const porta = numeroV56('device_porta_cadastro');
+      const driver = valorV56('device_cerca_driver_cadastro') || 'modbus_tcp';
+      const setorPrincipal = valorV56('device_cerca_setor_cadastro') || 'Cerca principal';
+      const latitude = numeroV56('device_cerca_latitude_cadastro');
+      const longitude = numeroV56('device_cerca_longitude_cadastro');
+      const qtdSetores = Math.max(1, numeroV56('device_cerca_qtd_setores_cadastro', 1));
+      if (!condominio_id) return alert('Selecione um condominio.');
+      if (!nome) return alert('Informe o nome do modulo de cerca.');
+
+      const moduloResp = await apiRequest('/modulos-cerca', {
+        method: 'POST',
+        body: { condominio_id, nome, protocolo: driver, ip, porta }
+      });
+      const modulo = moduloResp?.data || {};
+
+      for (let i = 1; i <= qtdSetores; i += 1) {
+        const lat = Number.isFinite(latitude) ? latitude + (i * 0.00003) : null;
+        const lng = Number.isFinite(longitude) ? longitude + (i * 0.00003) : null;
+        const linha = pontoLinhaV56(lat, lng);
+        await apiRequest('/setores-cerca', {
+          method: 'POST',
+          body: {
+            condominio_id,
+            modulo_id: modulo.id,
+            modulo_cerca_id: modulo.id,
+            nome: qtdSetores === 1 ? setorPrincipal : `${setorPrincipal} ${i}`,
+            entrada_alarme: i,
+            saida_rele: i,
+            status: 'ativo',
+            observacao: 'Cadastro salvo na nuvem pelo assistente de dispositivo.',
+            linha_json: linha,
+            path_coords: linha,
+            latitude: lat,
+            longitude: lng
+          }
+        });
+      }
+
+      if (typeof carregarSetoresCercaServidor === 'function') await carregarSetoresCercaServidor(condominio_id);
+      if (typeof preencherSelectCercaAdmin === 'function') await preencherSelectCercaAdmin();
+      if (typeof renderizarSetoresCercaAdmin === 'function') renderizarSetoresCercaAdmin();
+      if (typeof renderizarMapaCerca === 'function') renderizarMapaCerca();
+      alert('Modulo e setores da cerca salvos na nuvem com sucesso.');
+    } catch (error) {
+      console.error(error);
+      alert('Erro ao salvar cerca na nuvem: ' + (error?.message || error));
+    }
+  };
+
+  window.zayronAdicionarTodasCamerasServidor = async function() {
+    try {
+      if (typeof ensureDb === 'function') ensureDb();
+      const condoId = typeof condoIdPrefer === 'function' ? condoIdPrefer() : condoAtualV56();
+      const srvId = (typeof selectedServerId === 'function' ? selectedServerId() : '') ||
+        (((typeof getServers === 'function' ? getServers(condoId) : [])[0] || {}).id);
+      if (!srvId) return alert('Selecione um servidor e faca a busca das cameras primeiro.');
+      const srv = typeof getServerById === 'function' ? getServerById(srvId) : null;
+      if (!srv) return alert('Servidor nao encontrado.');
+      const itens = typeof getDiscovered === 'function' ? getDiscovered(srvId, condoId) : [];
+      if (!itens.length) return alert('Nenhuma camera encontrada. Use Buscar cameras.');
+
+      if (typeof carregarCameras === 'function') await carregarCameras(condoId);
+      let adicionadas = 0;
+      let existentes = 0;
+      for (let idx = 0; idx < itens.length; idx += 1) {
+        const item = itens[idx];
+        const jaExiste = (MOCK_DB.cameras_cadastro || []).some(c =>
+          String(c.condominio_id) === String(condoId) &&
+          (String(c.nome || '') === String(item.nome || '') ||
+           (String(c.ip || '') === String(srv.ip || '') && Number(c.canal || 0) === Number(item.canal || 0)))
+        );
+        if (jaExiste) {
+          item.cadastrada = true;
+          existentes += 1;
+          continue;
+        }
+        const latBase = -23.2064 + (idx % 4) * 0.00028;
+        const lngBase = -47.0352 + (idx % 5) * 0.00022;
+        await salvarCameraApiV56({
+          condominio_id: condoId,
+          nome: item.nome,
+          tipo: item.tipo || 'cftv',
+          tipo_camera: item.tipo || 'ip',
+          setor: item.setor || (typeof inferSetor === 'function' ? inferSetor(item.canal) : ''),
+          identificador: `CH-${String(item.canal).padStart(2,'0')}`,
+          fabricante: srv.fabricante || 'generic',
+          ip: srv.ip || null,
+          porta: srv.porta || null,
+          stream_tipo: item.stream_tipo || srv.stream_tipo || 'rtsp',
+          stream_path: `/server/${srvId}/channel/${item.canal}`,
+          canal: item.canal,
+          latitude: latBase,
+          longitude: lngBase,
+          descricao: `setor=${item.setor || ''} | servidor=${srv.nome || ''} | canal=${item.canal} | stream=/server/${srvId}/channel/${item.canal}`
+        }, {
+          servidor_id: srvId,
+          canal: item.canal
+        });
+        item.cadastrada = true;
+        adicionadas += 1;
+      }
+
+      try { if (typeof persistMockDb === 'function') persistMockDb(); } catch (e) {}
+      if (typeof carregarCameras === 'function') await carregarCameras(condoId);
+      if (typeof renderizarCamerasAdmin === 'function') renderizarCamerasAdmin();
+      if (typeof renderizarOperacaoCameras === 'function') renderizarOperacaoCameras();
+      if (typeof renderServerAdmin === 'function') renderServerAdmin();
+      if (window.zayronRenderOperatorPanel) window.zayronRenderOperatorPanel();
+      alert(`Cameras salvas na nuvem. Novas: ${adicionadas}. Ja existentes: ${existentes}.`);
+    } catch (error) {
+      console.error(error);
+      alert('Erro ao salvar cameras na nuvem: ' + (error?.message || error));
+    }
+  };
 })();
 </script>
 </body>
