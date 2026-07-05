@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pt-br">
 <head>
   <meta charset="UTF-8" />
@@ -2395,13 +2395,39 @@ function renderizarVisitantesPortaria() {
       }
     }
 
-    function persistMockDb() {
-      try {
-        localStorage.setItem(MOCK_STORAGE_KEY, JSON.stringify(MOCK_DB));
-      } catch (error) {
-        console.warn('Falha ao salvar base local.', error);
-      }
+   function persistMockDb() {
+  try {
+    if (Array.isArray(MOCK_DB.alarmes_cerca)) {
+      MOCK_DB.alarmes_cerca = MOCK_DB.alarmes_cerca.slice(0, 80);
     }
+
+    if (Array.isArray(MOCK_DB.eventos_cameras_ia)) {
+      MOCK_DB.eventos_cameras_ia = MOCK_DB.eventos_cameras_ia.slice(0, 80);
+    }
+
+    if (Array.isArray(MOCK_DB.alarmes_emergencias)) {
+      MOCK_DB.alarmes_emergencias = MOCK_DB.alarmes_emergencias.slice(0, 80);
+    }
+
+    localStorage.setItem(MOCK_STORAGE_KEY, JSON.stringify(MOCK_DB));
+  } catch (error) {
+    console.warn('Falha ao salvar base local.', error);
+
+    try {
+      const backupMinimo = {
+        condominios: MOCK_DB.condominios || [],
+        usuarios: MOCK_DB.usuarios || [],
+        modulos_cerca: MOCK_DB.modulos_cerca || [],
+        setores_cerca: MOCK_DB.setores_cerca || [],
+        alarmes_cerca: (MOCK_DB.alarmes_cerca || []).slice(0, 30)
+      };
+
+      localStorage.setItem(MOCK_STORAGE_KEY, JSON.stringify(backupMinimo));
+    } catch (e) {
+      console.warn('Falha também no backup mínimo.', e);
+    }
+  }
+}
 
     function resetMockDb() {
       const defaults = buildDefaultMockDb();
@@ -3659,9 +3685,11 @@ let rondasOcultasTela = new Set(
       }
     }
 
-   function carregarApp() {
+ function carregarApp() {
   resolverCondominioOperadorLocal();
+
   document.getElementById('login-screen').style.display = 'none';
+
   const appContainer = document.getElementById('app-container');
   if (appContainer) {
     appContainer.classList.remove('hidden');
@@ -3673,21 +3701,6 @@ let rondasOcultasTela = new Set(
 
   document.getElementById('display-condo').innerText =
     currentRole === 'admin' ? 'VISÃO GLOBAL' : currentCondoNome;
-
-  if (String(currentRole || '').toLowerCase() === 'operador') {
-    setTimeout(async () => {
-      try {
-        resolverCondominioOperadorLocal();
-        if (typeof carregarSetoresCercaServidor === 'function') {
-          await carregarSetoresCercaServidor(currentCondoId || '53d26a43-3bf6-491e-a90b-fb81a6e5fc4f');
-        }
-        if (typeof renderizarMapaCerca === 'function') renderizarMapaCerca();
-        if (typeof renderizarSetoresCercaOperador === 'function') renderizarSetoresCercaOperador();
-      } catch(e) {
-        console.warn('Falha na atualizacao inicial do operador:', e?.message || e);
-      }
-    }, 600);
-  }
 
   const adminTools = document.getElementById('admin-tools');
   const portariaToolbar = document.getElementById('portaria-toolbar');
@@ -3753,7 +3766,6 @@ let rondasOcultasTela = new Set(
   );
 
   setHidden(painelGerente, true);
-
   sincronizarPortariaCondominio();
 
   if (currentRole === 'admin') {
@@ -3770,7 +3782,7 @@ let rondasOcultasTela = new Set(
     setHidden(velocidadeCard, true);
     setHidden(rondasCard, false);
     setHidden(operatorCercaCard, true);
-        setHidden(operatorCercaRelatóriosCard, true);
+    setHidden(operatorCercaRelatóriosCard, true);
     setHidden(moradoresCard, true);
     setHidden(camerasIACard, true);
     setHidden(alarmesCard, true);
@@ -3796,7 +3808,7 @@ let rondasOcultasTela = new Set(
     setHidden(velocidadeCard, true);
     setHidden(rondasCard, true);
     setHidden(operatorCercaCard, true);
-        setHidden(operatorCercaRelatóriosCard, true);
+    setHidden(operatorCercaRelatóriosCard, true);
     setHidden(moradoresCard, true);
     setHidden(camerasIACard, true);
     setHidden(alarmesCard, false);
@@ -3810,6 +3822,7 @@ let rondasOcultasTela = new Set(
 
     showIds(adminOnlyIds, false);
     showIds(portariaOnlyIds, false);
+
     document.body.classList.add('gerente-mode');
 
   } else if (currentRole === 'portaria') {
@@ -3826,7 +3839,7 @@ let rondasOcultasTela = new Set(
     setHidden(velocidadeCard, true);
     setHidden(rondasCard, true);
     setHidden(operatorCercaCard, true);
-        setHidden(operatorCercaRelatóriosCard, true);
+    setHidden(operatorCercaRelatóriosCard, true);
     setHidden(moradoresCard, true);
     setHidden(camerasIACard, true);
     setHidden(alarmesCard, true);
@@ -3856,7 +3869,7 @@ let rondasOcultasTela = new Set(
     setHidden(velocidadeCard, true);
     setHidden(rondasCard, false);
     setHidden(operatorCercaCard, false);
-        setHidden(operatorCercaRelatóriosCard, false);
+    setHidden(operatorCercaRelatóriosCard, false);
     setHidden(moradoresCard, true);
     setHidden(camerasIACard, true);
     setHidden(alarmesCard, true);
@@ -3881,28 +3894,38 @@ let rondasOcultasTela = new Set(
   }
 
   if (currentRole === 'gerente') {
-    if (typeof renderizarEmpresasMonitoradasGerente === 'function') {
-      renderizarEmpresasMonitoradasGerente();
+    if (typeof renderizarEmpresasMonitoradasGerente === 'function') renderizarEmpresasMonitoradasGerente();
+    if (typeof renderizarVisitantesGerente === 'function') renderizarVisitantesGerente();
+    if (typeof renderizarRondasGerente === 'function') renderizarRondasGerente();
+  }
+
+  if (String(currentRole || '').toLowerCase() === 'operador') {
+    resolverCondominioOperadorLocal();
+
+    if (typeof aplicarAlarmesLocaisOperador === 'function') {
+      aplicarAlarmesLocaisOperador(currentCondoId).finally(() => {
+        if (typeof renderizarSetoresCercaOperador === 'function') renderizarSetoresCercaOperador();
+        if (typeof renderizarMapaCerca === 'function') renderizarMapaCerca();
+      });
+    } else {
+      if (typeof renderizarSetoresCercaOperador === 'function') renderizarSetoresCercaOperador();
+      if (typeof renderizarMapaCerca === 'function') renderizarMapaCerca();
     }
-    if (typeof renderizarVisitantesGerente === 'function') {
-      renderizarVisitantesGerente();
-    }
-    if (typeof renderizarRondasGerente === 'function') {
-      renderizarRondasGerente();
+  } else {
+    preencherSelectCercaAdmin();
+
+    if (typeof carregarSetoresCercaServidor === 'function') {
+      carregarSetoresCercaServidor().then(() => {
+        if (typeof renderizarSetoresCercaAdmin === 'function') renderizarSetoresCercaAdmin();
+        if (typeof renderizarSetoresCercaOperador === 'function') renderizarSetoresCercaOperador();
+        if (typeof renderizarMapaCerca === 'function') renderizarMapaCerca();
+      });
+    } else {
+      if (typeof renderizarSetoresCercaAdmin === 'function') renderizarSetoresCercaAdmin();
+      if (typeof renderizarSetoresCercaOperador === 'function') renderizarSetoresCercaOperador();
     }
   }
 
-  preencherSelectCercaAdmin();
-  if (typeof carregarSetoresCercaServidor === 'function') {
-    carregarSetoresCercaServidor().then(() => {
-      renderizarSetoresCercaAdmin();
-      renderizarSetoresCercaOperador();
-      renderizarMapaCerca();
-    });
-  } else {
-    renderizarSetoresCercaAdmin();
-    renderizarSetoresCercaOperador();
-  }
   atualizarTudo();
   iniciarRealtime();
   iniciarAutoAtualizacao();
@@ -4156,49 +4179,52 @@ let rondasOcultasTela = new Set(
     }
 
     function iniciarAutoAtualizacao() {
-      if (pollingAtualizacao) clearInterval(pollingAtualizacao);
+  if (pollingAtualizacao) clearInterval(pollingAtualizacao);
 
-      pollingAtualizacao = setInterval(async () => {
-        if (currentRole === 'admin') return;
-        if (atualizandoAgora) return;
+  pollingAtualizacao = setInterval(async () => {
+    if (currentRole === 'admin') return;
+    if (atualizandoAgora) return;
 
-        await executarComPreservacaoDeScroll(async () => {
-          try {
-            atualizandoAgora = true;
-            await carregarPosicoes();
-            if (
-              currentRole === 'operador' &&
-              typeof carregarSetoresCercaServidor === 'function'
-            ) {
-              resolverCondominioOperadorLocal();
-              await carregarSetoresCercaServidor(currentCondoId || '53d26a43-3bf6-491e-a90b-fb81a6e5fc4f');
-              if (typeof carregarEventosCercaServidor === 'function') {
-                await carregarEventosCercaServidor(currentCondoId);
-              }
-              renderizarMapaCerca();
-              renderizarSetoresCercaOperador();
-            }
-            await Promise.all([
-              carregarVisitantes(),
-              carregarRondas(),
-              carregarHistóricoRondas(),
-              carregarRelatóriosRonda(),
-              carregarEventosRonda(),
-              carregarPainelRondaPrincipal(),
-              carregarAcessosMoradores(),
-              carregarEventosCamerasIA(),
-              carregarAlarmesEmergencias(),
-              carregarCentralIA(),
-              carregarEstatisticas()
-            ]);
-          } catch (err) {
-            console.error('Erro na autoatualização:', err);
-          } finally {
-            atualizandoAgora = false;
-          }
-        });
-      }, 3000);
-    }
+    await executarComPreservacaoDeScroll(async () => {
+      try {
+        atualizandoAgora = true;
+
+        await carregarPosicoes();
+
+        if (currentRole === 'operador') {
+          resolverCondominioOperadorLocal();
+
+         if (typeof aplicarAlarmesLocaisOperador === 'function') {
+  await aplicarAlarmesLocaisOperador(currentCondoId);
+}
+
+
+          renderizarSetoresCercaOperador();
+          renderizarMapaCerca();
+        }
+
+        await Promise.all([
+          typeof carregarVisitantes === 'function' ? carregarVisitantes() : Promise.resolve(),
+          typeof carregarRondas === 'function' ? carregarRondas() : Promise.resolve(),
+          typeof carregarHistóricoRondas === 'function' ? carregarHistóricoRondas() : Promise.resolve(),
+          typeof carregarRelatóriosRonda === 'function' ? carregarRelatóriosRonda() : Promise.resolve(),
+          typeof carregarEventosRonda === 'function' ? carregarEventosRonda() : Promise.resolve(),
+          typeof carregarPainelRondaPrincipal === 'function' ? carregarPainelRondaPrincipal() : Promise.resolve(),
+          typeof carregarAcessosMoradores === 'function' ? carregarAcessosMoradores() : Promise.resolve(),
+          typeof carregarEventosCamerasIA === 'function' ? carregarEventosCamerasIA() : Promise.resolve(),
+          typeof carregarAlarmesEmergencias === 'function' ? carregarAlarmesEmergencias() : Promise.resolve(),
+          typeof carregarCentralIA === 'function' ? carregarCentralIA() : Promise.resolve(),
+          typeof carregarEstatisticas === 'function' ? carregarEstatisticas() : Promise.resolve()
+        ]);
+
+      } catch (err) {
+        console.error('Erro na autoatualização:', err);
+      } finally {
+        atualizandoAgora = false;
+      }
+    });
+  }, 3000);
+}
 
     async function atualizarTudo() {
       if (atualizandoAgora) return;
@@ -5755,39 +5781,66 @@ data.sort(
       return (MOCK_DB.modulos_cerca || []).filter(item => !condoId || String(item.condominio_id) === String(condoId));
     }
 
-    function getSetoresCerca(condoId = getFenceCondoId()) {
-      const setores = (MOCK_DB.setores_cerca || [])
-        .filter(item => !condoId || String(item.condominio_id) === String(condoId));
+   function getSetoresCerca(condoId = getFenceCondoId()) {
+  const setores = (MOCK_DB.setores_cerca || [])
+    .filter(item => !condoId || String(item.condominio_id) === String(condoId));
 
-      const estadoMaisRecentePorEntrada = new Map();
-      setores.forEach(setor => {
-        const entrada = String(setor.entrada_alarme || '').trim();
-        if (!entrada) return;
-        const chave = [String(setor.condominio_id || condoId || ''), entrada].join('|');
-        const dataSetor = new Date(setor.updated_at || setor.desarmado_em || setor.created_at || 0).getTime();
-        const atual = estadoMaisRecentePorEntrada.get(chave);
-        const dataAtual = atual ? new Date(atual.updated_at || atual.desarmado_em || atual.created_at || 0).getTime() : -1;
-        if (!atual || dataSetor >= dataAtual) estadoMaisRecentePorEntrada.set(chave, setor);
-      });
+  const normalizarStatusEvento = (evento) => {
+    const texto = String(
+      evento?.status_setor ||
+      evento?.status ||
+      evento?.tipo ||
+      evento?.descricao ||
+      ''
+    ).toLowerCase();
 
-      return setores
-        .map(setor => {
-          const entrada = String(setor.entrada_alarme || '').trim();
-          if (!entrada) return setor;
-          const chave = [String(setor.condominio_id || condoId || ''), entrada].join('|');
-          const estadoEntrada = estadoMaisRecentePorEntrada.get(chave);
-          if (!estadoEntrada) return setor;
-          const statusEntrada = String(estadoEntrada.status_atual || estadoEntrada.status || setor.status || 'ativo').toLowerCase();
-          return {
-            ...setor,
-            status: statusEntrada,
-            status_atual: statusEntrada,
-            updated_at: estadoEntrada.updated_at || setor.updated_at,
-            status_agregado_entrada: true
-          };
-        })
-        .sort((a,b) => String(a.nome || '').localeCompare(String(b.nome || '')));
+    if (texto.includes('desarme') || texto.includes('desarmado')) return 'desarmado';
+    if (texto.includes('alarme') || texto.includes('violacao') || texto.includes('disparo')) return 'alarme';
+    if (texto.includes('falha')) return 'falha';
+    if (texto.includes('arme') || texto.includes('ativo') || texto.includes('armado')) return 'ativo';
+
+    return '';
+  };
+
+  const ultimoEventoPorSetor = new Map();
+
+  (MOCK_DB.alarmes_cerca || []).forEach(evento => {
+    if (!evento.setor_id) return;
+    if (condoId && String(evento.condominio_id || '') !== String(condoId)) return;
+
+    const chave = String(evento.setor_id);
+    const dataEvento = new Date(evento.created_at || evento.updated_at || 0).getTime();
+    const atual = ultimoEventoPorSetor.get(chave);
+    const dataAtual = atual ? new Date(atual.created_at || atual.updated_at || 0).getTime() : -1;
+
+    if (!atual || dataEvento >= dataAtual) {
+      ultimoEventoPorSetor.set(chave, evento);
     }
+  });
+
+  return setores.map(setor => {
+    const evento = ultimoEventoPorSetor.get(String(setor.id));
+
+    let statusFinal = String(
+      setor.status_atual ||
+      setor.status ||
+      'ativo'
+    ).toLowerCase();
+
+    if (evento) {
+      const statusEvento = normalizarStatusEvento(evento);
+      if (['ativo', 'desarmado', 'alarme', 'falha'].includes(statusEvento)) {
+        statusFinal = statusEvento;
+      }
+    }
+
+    return {
+      ...setor,
+      status: statusFinal,
+      status_atual: statusFinal
+    };
+  }).sort((a, b) => String(a.nome || '').localeCompare(String(b.nome || '')));
+}
     function getFenceStatusClass(status) {
       const s = String(status || '').toLowerCase();
       if (s.includes('alarme') || s.includes('viol')) return 'fence-status-alarme';
@@ -5916,7 +5969,111 @@ data.sort(
           </div>
         </div>`;
     }
+function renderizarMapaCerca() {
+  if (!map || !cercaLayer) return;
 
+  cercaLayer.clearLayers();
+
+  if (!map.hasLayer(cercaLayer)) {
+    cercaLayer.addTo(map);
+  }
+
+  const condoId = getFenceCondoId();
+
+const setores = (MOCK_DB.setores_cerca || [])
+  .filter(item => !condoId || String(item.condominio_id) === String(condoId));
+
+  if (!setores.length) {
+    latestFenceEvents = [];
+    return;
+  }
+
+  const bounds = [];
+
+  setores.forEach((setor, idx) => {
+    const coords = getSetorPolylineCoords(setor);
+    if (!coords.length) return;
+
+    const statusLinha = String(setor.status_atual || setor.status || 'ativo').toLowerCase();
+    const setorVisual = {
+      ...setor,
+      status: statusLinha,
+      status_atual: statusLinha
+    };
+
+    const poly = L.polyline(coords, getFenceLineStyle(statusLinha)).addTo(cercaLayer);
+
+    if (statusLinha === 'alarme' || statusLinha === 'falha') {
+      let offset = 0;
+      const timer = setInterval(() => {
+        if (!map || !cercaLayer.hasLayer(poly)) {
+          clearInterval(timer);
+          return;
+        }
+        offset = (offset + 6) % 200;
+        poly.setStyle({ dashOffset: String(offset) });
+      }, 180);
+
+      poly.on('remove', () => clearInterval(timer));
+    }
+
+    poly.bindPopup(getPopupSetorCercaHtml(setorVisual));
+
+    poly.on('click', (e) => {
+      focarSetorCerca(setor.id);
+      abrirPopupSetorCerca(setor.id, e.latlng);
+    });
+
+    const center = getSetorCentro(setor) || {
+      lat: coords[0][0],
+      lng: coords[0][1]
+    };
+
+    const marker = L.circleMarker([center.lat, center.lng], {
+      radius: 1,
+      opacity: 0,
+      fillOpacity: 0
+    }).addTo(cercaLayer);
+
+    marker.bindTooltip(`${idx + 1}. ${escapeHtml(setor.nome || 'Setor')}`, {
+      permanent: true,
+      direction: 'center',
+      className: 'badge-soft'
+    });
+
+    marker.on('click', () => {
+      focarSetorCerca(setor.id);
+      abrirPopupSetorCerca(setor.id, L.latLng(center.lat, center.lng));
+    });
+
+    coords.forEach(item => bounds.push(item));
+  });
+
+  latestFenceEvents = (MOCK_DB.alarmes_cerca || [])
+    .filter(item => !getFenceCondoId() || String(item.condominio_id) === String(getFenceCondoId()))
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    .slice(0, 50);
+
+  latestFenceEvents.forEach(item => {
+    if (!Number.isFinite(Number(item.latitude)) || !Number.isFinite(Number(item.longitude))) return;
+
+    L.circle([Number(item.latitude), Number(item.longitude)], {
+      radius: 18,
+      color: '#ef4444',
+      weight: 2,
+      fillOpacity: 0.08
+    }).addTo(cercaLayer).bindPopup(`
+      <b>Alarme de cerca</b><br>
+      ${escapeHtml(item.setor_nome || item.tipo || 'Setor')}<br>
+      ${escapeHtml(item.descricao || '')}<br>
+      ${formatDateTime(item.created_at)}
+    `);
+  });
+
+  if (bounds.length) {
+    window.__ULTIMOS_BOUNDS_CERCA__ = L.latLngBounds(bounds);
+  }
+}
     function abrirPopupSetorCerca(setorId, latlng = null) {
       const setor = (MOCK_DB.setores_cerca || []).find(item => item.id === setorId);
       if (!setor || !map) return;
@@ -5928,315 +6085,351 @@ data.sort(
         .openOn(map);
     }
 
-    async function atualizarStatusSetorCerca(setorId, novoStatus) {
-      let setor = (MOCK_DB.setores_cerca || []).find(item => String(item.id) === String(setorId));
-      if (!setor) return;
-      const statusNorm = String(novoStatus || '').toLowerCase();
-      const statusAnterior = setor.status;
-      const desarmeAnterior = {
-        motivo_desarme: setor.motivo_desarme,
-        desarmado_por: setor.desarmado_por,
-        desarmado_em: setor.desarmado_em
-      };
-      let motivoDesarme = '';
-      if (statusNorm.includes('desarm')) {
-        motivoDesarme = String(prompt(
-          `Informe o motivo para desarmar o setor "${setor.nome || 'Setor'}":\n\nExemplos: manutenÃ§Ã£o, obra no perÃ­metro, teste tÃ©cnico ou atuaÃ§Ã£o da equipe.`
-        ) || '').trim();
-        if (!motivoDesarme) {
-          alert('O setor nÃ£o foi desarmado. Ã‰ obrigatÃ³rio informar o motivo.');
-          return;
-        }
-      }
-      setor.status = novoStatus;
-      setor.status_atual = novoStatus;
-      setor.updated_at = new Date().toISOString();
-      if (statusNorm.includes('desarm')) {
-        setor.motivo_desarme = motivoDesarme;
-        setor.desarmado_por = getNomeResponsavelEventoCerca();
-        setor.desarmado_em = setor.updated_at;
-      } else if (statusNorm === 'ativo') {
-        setor.motivo_desarme = '';
-        setor.desarmado_por = '';
-        setor.desarmado_em = null;
-      }
+   async function atualizarStatusSetorCerca(setorId, novoStatus) {
+  let setor = (MOCK_DB.setores_cerca || []).find(item => String(item.id) === String(setorId));
+  if (!setor) return;
 
-      const linha = getSetorPolylineCoords(setor);
-      const centro = linha.length ? linha[Math.floor(linha.length / 2)] : null;
-      const corpoSetor = {
-        condominio_id: setor.condominio_id,
-        modulo_id: setor.modulo_id || setor.modulo_cerca_id,
-        modulo_cerca_id: setor.modulo_cerca_id || setor.modulo_id,
-        nome: setor.nome,
-        entrada_alarme: setor.entrada_alarme,
-        saida_rele: setor.saida_rele,
-        status: novoStatus,
-        status_atual: novoStatus,
-        observacao: setor.observacao || '',
-        linha_json: linha,
-        path_coords: linha,
-        latitude: centro ? centro[0] : (setor.latitude ?? null),
-        longitude: centro ? centro[1] : (setor.longitude ?? null)
-      };
+  const statusNorm = String(novoStatus || '').toLowerCase();
+  const statusAnterior = setor.status;
+  const desarmeAnterior = {
+    motivo_desarme: setor.motivo_desarme,
+    desarmado_por: setor.desarmado_por,
+    desarmado_em: setor.desarmado_em
+  };
 
-      const roleComandoCerca = normalizeRole(currentSession?.usuario || currentUser || {});
-      const operadorAcionaLocal = roleComandoCerca !== 'gerente' && ["ativo", "desarmado"].includes(statusNorm);
-      const localizarModuloLocalSetor = () => {
-        if (setor.modulo && (setor.modulo.ip || setor.modulo.host)) return setor.modulo;
-        const modulos = (MOCK_DB.modulos_cerca || []).filter(item => item && (item.ip || item.host));
-        const idsSetor = [
-          setor.modulo_cerca_id,
-          setor.modulo_id,
-          setor.modulo,
-          setor.modulo_cerca
-        ].filter(Boolean).map(item => String(item));
-        let modulo = modulos.find(item => idsSetor.includes(String(item.id || '')));
-        if (modulo) return modulo;
+  let motivoDesarme = '';
 
-        const nomeModuloSetor = String(setor.modulo_nome || setor.nome_modulo || '').trim().toLowerCase();
-        if (nomeModuloSetor) {
-          modulo = modulos.find(item => String(item.nome || '').trim().toLowerCase() === nomeModuloSetor);
-          if (modulo) return modulo;
-        }
+  if (statusNorm.includes('desarm')) {
+    motivoDesarme = String(prompt(
+      `Informe o motivo para desarmar o setor "${setor.nome || 'Setor'}":\n\nExemplos: manutenção, obra no perímetro, teste técnico ou atuação da equipe.`
+    ) || '').trim();
 
-        const condoSetor = String(setor.condominio_id || currentCondoId || '');
-        const candidatosCondo = modulos.filter(item => !condoSetor || String(item.condominio_id || '') === condoSetor);
-        modulo = candidatosCondo.find(item => String(item.protocolo || item.tipo_conexao || '').toLowerCase().includes('modbus'))
-          || candidatosCondo.find(item => Number(item.porta || 0) === 502)
-          || candidatosCondo[0]
-          || modulos.find(item => String(item.protocolo || item.tipo_conexao || '').toLowerCase().includes('modbus'))
-          || modulos.find(item => Number(item.porta || 0) === 502)
-          || modulos[0]
-          || null;
-        return modulo;
-      };
-      const acionarReleLocalOperador = async () => {
-        const moduloOffline = localizarModuloLocalSetor();
-        if (!moduloOffline) throw new Error('Modulo local nao encontrado para este setor');
-        let acionamentoLocalOk = false;
-        let ultimoErroLocal = null;
-        for (const baseLocal of getApiLocalBases()) {
-          try {
-            const respostaLocal = await fetch(`${String(baseLocal).replace(/\/$/, '')}/local/setores-cerca/acionar`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-              body: JSON.stringify({
-                status: novoStatus,
-                setor: {
-                  id: setor.id,
-                  nome: setor.nome,
-                  saida_rele: setor.saida_rele,
-                  entrada_alarme: setor.entrada_alarme
-                },
-                modulo: {
-                  id: moduloOffline.id,
-                  nome: moduloOffline.nome,
-                  ip: moduloOffline.ip || moduloOffline.host,
-                  host: moduloOffline.host || moduloOffline.ip,
-                  porta: moduloOffline.porta || 502,
-                  protocolo: moduloOffline.protocolo || 'modbus_tcp',
-                  slave_id: moduloOffline.slave_id || moduloOffline.unit_id || 1
-                }
-              })
-            });
-            const dadosLocal = await respostaLocal.json().catch(() => ({}));
-            if (!respostaLocal.ok || dadosLocal?.success === false) {
-              throw new Error(dadosLocal?.message || dadosLocal?.details || `HTTP ${respostaLocal.status}`);
-            }
-            acionamentoLocalOk = true;
-            break;
-          } catch (erroTentativaLocal) {
-            ultimoErroLocal = erroTentativaLocal;
-          }
-        }
-        if (!acionamentoLocalOk) {
-          throw (ultimoErroLocal || new Error('Agente local do Zayron nao respondeu'));
-        }
-      };
+    if (!motivoDesarme) {
+      alert('O setor não foi desarmado. É obrigatório informar o motivo.');
+      return;
+    }
+  }
 
-      if (operadorAcionaLocal) {
-        try {
-          await acionarReleLocalOperador();
-        } catch (localError) {
-          setor.status = statusAnterior;
-          setor.motivo_desarme = desarmeAnterior.motivo_desarme;
-          setor.desarmado_por = desarmeAnterior.desarmado_por;
-          setor.desarmado_em = desarmeAnterior.desarmado_em;
-          renderizarMapaCerca();
-          renderizarSetoresCercaAdmin();
-          renderizarSetoresCercaOperador();
-          renderizarSetoresCercaGerente(currentCondoId);
-          alert('Nao foi possivel acionar o rele local: ' + (localError?.message || localError));
-          return;
-        }
+  const agoraStatus = new Date().toISOString();
 
-        if ((currentSession?.access_token || currentSession?.cloud_access_token) && !currentSession?.offline) {
-          const corpoSyncCerca = {
-            status: novoStatus,
-            motivo_desarme: motivoDesarme,
-            responsavel_nome: getNomeResponsavelEventoCerca()
-          };
-          const tentarPatchSetorNuvem = async (idSync) => {
-            if (!idSync) return false;
-            await apiRequest(`/setores-cerca/${encodeURIComponent(idSync)}/status`, {
-              method: 'PATCH',
-              baseOverride: API_NUVEM,
-              body: corpoSyncCerca
-            });
-            return true;
-          };
-          try {
-            const idsSync = [...new Set([setor.cloud_id, setor.id].filter(Boolean).map(String))];
-            let sincronizado = false;
-            for (const idSync of idsSync) {
-              try {
-                sincronizado = await tentarPatchSetorNuvem(idSync);
-                if (sincronizado) break;
-              } catch (erroIdSync) {}
-            }
-            if (!sincronizado) {
-              const querySync = setor.condominio_id ? `?condominio_id=${encodeURIComponent(setor.condominio_id)}` : '';
-              const respSetoresNuvem = await apiRequest(`/setores-cerca${querySync}`, { baseOverride: API_NUVEM });
-              const setoresNuvem = Array.isArray(respSetoresNuvem?.data) ? respSetoresNuvem.data : [];
-              const nomeLocal = typeof normalizarTexto === 'function' ? normalizarTexto(setor.nome || '') : String(setor.nome || '').trim().toLowerCase();
-              const candidatosSync = setoresNuvem.filter(item => {
-                const mesmaEntrada = String(item.entrada_alarme || '') === String(setor.entrada_alarme || '');
-                const nomeNuvem = typeof normalizarTexto === 'function' ? normalizarTexto(item.nome || '') : String(item.nome || '').trim().toLowerCase();
-                return mesmaEntrada && (!nomeLocal || nomeNuvem === nomeLocal || /setor/i.test(nomeNuvem));
-              });
-              for (const candidato of candidatosSync) {
-                await tentarPatchSetorNuvem(candidato.id || candidato.cloud_id);
-                sincronizado = true;
-              }
-            }
-            if (!sincronizado) console.warn('Nenhum setor correspondente encontrado na nuvem para sincronizar comando local da cerca.');
-          } catch (error) {
-            console.warn('Sincronizacao do setor com a nuvem falhou; comando local ja foi executado.', error);
-          }
-        }
-      } else {
+  setor.status = statusNorm;
+  setor.status_atual = statusNorm;
+  setor.updated_at = agoraStatus;
+
+  if (statusNorm === 'desarmado') {
+    setor.motivo_desarme = motivoDesarme;
+    setor.desarmado_por = getNomeResponsavelEventoCerca();
+    setor.desarmado_em = agoraStatus;
+  }
+
+  if (statusNorm === 'ativo') {
+    setor.motivo_desarme = '';
+    setor.desarmado_por = '';
+    setor.desarmado_em = null;
+  }
+
+  const linha = getSetorPolylineCoords(setor);
+  const centro = linha.length ? linha[Math.floor(linha.length / 2)] : null;
+
+  const corpoSetor = {
+    condominio_id: setor.condominio_id,
+    modulo_id: setor.modulo_id || setor.modulo_cerca_id,
+    modulo_cerca_id: setor.modulo_cerca_id || setor.modulo_id,
+    nome: setor.nome,
+    entrada_alarme: setor.entrada_alarme,
+    saida_rele: setor.saida_rele,
+    status: statusNorm,
+    status_atual: statusNorm,
+    observacao: setor.observacao || '',
+    linha_json: linha,
+    path_coords: linha,
+    latitude: centro ? centro[0] : (setor.latitude ?? null),
+    longitude: centro ? centro[1] : (setor.longitude ?? null),
+    motivo_desarme: statusNorm === 'desarmado' ? motivoDesarme : '',
+    desarmado_por: statusNorm === 'desarmado' ? getNomeResponsavelEventoCerca() : '',
+    desarmado_em: statusNorm === 'desarmado' ? agoraStatus : null
+  };
+
+  const roleComandoCerca = normalizeRole(currentSession?.usuario || currentUser || {});
+  const operadorAcionaLocal = ['ativo', 'desarmado'].includes(statusNorm);
+
+  const localizarModuloLocalSetor = () => {
+    if (setor.modulo && (setor.modulo.ip || setor.modulo.host)) return setor.modulo;
+
+    const modulos = (MOCK_DB.modulos_cerca || []).filter(item => item && (item.ip || item.host));
+    const idsSetor = [
+      setor.modulo_cerca_id,
+      setor.modulo_id,
+      setor.modulo,
+      setor.modulo_cerca
+    ].filter(Boolean).map(item => String(item));
+
+    let modulo = modulos.find(item => idsSetor.includes(String(item.id || '')));
+    if (modulo) return modulo;
+
+    const nomeModuloSetor = String(setor.modulo_nome || setor.nome_modulo || '').trim().toLowerCase();
+    if (nomeModuloSetor) {
+      modulo = modulos.find(item => String(item.nome || '').trim().toLowerCase() === nomeModuloSetor);
+      if (modulo) return modulo;
+    }
+
+    const condoSetor = String(setor.condominio_id || currentCondoId || '');
+    const candidatosCondo = modulos.filter(item => !condoSetor || String(item.condominio_id || '') === condoSetor);
+
+    return candidatosCondo.find(item => String(item.protocolo || item.tipo_conexao || '').toLowerCase().includes('modbus'))
+      || candidatosCondo.find(item => Number(item.porta || 0) === 502)
+      || candidatosCondo[0]
+      || modulos.find(item => String(item.protocolo || item.tipo_conexao || '').toLowerCase().includes('modbus'))
+      || modulos.find(item => Number(item.porta || 0) === 502)
+      || modulos[0]
+      || null;
+  };
+
+  const acionarReleLocalOperador = async () => {
+    const moduloOffline = localizarModuloLocalSetor();
+    if (!moduloOffline) throw new Error('Módulo local não encontrado para este setor');
+
+    let acionamentoLocalOk = false;
+    let ultimoErroLocal = null;
+
+    for (const baseLocal of getApiLocalBases()) {
       try {
-        const baseComandoCerca = (roleComandoCerca === 'gerente' || currentSession?.api_base === 'nuvem') ? API_NUVEM : API_LOCAL;
-        const resposta = await apiRequest(`/setores-cerca/${encodeURIComponent(setor.id)}/status`, {
-          method: 'PATCH',
-          baseOverride: baseComandoCerca,
-          body: {
-            status: novoStatus,
-            motivo_desarme: motivoDesarme,
-            responsavel_nome: getNomeResponsavelEventoCerca()
-          }
+        const respostaLocal = await fetch(`${String(baseLocal).replace(/\/$/, '')}/local/setores-cerca/acionar`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({
+            status: statusNorm,
+            setor: {
+              id: setor.id,
+              nome: setor.nome,
+              saida_rele: setor.saida_rele,
+              entrada_alarme: setor.entrada_alarme
+            },
+            modulo: {
+              id: moduloOffline.id,
+              nome: moduloOffline.nome,
+              ip: moduloOffline.ip || moduloOffline.host,
+              host: moduloOffline.host || moduloOffline.ip,
+              porta: moduloOffline.porta || 502,
+              protocolo: moduloOffline.protocolo || 'modbus_tcp',
+              slave_id: moduloOffline.slave_id || moduloOffline.unit_id || 1
+            }
+          })
         });
-        if (resposta?.data) {
-          const setorPersistido = normalizarSetorCercaApi({ ...setor, ...corpoSetor, ...resposta.data });
-          const indice = MOCK_DB.setores_cerca.findIndex(item => String(item.id) === String(setor.id));
-          if (indice >= 0) MOCK_DB.setores_cerca[indice] = setorPersistido;
-          setor = setorPersistido;
-        }
-      } catch (error) {
-        setor.status = statusAnterior;
-        setor.motivo_desarme = desarmeAnterior.motivo_desarme;
-        setor.desarmado_por = desarmeAnterior.desarmado_por;
-        setor.desarmado_em = desarmeAnterior.desarmado_em;
-        renderizarMapaCerca();
-        renderizarSetoresCercaAdmin();
-        renderizarSetoresCercaOperador();
-        renderizarSetoresCercaGerente(currentCondoId);
-        alert('Nao foi possivel atualizar o setor no servidor: ' + (error?.message || error));
-        return;
-      }
-      }
 
-      registrarEventoSetorCerca(setor, novoStatus, {
-        responsavel: getNomeResponsavelEventoCerca(),
-        origem: 'popup_setor',
-        motivo: motivoDesarme,
-        descricao: statusNorm === 'alarme'
-          ? `Disparo manual do setor ${setor.nome} pelo painel.`
-          : statusNorm === 'falha'
-            ? `Falha registrada manualmente no setor ${setor.nome}.`
-            : statusNorm === 'desarmado'
-              ? `Setor ${setor.nome} desarmado por ${getNomeResponsavelEventoCerca()}. Motivo: ${motivoDesarme}.`
-              : `Setor ${setor.nome} armado por ${getNomeResponsavelEventoCerca()}.`
-      });
-      persistMockDb();
+        const dadosLocal = await respostaLocal.json().catch(() => ({}));
+
+        if (!respostaLocal.ok || dadosLocal?.success === false) {
+          throw new Error(dadosLocal?.message || dadosLocal?.details || `HTTP ${respostaLocal.status}`);
+        }
+
+        acionamentoLocalOk = true;
+        break;
+      } catch (erroTentativaLocal) {
+        ultimoErroLocal = erroTentativaLocal;
+      }
+    }
+
+    if (!acionamentoLocalOk) {
+      throw (ultimoErroLocal || new Error('Agente local do Zayron não respondeu'));
+    }
+  };
+
+  if (operadorAcionaLocal) {
+    try {
+      await acionarReleLocalOperador();
+    } catch (localError) {
+      setor.status = statusAnterior;
+      setor.status_atual = statusAnterior;
+      setor.motivo_desarme = desarmeAnterior.motivo_desarme;
+      setor.desarmado_por = desarmeAnterior.desarmado_por;
+      setor.desarmado_em = desarmeAnterior.desarmado_em;
+
       renderizarMapaCerca();
       renderizarSetoresCercaAdmin();
       renderizarSetoresCercaOperador();
       renderizarSetoresCercaGerente(currentCondoId);
-      if (typeof renderizarEmpresasMonitoradasGerente === 'function') renderizarEmpresasMonitoradasGerente();
-      renderizarRelatorioEventosCerca();
-      if (typeof carregarAlarmesEmergencias === 'function') {
-        await carregarAlarmesEmergencias();
-      } else if (typeof renderizarAlarmesNoMapa === 'function') {
-        renderizarAlarmesNoMapa();
-      }
-      if (getSetorPolylineCoords(setor).length) {
-        focarSetorCerca(setor.id);
-        setTimeout(() => {
-          abrirPopupSetorCerca(setor.id);
-          if (statusNorm === 'alarme' || statusNorm === 'falha') {
-            abrirCameraMaisProximaDoSetor(setor.id, false);
+
+      alert('Não foi possível acionar o relé local: ' + (localError?.message || localError));
+      return;
+    }
+
+    if ((currentSession?.access_token || currentSession?.cloud_access_token) && !currentSession?.offline) {
+      const corpoSyncCerca = {
+        status: statusNorm,
+        status_atual: statusNorm,
+        motivo_desarme: statusNorm === 'desarmado' ? motivoDesarme : '',
+        responsavel_nome: getNomeResponsavelEventoCerca()
+      };
+
+      const tentarPatchSetorNuvem = async (idSync) => {
+        if (!idSync) return false;
+
+        await apiRequest(`/setores-cerca/${encodeURIComponent(idSync)}/status`, {
+          method: 'PATCH',
+          baseOverride: API_NUVEM,
+          body: corpoSyncCerca
+        });
+
+        return true;
+      };
+
+      try {
+        const idsSync = [...new Set([setor.cloud_id, setor.id].filter(Boolean).map(String))];
+        let sincronizado = false;
+
+        for (const idSync of idsSync) {
+          try {
+            sincronizado = await tentarPatchSetorNuvem(idSync);
+            if (sincronizado) break;
+          } catch (erroIdSync) {}
+        }
+
+        if (!sincronizado) {
+          const querySync = setor.condominio_id ? `?condominio_id=${encodeURIComponent(setor.condominio_id)}` : '';
+          const respSetoresNuvem = await apiRequest(`/setores-cerca${querySync}`, { baseOverride: API_NUVEM });
+          const setoresNuvem = Array.isArray(respSetoresNuvem?.data) ? respSetoresNuvem.data : [];
+
+          const nomeLocal = typeof normalizarTexto === 'function'
+            ? normalizarTexto(setor.nome || '')
+            : String(setor.nome || '').trim().toLowerCase();
+
+          const candidatosSync = setoresNuvem.filter(item => {
+            const mesmaEntrada = String(item.entrada_alarme || '') === String(setor.entrada_alarme || '');
+            const nomeNuvem = typeof normalizarTexto === 'function'
+              ? normalizarTexto(item.nome || '')
+              : String(item.nome || '').trim().toLowerCase();
+
+            return mesmaEntrada && (!nomeLocal || nomeNuvem === nomeLocal || /setor/i.test(nomeNuvem));
+          });
+
+          for (const candidato of candidatosSync) {
+            await tentarPatchSetorNuvem(candidato.id || candidato.cloud_id);
+            sincronizado = true;
           }
-        }, 180);
+        }
+
+        if (!sincronizado) {
+          console.warn('Nenhum setor correspondente encontrado na nuvem para sincronizar comando local da cerca.');
+        }
+      } catch (error) {
+        console.warn('Sincronização do setor com a nuvem falhou; comando local já foi executado.', error);
       }
     }
+
+  } else {
+    try {
+      const baseComandoCerca =
+        (roleComandoCerca === 'gerente' || currentSession?.api_base === 'nuvem')
+          ? API_NUVEM
+          : API_LOCAL;
+
+      const resposta = await apiRequest(`/setores-cerca/${encodeURIComponent(setor.id)}/status`, {
+        method: 'PATCH',
+        baseOverride: baseComandoCerca,
+        body: {
+          status: statusNorm,
+          status_atual: statusNorm,
+          motivo_desarme: statusNorm === 'desarmado' ? motivoDesarme : '',
+          responsavel_nome: getNomeResponsavelEventoCerca()
+        }
+      });
+
+      if (resposta?.data) {
+        const setorPersistido = normalizarSetorCercaApi({
+          ...setor,
+          ...corpoSetor,
+          ...resposta.data
+        });
+
+        setorPersistido.status = statusNorm;
+        setorPersistido.status_atual = statusNorm;
+
+        if (statusNorm === 'ativo') {
+          setorPersistido.motivo_desarme = '';
+          setorPersistido.desarmado_por = '';
+          setorPersistido.desarmado_em = null;
+        }
+
+        if (statusNorm === 'desarmado') {
+          setorPersistido.motivo_desarme = motivoDesarme;
+          setorPersistido.desarmado_por = getNomeResponsavelEventoCerca();
+          setorPersistido.desarmado_em = agoraStatus;
+        }
+
+        const indice = MOCK_DB.setores_cerca.findIndex(item => String(item.id) === String(setor.id));
+
+        if (indice >= 0) MOCK_DB.setores_cerca[indice] = setorPersistido;
+
+        setor = setorPersistido;
+      }
+    } catch (error) {
+      setor.status = statusAnterior;
+      setor.status_atual = statusAnterior;
+      setor.motivo_desarme = desarmeAnterior.motivo_desarme;
+      setor.desarmado_por = desarmeAnterior.desarmado_por;
+      setor.desarmado_em = desarmeAnterior.desarmado_em;
+
+      renderizarMapaCerca();
+      renderizarSetoresCercaAdmin();
+      renderizarSetoresCercaOperador();
+      renderizarSetoresCercaGerente(currentCondoId);
+
+      alert('Não foi possível atualizar o setor no servidor: ' + (error?.message || error));
+      return;
+    }
+  }
+
+  registrarEventoSetorCerca(setor, statusNorm, {
+    responsavel: getNomeResponsavelEventoCerca(),
+    origem: 'popup_setor',
+    motivo: motivoDesarme,
+    descricao: statusNorm === 'alarme'
+      ? `Disparo manual do setor ${setor.nome} pelo painel.`
+      : statusNorm === 'falha'
+        ? `Falha registrada manualmente no setor ${setor.nome}.`
+        : statusNorm === 'desarmado'
+          ? `Setor ${setor.nome} desarmado por ${getNomeResponsavelEventoCerca()}. Motivo: ${motivoDesarme}.`
+          : `Setor ${setor.nome} armado por ${getNomeResponsavelEventoCerca()}.`
+  });
+
+  persistMockDb();
+
+  renderizarMapaCerca();
+  renderizarSetoresCercaAdmin();
+  renderizarSetoresCercaOperador();
+  renderizarSetoresCercaGerente(currentCondoId);
+
+  if (typeof renderizarEmpresasMonitoradasGerente === 'function') {
+    renderizarEmpresasMonitoradasGerente();
+  }
+
+  renderizarRelatorioEventosCerca();
+
+  if (typeof carregarAlarmesEmergencias === 'function') {
+    await carregarAlarmesEmergencias();
+  } else if (typeof renderizarAlarmesNoMapa === 'function') {
+    renderizarAlarmesNoMapa();
+  }
+
+  if (getSetorPolylineCoords(setor).length) {
+    focarSetorCerca(setor.id);
+
+    setTimeout(() => {
+      abrirPopupSetorCerca(setor.id);
+
+      if (statusNorm === 'alarme' || statusNorm === 'falha') {
+        abrirCameraMaisProximaDoSetor(setor.id, false);
+      }
+    }, 180);
+  }
+}
 
     function acionarSetorCerca(setorId, novoStatus) {
       return atualizarStatusSetorCerca(setorId, novoStatus);
     }
 
-    function renderizarMapaCerca() {
-      cercaLayer.clearLayers();
-      if (!map) return;
-      if (!map.hasLayer(cercaLayer)) cercaLayer.addTo(map);
-      const setores = getSetoresCerca();
-      if (!setores.length) return;
-      const bounds = [];
-      setores.forEach((setor, idx) => {
-        const coords = getSetorPolylineCoords(setor);
-        if (!coords.length) return;
-        const poly = L.polyline(coords, getFenceLineStyle(setor.status)).addTo(cercaLayer);
-        if (String(setor.status || '').toLowerCase() === 'alarme') {
-          let offset = 0;
-          const timer = setInterval(() => {
-            if (!map || !cercaLayer.hasLayer(poly)) {
-              clearInterval(timer);
-              return;
-            }
-            offset = (offset + 6) % 200;
-            poly.setStyle({ dashOffset: String(offset) });
-          }, 180);
-          poly.on('remove', () => clearInterval(timer));
-        }
-        poly.bindPopup(getPopupSetorCercaHtml(setor));
-        poly.on('click', (e) => {
-          focarSetorCerca(setor.id);
-          abrirPopupSetorCerca(setor.id, e.latlng);
-        });
-        const center = getSetorCentro(setor) || { lat: coords[0][0], lng: coords[0][1] };
-        const marker = L.circleMarker([center.lat, center.lng], { radius: 1, opacity: 0, fillOpacity: 0 }).addTo(cercaLayer);
-        marker.bindTooltip(`${idx + 1}. ${escapeHtml(setor.nome || 'Setor')}`, { permanent: true, direction: 'center', className: 'badge-soft' });
-        marker.on('click', () => {
-          focarSetorCerca(setor.id);
-          abrirPopupSetorCerca(setor.id, L.latLng(center.lat, center.lng));
-        });
-        coords.forEach(item => bounds.push(item));
-      });
-      latestFenceEvents = (MOCK_DB.alarmes_cerca || []).filter(item => !getFenceCondoId() || String(item.condominio_id) === String(getFenceCondoId())).sort((a,b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 50);
-      latestFenceEvents.forEach(item => {
-        if (!Number.isFinite(Number(item.latitude)) || !Number.isFinite(Number(item.longitude))) return;
-        L.circle([Number(item.latitude), Number(item.longitude)], { radius: 18, color: '#ef4444', weight: 2, fillOpacity: 0.08 }).addTo(cercaLayer)
-          .bindPopup(`<b>Alarme de cerca</b><br>${escapeHtml(item.setor_nome || item.tipo || 'Setor')}<br>${escapeHtml(item.descricao || '')}<br>${formatDateTime(item.created_at)}`);
-      });
-      // NÃ£o centraliza automaticamente ao renderizar setores.
-      // Isso estava fazendo o mapa "sumir" quando o operador entrava ou quando
-      // o gerente abria uma empresa, porque o sistema dava zoom extremo no setor.
-      // Agora o mapa sÃ³ vai para o setor quando clicar em Ver no mapa / no setor.
-      if (bounds.length) {
-        window.__ULTIMOS_BOUNDS_CERCA__ = L.latLngBounds(bounds);
-      }
-    }
-
+    
    async function preencherSelectCercaAdmin() {
   const conds = condosCache || [];
 
@@ -6696,167 +6889,108 @@ function renderizarSetoresCercaAdmin() {
     }
 
 
-    async function aplicarAlarmesLocaisOperador(condoId = null) {
-      if (!['operador','portaria'].includes(String(currentRole || '').toLowerCase())) return;
-      try {
-        const query = condoId ? `?condominio_id=${encodeURIComponent(condoId)}` : '';
-        const resp = await fetch(`${String(API_LOCAL_3001).replace(/\/$/, '')}/local/setores-cerca/alarmes${query}`, {
-          headers: { Accept: 'application/json' }
-        });
-        const json = await resp.json().catch(() => null);
-        const alarmes = Array.isArray(json?.data) ? json.data : [];
-        if (!alarmes.length || !Array.isArray(MOCK_DB.setores_cerca)) return;
-        if (!Array.isArray(MOCK_DB.alarmes_cerca)) MOCK_DB.alarmes_cerca = [];
+  async function aplicarAlarmesLocaisOperador(condoId = null) {
+  if (!['operador','portaria'].includes(String(currentRole || '').toLowerCase())) return;
 
-        const texto = valor => (typeof normalizarTexto === 'function'
-          ? normalizarTexto(valor || '')
-          : String(valor || '').trim().toLowerCase());
-        const mesmoCondo = (setor, alarme) => !condoId ||
-          String(setor.condominio_id || '') === String(condoId) ||
-          String(alarme.condominio_id || '') === String(condoId);
-        const estadoMaisRecentePorEntrada = new Map();
-        alarmes.forEach(alarme => {
-          const entrada = String(alarme.entrada_alarme || '').trim();
-          if (!entrada) return;
-          const chaveEntrada = [String(alarme.condominio_id || condoId || ''), entrada].join('|');
-          const dataAlarme = new Date(alarme.updated_at || 0).getTime();
-          const atual = estadoMaisRecentePorEntrada.get(chaveEntrada);
-          const dataAtual = atual ? new Date(atual.updated_at || 0).getTime() : -1;
-          if (!atual || dataAlarme > dataAtual) estadoMaisRecentePorEntrada.set(chaveEntrada, alarme);
-        });
+  try {
+    const query = condoId ? `?condominio_id=${encodeURIComponent(condoId)}` : '';
+    const resp = await fetch(`${String(API_LOCAL_3001).replace(/\/$/, '')}/local/setores-cerca/alarmes${query}`, {
+      headers: { Accept: 'application/json' }
+    });
 
-        estadoMaisRecentePorEntrada.forEach((alarmeEntrada, chaveEntrada) => {
-          const statusEntrada = String(alarmeEntrada.status_atual || alarmeEntrada.status || 'ativo').toLowerCase();
-          if (!['ativo','desarmado'].includes(statusEntrada)) return;
-          const partes = chaveEntrada.split('|');
-          const condoEntrada = partes[0];
-          const entrada = partes[1];
-          MOCK_DB.setores_cerca.forEach((setor, idx) => {
-            if (condoEntrada && String(setor.condominio_id || '') !== condoEntrada) return;
-            if (String(setor.entrada_alarme || '').trim() !== entrada) return;
-            const statusSetor = String(setor.status_atual || setor.status || '').toLowerCase();
-            if (!['alarme','falha'].includes(statusSetor)) return;
-            MOCK_DB.setores_cerca[idx] = {
-              ...setor,
-              status: statusEntrada,
-              status_atual: statusEntrada,
-              updated_at: alarmeEntrada.updated_at || new Date().toISOString(),
-              erro_alarme_local: null,
-              alarme_offline_local: false
-            };
-          });
-        });
+    const json = await resp.json().catch(() => null);
+    const alarmes = Array.isArray(json?.data) ? json.data : [];
 
-        estadoMaisRecentePorEntrada.forEach((alarmeEntrada, chaveEntrada) => {
-          const statusEntrada = String(alarmeEntrada.status_atual || alarmeEntrada.status || 'ativo').toLowerCase();
-          if (!['alarme','falha'].includes(statusEntrada)) return;
-          const dataEntrada = new Date(alarmeEntrada.updated_at || 0).getTime();
-          if (dataEntrada && Date.now() - dataEntrada > 30000) return;
-          const partes = chaveEntrada.split('|');
-          const condoEntrada = partes[0];
-          const entrada = partes[1];
-          MOCK_DB.setores_cerca.forEach((setor, idx) => {
-            if (condoEntrada && String(setor.condominio_id || '') !== condoEntrada) return;
-            if (String(setor.entrada_alarme || '').trim() !== entrada) return;
-            MOCK_DB.setores_cerca[idx] = {
-              ...setor,
-              status: statusEntrada,
-              status_atual: statusEntrada,
-              updated_at: alarmeEntrada.updated_at || new Date().toISOString(),
-              erro_alarme_local: alarmeEntrada.erro || null,
-              alarme_offline_local: true,
-              alarme_por_entrada_local: true
-            };
-          });
-        });
+    if (!Array.isArray(MOCK_DB.setores_cerca)) return;
+    if (!Array.isArray(MOCK_DB.alarmes_cerca)) MOCK_DB.alarmes_cerca = [];
 
-        const acharSetor = (alarme) => {
-          const porId = MOCK_DB.setores_cerca.findIndex(setor =>
-            String(setor.id) === String(alarme.setor_id) && mesmoCondo(setor, alarme)
-          );
-          if (porId >= 0) return porId;
-          const nomeAlarme = texto(alarme.nome || alarme.setor_nome || '');
-          const entradaAlarme = String(alarme.entrada_alarme || '');
-          let candidatos = MOCK_DB.setores_cerca
-            .map((setor, index) => ({ setor, index }))
-            .filter(({ setor }) => mesmoCondo(setor, alarme));
-          let achado = candidatos.find(({ setor }) =>
-            nomeAlarme && texto(setor.nome || '') === nomeAlarme &&
-            (!entradaAlarme || String(setor.entrada_alarme || '') === entradaAlarme)
-          );
-          if (achado) return achado.index;
-          achado = candidatos.find(({ setor }) =>
-            entradaAlarme && String(setor.entrada_alarme || '') === entradaAlarme
-          );
-          return achado ? achado.index : -1;
+    const normalizarStatusLocal = (valor) => {
+      const s = String(valor || '').toLowerCase().trim();
+      if (s.includes('desarm')) return 'desarmado';
+      if (s.includes('alarme') || s.includes('violacao') || s.includes('disparo')) return 'alarme';
+      if (s.includes('falha')) return 'falha';
+      if (s.includes('ativo') || s.includes('arme') || s.includes('armado')) return 'ativo';
+      return s || 'ativo';
+    };
+
+    const texto = valor => (typeof normalizarTexto === 'function'
+      ? normalizarTexto(valor || '')
+      : String(valor || '').trim().toLowerCase());
+
+    const acharSetor = (alarme) => {
+      const idAlarme = String(alarme.setor_id || alarme.id || '').trim();
+      const nomeAlarme = texto(alarme.nome || alarme.setor_nome || '');
+      const entradaAlarme = String(alarme.entrada_alarme || '').trim();
+      const saidaAlarme = String(alarme.saida_rele || '').trim();
+
+      let idx = MOCK_DB.setores_cerca.findIndex(setor =>
+        idAlarme &&
+        (
+          String(setor.id || '') === idAlarme ||
+          String(setor.cloud_id || '') === idAlarme ||
+          String(setor.local_id || '') === idAlarme
+        )
+      );
+      if (idx >= 0) return idx;
+
+      idx = MOCK_DB.setores_cerca.findIndex(setor =>
+        nomeAlarme && texto(setor.nome || '') === nomeAlarme
+      );
+      if (idx >= 0) return idx;
+
+      idx = MOCK_DB.setores_cerca.findIndex(setor =>
+        entradaAlarme &&
+        String(setor.entrada_alarme || '').trim() === entradaAlarme &&
+        (!saidaAlarme || String(setor.saida_rele || '').trim() === saidaAlarme)
+      );
+
+      return idx;
+    };
+
+    alarmes
+      .slice()
+      .sort((a, b) => new Date(a.updated_at || 0).getTime() - new Date(b.updated_at || 0).getTime())
+      .forEach(alarme => {
+        const idx = acharSetor(alarme);
+        if (idx < 0) return;
+
+        const setor = MOCK_DB.setores_cerca[idx];
+
+        const statusLocal = normalizarStatusLocal(
+          alarme.status_atual ||
+          alarme.status ||
+          alarme.tipo ||
+          'ativo'
+        );
+
+        MOCK_DB.setores_cerca[idx] = {
+          ...setor,
+          status: statusLocal,
+          status_atual: statusLocal,
+          updated_at: alarme.updated_at || new Date().toISOString(),
+          erro_alarme_local: alarme.erro || null,
+          alarme_offline_local: !!alarme.offline_local,
+          alarme_por_entrada_local: ['alarme','falha'].includes(statusLocal),
+          motivo_desarme: statusLocal === 'desarmado'
+            ? (alarme.motivo || alarme.motivo_desarme || setor.motivo_desarme || 'Desarme recebido do agente local')
+            : '',
+          desarmado_por: statusLocal === 'desarmado'
+            ? (alarme.responsavel_nome || alarme.desarmado_por || setor.desarmado_por || 'Agente local')
+            : '',
+          desarmado_em: statusLocal === 'desarmado'
+            ? (alarme.updated_at || new Date().toISOString())
+            : null
         };
+      });
 
-        alarmes.slice().sort((a, b) => new Date(a.updated_at || 0).getTime() - new Date(b.updated_at || 0).getTime()).forEach(alarme => {
-          const idx = acharSetor(alarme);
-          if (idx < 0) return;
-          const setor = MOCK_DB.setores_cerca[idx];
-          const statusLocal = String(alarme.status_atual || alarme.status || setor.status || 'ativo').toLowerCase();
-          const dataAlarmeLocal = new Date(alarme.updated_at || 0).getTime();
-          const dataSetorLocal = new Date(setor.updated_at || setor.desarmado_em || 0).getTime();
-          const statusSetorAtual = String(setor.status_atual || setor.status || '').toLowerCase();
-          const idadeAlarmeLocal = Date.now() - dataAlarmeLocal;
-          if (dataAlarmeLocal && idadeAlarmeLocal > 30000 && ['alarme','falha'].includes(statusLocal)) {
-            MOCK_DB.setores_cerca[idx] = {
-              ...setor,
-              status: statusSetorAtual === 'desarmado' ? 'desarmado' : 'ativo',
-              status_atual: statusSetorAtual === 'desarmado' ? 'desarmado' : 'ativo',
-              updated_at: new Date().toISOString(),
-              erro_alarme_local: null,
-              alarme_offline_local: false
-            };
-            return;
-          }
-          const chaveEntradaAtual = [String(alarme.condominio_id || condoId || ''), String(alarme.entrada_alarme || '').trim()].join('|');
-          const alarmeMaisRecenteEntrada = estadoMaisRecentePorEntrada.get(chaveEntradaAtual);
-          const statusMaisRecenteEntrada = String(alarmeMaisRecenteEntrada?.status_atual || alarmeMaisRecenteEntrada?.status || '').toLowerCase();
-          const dataMaisRecenteEntrada = new Date(alarmeMaisRecenteEntrada?.updated_at || 0).getTime();
-          if (dataMaisRecenteEntrada > dataAlarmeLocal && ['ativo','desarmado'].includes(statusMaisRecenteEntrada) && ['alarme','falha'].includes(statusLocal)) return;
-          if (dataSetorLocal > dataAlarmeLocal && ['ativo','desarmado'].includes(statusSetorAtual) && ['alarme','falha'].includes(statusLocal)) return;
-          MOCK_DB.setores_cerca[idx] = {
-            ...setor,
-            status: statusLocal,
-            status_atual: statusLocal,
-            updated_at: alarme.updated_at || setor.updated_at,
-            erro_alarme_local: alarme.erro || null,
-            alarme_offline_local: !!alarme.offline_local
-          };
+    persistMockDb();
+    renderizarSetoresCercaOperador();
+    renderizarMapaCerca();
 
-          const chave = `local-${setor.id}-${statusLocal}-${alarme.updated_at || ''}`;
-          const existeEvento = MOCK_DB.alarmes_cerca.some(item => String(item.chave_sincronizacao || item.id || '') === chave);
-          if (!existeEvento && ['alarme','falha','ativo'].includes(statusLocal)) {
-            const centro = typeof getSetorCentro === 'function' ? (getSetorCentro(MOCK_DB.setores_cerca[idx]) || {}) : {};
-            MOCK_DB.alarmes_cerca.unshift({
-              id: chave,
-              chave_sincronizacao: chave,
-              condominio_id: setor.condominio_id || alarme.condominio_id || condoId || currentCondoId || '',
-              modulo_id: setor.modulo_id || setor.modulo_cerca_id || '',
-              setor_id: setor.id,
-              setor_nome: setor.nome || alarme.nome || 'Setor',
-              tipo: statusLocal === 'alarme' ? 'violacao' : statusLocal === 'falha' ? 'falha' : 'arme',
-              status_setor: statusLocal,
-              prioridade: statusLocal === 'alarme' ? 'alta' : statusLocal === 'falha' ? 'media' : 'baixa',
-              responsavel_nome: 'Agente local',
-              descricao: statusLocal === 'alarme'
-                ? 'Alarme ou disparo registrado localmente no operador.'
-                : statusLocal === 'falha'
-                  ? `Falha local na leitura da entrada${alarme.erro ? ': ' + alarme.erro : '.'}`
-                  : 'Entrada normalizada localmente pelo agente.',
-              latitude: Number.isFinite(Number(centro.lat)) ? Number(centro.lat) : setor.latitude,
-              longitude: Number.isFinite(Number(centro.lng)) ? Number(centro.lng) : setor.longitude,
-              created_at: alarme.updated_at || new Date().toISOString(),
-              offline_local: true
-            });
-          }
-        });
-      } catch (error) {
-        console.warn('Alarmes locais do agente indisponiveis.', error?.message || error);
-      }
-    }
+  } catch (error) {
+    console.warn('Alarmes locais do agente indisponiveis.', error?.message || error);
+  }
+}
     async function carregarSetoresCercaServidor(condominioId = null) {
       try {
         const condoId = condominioId || getFenceCondoId();
@@ -6997,8 +7131,14 @@ function renderizarSetoresCercaAdmin() {
           });
           MOCK_DB.setores_cerca = [...outrosCondominios, ...melhores.values()];
         }
-        await aplicarAlarmesLocaisOperador(condoId);
-        if (['operador','portaria'].includes(String(currentRole || '').toLowerCase())) {
+     if (['operador','portaria'].includes(String(currentRole || '').toLowerCase())) {
+  // Só aplica alarmes locais para alarme/falha.
+  // Não deixa o agente local sobrescrever armado/desarmado vindo da API.
+  if (typeof aplicarAlarmesLocaisOperador === 'function') {
+    await aplicarAlarmesLocaisOperador(condoId);
+  }
+}
+if (['operador','portaria'].includes(String(currentRole || '').toLowerCase())) {
           if (typeof renderizarSetoresCercaOperador === 'function') renderizarSetoresCercaOperador();
           if (typeof renderizarMapaCerca === 'function') renderizarMapaCerca();
           if (typeof renderizarAlarmesNoMapa === 'function') renderizarAlarmesNoMapa();
@@ -7065,38 +7205,45 @@ function renderizarSetoresCercaAdmin() {
       return MOCK_DB.alarmes_cerca.filter(item => !condoId || String(item.condominio_id) === String(condoId));
     }
 
-    function renderizarSetoresCercaOperador() {
-      const lista = document.getElementById('lista-setores-cerca-operador');
-      if (!lista) return;
-      const setores = getSetoresCerca(currentCondoId);
-      if (!setores.length) {
-        lista.innerHTML = '<div class="muted">Nenhum setor de cerca cadastrado para este condomÃ­nio.</div>';
-        return;
-      }
-      lista.innerHTML = setores.map(setor => {
-        const pontos = getSetorPolylineCoords(setor);
-        const desarmado = String(setor.status || '').toLowerCase().includes('desarm');
-        const mensagemLinha = pontos.length
-          ? `${pontos.length} ponto(s)`
-          : 'Sem traÃ§ado salvo. Redesenhe no painel Administrador.';
-        return `<div class="fence-sector-card ${desarmado ? 'is-disarmed' : ''}">
-          <b>${escapeHtml(setor.nome || 'Setor')}</b>
-          <div class="fence-sector-line">
-            <span class="fence-status-pill ${getFenceStatusClass(setor.status)}">${escapeHtml(String(setor.status || 'ativo').toUpperCase())}</span>
-            <span class="muted">${escapeHtml(mensagemLinha)}</span>
-          </div>
-          <small>Entrada ${escapeHtml(String(setor.entrada_alarme || '-'))} Â· SaÃ­da ${escapeHtml(String(setor.saida_rele || '-'))}</small>
-          <small>${escapeHtml(setor.observacao || 'Clique em ver no mapa para localizar o setor.')}</small>
-          ${getResumoDesarmeSetorHtml(setor)}
-          <div class="actions-inline" style="margin-top:8px;">
-            <button class="btn-mini" onclick="focarSetorCerca('${setor.id}'); abrirPopupSetorCerca('${setor.id}')">Ver no mapa</button>
-            <button class="btn-mini" onclick="acionarSetorCerca('${setor.id}','ativo')">Ativar</button>
-            <button class="btn-warning btn-mini" onclick="acionarSetorCerca('${setor.id}','desarmado')">Desarmar</button>
-          </div>
-        </div>`;
-      }).join('');
-    }
+  function renderizarSetoresCercaOperador() {
+  const lista = document.getElementById('lista-setores-cerca-operador');
+  if (!lista) return;
 
+  const setores = getSetoresCerca(currentCondoId);
+
+  lista.innerHTML = setores.length ? setores.map(setor => {
+    const status = String(setor.status_atual || setor.status || 'ativo').toLowerCase();
+    const pontos = getSetorPolylineCoords(setor);
+
+    let classeCard = '';
+    if (status === 'desarmado') classeCard = 'is-disarmed';
+    if (status === 'alarme') classeCard = 'company-fence-alarm';
+    if (status === 'falha') classeCard = 'warning';
+
+    return `<div class="fence-sector-card ${classeCard}">
+      <b>${escapeHtml(setor.nome || 'Setor')}</b>
+
+      <div class="fence-sector-line">
+        <span class="fence-status-pill ${getFenceStatusClass(status)}">
+          ${escapeHtml(status.toUpperCase())}
+        </span>
+        <span class="muted">${pontos.length ? pontos.length + ' ponto(s)' : 'Sem traçado'}</span>
+      </div>
+
+      <small>Entrada ${escapeHtml(String(setor.entrada_alarme || '-'))} · Saída ${escapeHtml(String(setor.saida_rele || '-'))}</small>
+      <small>${escapeHtml(setor.observacao || 'Sem observação')}</small>
+
+      ${getResumoDesarmeSetorHtml({ ...setor, status, status_atual: status })}
+
+      <div class="actions-inline" style="margin-top:8px;">
+        <button class="btn-mini" onclick="focarSetorCerca('${setor.id}'); abrirPopupSetorCerca('${setor.id}')">Ver no mapa</button>
+        <button class="btn-mini" onclick="acionarSetorCerca('${setor.id}','ativo')">Ativar</button>
+        <button class="btn-warning btn-mini" onclick="acionarSetorCerca('${setor.id}','desarmado')">Desarmar</button>
+        <button class="btn-del" onclick="acionarSetorCerca('${setor.id}','alarme')">Disparar</button>
+      </div>
+    </div>`;
+  }).join('') : '<div class="muted">Nenhum setor de cerca cadastrado.</div>';
+}
     function renderizarSetoresCercaGerente(condominioId = currentCondoId) {
       const lista = document.getElementById('lista-setores-cerca-gerente');
       if (!lista) return;
@@ -13506,6 +13653,27 @@ async function atualizarPainelGerenteCompleto() {
   if (typeof renderizarEmpresasNoMapaGerente === 'function') renderizarEmpresasNoMapaGerente();
 }
 
+if (!window.__OPERADOR_CERCA_REFRESH_V1__) {
+  window.__OPERADOR_CERCA_REFRESH_V1__ = true;
+
+  setInterval(async function () {
+    if (!['operador', 'portaria'].includes(String(currentRole || '').toLowerCase())) return;
+
+    try {
+      await aplicarAlarmesLocaisOperador(currentCondoId);
+      renderizarSetoresCercaOperador();
+      renderizarMapaCerca();
+
+      if (typeof renderizarAlarmesNoMapa === 'function') {
+        renderizarAlarmesNoMapa();
+      }
+
+      persistMockDb();
+    } catch (e) {
+      console.warn('Falha ao atualizar status local da cerca no operador:', e?.message || e);
+    }
+  }, 3000);
+}
 if (!window.__GERENTE_REFRESH_V5__) {
   window.__GERENTE_REFRESH_V5__ = true;
   setInterval(function(){
