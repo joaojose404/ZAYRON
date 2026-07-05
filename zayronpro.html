@@ -13019,7 +13019,17 @@ function renderizarEmpresasMonitoradasGerente() {
     return;
   }
 
-  const empresas = getEmpresasVinculadasDoGerente();
+  let empresas = getEmpresasVinculadasDoGerente();
+
+if (!empresas.length && currentCondoId) {
+  const empresaAberta = (MOCK_DB.condominios || []).find(c =>
+    String(c.id) === String(currentCondoId)
+  );
+
+  if (empresaAberta) {
+    empresas = [empresaAberta];
+  }
+}
 
   if (!empresas.length) {
     box.innerHTML = '<div class="muted">Nenhuma empresa real vinculada a este gerente.</div>';
