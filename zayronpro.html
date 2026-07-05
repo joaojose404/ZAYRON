@@ -12988,10 +12988,27 @@ function getGerenteAtualComVinculos() {
 }
 
 function getEmpresasVinculadasDoGerente() {
-  const gerente = getGerenteAtualComVinculos();
-  const ids = Array.isArray(gerente.clientes_vinculados)
-    ? gerente.clientes_vinculados.map(String)
-    : [];
+  const gerente = getGerenteAtualComVinculos() || {};
+  const u = currentUser || {};
+
+  const idsRaw =
+    gerente.clientes_vinculados ||
+    gerente.condominios_vinculados ||
+    gerente.condominios_ids ||
+    gerente.empresas_vinculadas ||
+    gerente.empresas_ids ||
+    gerente.condominio_ids ||
+    u.clientes_vinculados ||
+    u.condominios_vinculados ||
+    u.condominios_ids ||
+    u.empresas_vinculadas ||
+    u.empresas_ids ||
+    u.condominio_ids ||
+    [];
+
+  const ids = Array.isArray(idsRaw)
+    ? idsRaw.map(item => String(item?.id || item?.condominio_id || item))
+    : String(idsRaw || '').split(',').map(s => s.trim()).filter(Boolean);
 
   const todas = aplicarCoordenadasSalvasCondominios(MOCK_DB.condominios || [])
     .filter(c => !String(c.nome || '').toUpperCase().includes('DEMO'))
@@ -13009,7 +13026,6 @@ function getEmpresasVinculadasDoGerente() {
 
   return todas.filter(c => c.vinculada);
 }
-
 function renderizarEmpresasMonitoradasGerente() {
   const box = document.getElementById('lista-empresas-monitoradas-gerente');
   if (!box) return;
