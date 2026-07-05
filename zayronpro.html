@@ -3926,13 +3926,17 @@ let rondasOcultasTela = new Set(
     }
   }
 
-  atualizarTudo();
-  iniciarRealtime();
-  iniciarAutoAtualizacao();
+atualizarTudo();
+iniciarRealtime();
+iniciarAutoAtualizacao();
 
-  setTimeout(() => {
+if (typeof iniciarAtualizacaoAutomaticaCerca === 'function') {
+    iniciarAtualizacaoAutomaticaCerca();
+}
+
+setTimeout(() => {
     if (map) map.invalidateSize();
-  }, 400);
+}, 400);
 }
     function iniciarMapa() {
 
@@ -16468,6 +16472,35 @@ document.addEventListener('DOMContentLoaded', () => {
   })));
   document.addEventListener('DOMContentLoaded', () => observer.observe(document.body, { childList:true, subtree:true }));
 })();
+
+let timerAtualizacaoCerca = null;
+
+function iniciarAtualizacaoAutomaticaCerca() {
+
+    if (timerAtualizacaoCerca)
+        clearInterval(timerAtualizacaoCerca);
+
+    timerAtualizacaoCerca = setInterval(async () => {
+
+        try {
+
+            await carregarSetoresCercaServidor();
+
+            renderizarSetoresCercaOperador();
+
+            renderizarMapaCerca();
+
+            if (typeof atualizarTudo === "function") {
+                atualizarTudo(false);
+            }
+
+        } catch(e) {
+            console.log("Erro atualização automática:", e);
+        }
+
+    },1000);
+
+}
 </script>
 </body>
 </html>
