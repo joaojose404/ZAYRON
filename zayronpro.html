@@ -13006,9 +13006,21 @@ function getEmpresasVinculadasDoGerente() {
     u.condominio_ids ||
     [];
 
-  const ids = Array.isArray(idsRaw)
+  let ids = Array.isArray(idsRaw)
     ? idsRaw.map(item => String(item?.id || item?.condominio_id || item))
     : String(idsRaw || '').split(',').map(s => s.trim()).filter(Boolean);
+
+  if (!ids.length && Array.isArray(MOCK_DB.setores_cerca)) {
+    ids = [...new Set(
+      MOCK_DB.setores_cerca
+        .map(s => String(s.condominio_id || ''))
+        .filter(Boolean)
+    )];
+  }
+
+  if (!ids.length && currentCondoId) {
+    ids = [String(currentCondoId)];
+  }
 
   const todas = aplicarCoordenadasSalvasCondominios(MOCK_DB.condominios || [])
     .filter(c => !String(c.nome || '').toUpperCase().includes('DEMO'))
