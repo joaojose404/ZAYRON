@@ -6386,7 +6386,32 @@ const setores = (MOCK_DB.setores_cerca || [])
       return;
     }
   }
+// Sincroniza os demais setores que utilizam o mesmo relé
+const setoresMesmoRele = (MOCK_DB.setores_cerca || []).filter(s => {
+  return (
+    String(s.id) !== String(setor.id) &&
+    String(s.condominio_id || '') === String(setor.condominio_id || '') &&
+    String(s.modulo_id || s.modulo_cerca_id || '') ===
+      String(setor.modulo_id || setor.modulo_cerca_id || '') &&
+    String(s.saida_rele || '') === String(setor.saida_rele || '')
+  );
+});
 
+for (const s of setoresMesmoRele) {
+  s.status = statusNorm;
+  s.status_atual = statusNorm;
+  s.updated_at = agoraStatus;
+
+  if (statusNorm === 'desarmado') {
+    s.motivo_desarme = motivoDesarme;
+    s.desarmado_por = getNomeResponsavelEventoCerca();
+    s.desarmado_em = agoraStatus;
+  } else if (statusNorm === 'ativo') {
+    s.motivo_desarme = '';
+    s.desarmado_por = '';
+    s.desarmado_em = null;
+  }
+}
   registrarEventoSetorCerca(setor, statusNorm, {
     responsavel: getNomeResponsavelEventoCerca(),
     origem: 'popup_setor',
@@ -13013,14 +13038,7 @@ function getEmpresasVinculadasDoGerente() {
     ? idsRaw.map(item => String(item?.id || item?.condominio_id || item))
     : String(idsRaw || '').split(',').map(s => s.trim()).filter(Boolean);
 
-  if (!ids.length && Array.isArray(MOCK_DB.setores_cerca)) {
-    ids = [...new Set(
-      MOCK_DB.setores_cerca
-        .map(s => String(s.condominio_id || ''))
-        .filter(Boolean)
-    )];
-  }
-
+ 
   if (!ids.length && currentCondoId) {
     ids = [String(currentCondoId)];
   }
