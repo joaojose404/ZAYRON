@@ -804,6 +804,21 @@
   .device-unified-actions .muted { margin-top:8px; }
   .device-unified-extra { margin-top:10px; }
 
+    .fence-sector-map-label {
+      background: rgba(15, 23, 42, 0.94);
+      color: #ffffff;
+      border: 2px solid rgba(255, 255, 255, 0.95);
+      border-radius: 6px;
+      box-shadow: 0 3px 10px rgba(0, 0, 0, 0.45);
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0;
+      padding: 4px 8px;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+      cursor: pointer;
+      pointer-events: auto;
+      white-space: nowrap;
+    }
 </style>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
@@ -2490,7 +2505,9 @@ function renderizarVisitantesPortaria() {
 
     limparUsuariosDemoESenhasLocais();
 
-  const API_LOCAL = 'http://127.0.0.1:3001';
+  const API_LOCAL = (location.protocol === 'http:' || location.protocol === 'https:')
+    ? location.origin
+    : 'http://127.0.0.1:3000';
 const API_LOCAL_3000 = 'http://127.0.0.1:3000';
 const API_LOCAL_3001 = 'http://127.0.0.1:3001';
 const API_NUVEM = 'https://zayron-api-1011701557501.southamerica-east1.run.app';
@@ -5965,8 +5982,6 @@ data.sort(
           <div class="actions-inline" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
             <button class="btn-mini" style="background:#10b981;margin-left:0;" onclick="atualizarStatusSetorCerca('${setor.id}','ativo')">Armar</button>
             <button class="btn-mini" style="background:#64748b;margin-left:0;" onclick="atualizarStatusSetorCerca('${setor.id}','desarmado')">Desarmar</button>
-            <button class="btn-mini" style="background:#f59e0b;margin-left:0;" onclick="atualizarStatusSetorCerca('${setor.id}','falha')">Falha</button>
-            <button class="btn-mini" style="background:#ef4444;margin-left:0;" onclick="atualizarStatusSetorCerca('${setor.id}','alarme')">Disparo</button>
             <button class="btn-mini" style="background:#8b5cf6;margin-left:0;grid-column:1 / span 2;" onclick="abrirCameraMaisProximaDoSetor('${setor.id}', true)">Abrir câmera do setor</button>
           </div>
         </div>`;
@@ -6036,12 +6051,21 @@ const setores = (MOCK_DB.setores_cerca || [])
       opacity: 0,
       fillOpacity: 0
     }).addTo(cercaLayer);
-
-    marker.bindTooltip(`${idx + 1}. ${escapeHtml(setor.nome || 'Setor')}`, {
+    const nomeRotuloSetor = String(setor.nome || 'Setor').replace(/^\s*\d+\s*[.)-]\s*/, '').trim() || 'Setor';
+    marker.bindTooltip(escapeHtml(nomeRotuloSetor), {
       permanent: true,
       direction: 'center',
-      className: 'badge-soft'
+      className: 'fence-sector-map-label',
+      interactive: true
     });
+
+    const tooltipSetor = marker.getTooltip && marker.getTooltip();
+    if (tooltipSetor && typeof tooltipSetor.on === 'function') {
+      tooltipSetor.on('click', () => {
+        focarSetorCerca(setor.id);
+        abrirPopupSetorCerca(setor.id, L.latLng(center.lat, center.lng));
+      });
+    }
 
     marker.on('click', () => {
       focarSetorCerca(setor.id);
@@ -6238,67 +6262,88 @@ const setores = (MOCK_DB.setores_cerca || [])
   };
 
   if (operadorAcionaLocal) {
-  try {
-    await acionarReleLocalOperador();
+    try {
+      await acionarReleLocalOperador();
+    } catch (localError) {
+      setor.status = statusAnterior;
+      setor.status_atual = statusAnterior;
+      setor.motivo_desarme = desarmeAnterior.motivo_desarme;
+      setor.desarmado_por = desarmeAnterior.desarmado_por;
+      setor.desarmado_em = desarmeAnterior.desarmado_em;
 
+      renderizarMapaCerca();
+      renderizarSetoresCercaAdmin();
+      renderizarSetoresCercaOperador();
+      renderizarSetoresCercaGerente(currentCondoId);
 
-
-const grupoJva = (MOCK_DB.setores_cerca || []).filter(s =>
-  String(s.condominio_id || '') === String(setor.condominio_id || '') &&
-  String(s.modulo_cerca_id || s.modulo_id || '') === String(setor.modulo_cerca_id || setor.modulo_id || '')
-);
-
-grupoJva.forEach(s => {
-  s.status = statusNorm;
-  s.status_atual = statusNorm;
-  s.updated_at = agoraStatus;
-  s.motivo_desarme = statusNorm === 'desarmado' ? motivoDesarme : '';
-  s.desarmado_por = statusNorm === 'desarmado' ? getNomeResponsavelEventoCerca() : '';
-  s.desarmado_em = statusNorm === 'desarmado' ? agoraStatus : null;
-});
-
-persistMockDb();
-renderizarMapaCerca();
-renderizarSetoresCercaOperador();
-renderizarSetoresCercaGerente(currentCondoId);
-return;
-
-
-    const respLocal = await fetch(
-      `${API_LOCAL}/setores-cerca?condominio_id=${encodeURIComponent(setor.condominio_id)}`
-    );
-    const jsonLocal = await respLocal.json().catch(() => null);
-
-    if (jsonLocal?.success && Array.isArray(jsonLocal.data)) {
-      MOCK_DB.setores_cerca = MOCK_DB.setores_cerca.filter(s =>
-        String(s.condominio_id || '') !== String(setor.condominio_id || '')
-      );
-
-      MOCK_DB.setores_cerca.push(...jsonLocal.data.map(normalizarSetorCercaApi));
+      alert('Não foi possível acionar o relé local: ' + (localError?.message || localError));
+      return;
     }
 
-    persistMockDb();
-    renderizarMapaCerca();
-    renderizarSetoresCercaOperador();
-    renderizarSetoresCercaGerente(currentCondoId);
-    renderizarRelatorioEventosCerca();
+    if ((currentSession?.access_token || currentSession?.cloud_access_token) && !currentSession?.offline) {
+      const corpoSyncCerca = {
+        status: statusNorm,
+        status_atual: statusNorm,
+        motivo_desarme: statusNorm === 'desarmado' ? motivoDesarme : '',
+        responsavel_nome: getNomeResponsavelEventoCerca()
+      };
 
-    return;
-  } catch (localError) {
-    setor.status = statusAnterior;
-    setor.status_atual = statusAnterior;
-    setor.motivo_desarme = desarmeAnterior.motivo_desarme;
-    setor.desarmado_por = desarmeAnterior.desarmado_por;
-    setor.desarmado_em = desarmeAnterior.desarmado_em;
+      const tentarPatchSetorNuvem = async (idSync) => {
+        if (!idSync) return false;
 
-    renderizarMapaCerca();
-    renderizarSetoresCercaOperador();
+        await apiRequest(`/setores-cerca/${encodeURIComponent(idSync)}/status`, {
+          method: 'PATCH',
+          baseOverride: API_NUVEM,
+          body: corpoSyncCerca
+        });
 
-    alert('Não foi possível acionar o relé local: ' + (localError?.message || localError));
-    return;
-  }
+        return true;
+      };
 
-} else {
+      try {
+        const idsSync = [...new Set([setor.cloud_id, setor.id].filter(Boolean).map(String))];
+        let sincronizado = false;
+
+        for (const idSync of idsSync) {
+          try {
+            sincronizado = await tentarPatchSetorNuvem(idSync);
+            if (sincronizado) break;
+          } catch (erroIdSync) {}
+        }
+
+        if (!sincronizado) {
+          const querySync = setor.condominio_id ? `?condominio_id=${encodeURIComponent(setor.condominio_id)}` : '';
+          const respSetoresNuvem = await apiRequest(`/setores-cerca${querySync}`, { baseOverride: API_NUVEM });
+          const setoresNuvem = Array.isArray(respSetoresNuvem?.data) ? respSetoresNuvem.data : [];
+
+          const nomeLocal = typeof normalizarTexto === 'function'
+            ? normalizarTexto(setor.nome || '')
+            : String(setor.nome || '').trim().toLowerCase();
+
+          const candidatosSync = setoresNuvem.filter(item => {
+            const mesmaEntrada = String(item.entrada_alarme || '') === String(setor.entrada_alarme || '');
+            const nomeNuvem = typeof normalizarTexto === 'function'
+              ? normalizarTexto(item.nome || '')
+              : String(item.nome || '').trim().toLowerCase();
+
+            return mesmaEntrada && (!nomeLocal || nomeNuvem === nomeLocal || /setor/i.test(nomeNuvem));
+          });
+
+          for (const candidato of candidatosSync) {
+            await tentarPatchSetorNuvem(candidato.id || candidato.cloud_id);
+            sincronizado = true;
+          }
+        }
+
+        if (!sincronizado) {
+          console.warn('Nenhum setor correspondente encontrado na nuvem para sincronizar comando local da cerca.');
+        }
+      } catch (error) {
+        console.warn('Sincronização do setor com a nuvem falhou; comando local já foi executado.', error);
+      }
+    }
+
+  } else {
     try {
       const baseComandoCerca =
         (roleComandoCerca === 'gerente' || currentSession?.api_base === 'nuvem')
@@ -6343,6 +6388,52 @@ return;
         if (indice >= 0) MOCK_DB.setores_cerca[indice] = setorPersistido;
 
         setor = setorPersistido;
+      }
+      if (['ativo', 'desarmado'].includes(statusNorm) && roleComandoCerca === 'gerente') {
+        const moduloGrupo = String(setor.modulo_id || setor.modulo_cerca_id || '').trim();
+        const saidaGrupo = String(setor.saida_rele || '').trim();
+        const condoGrupo = String(setor.condominio_id || '').trim();
+
+        if (moduloGrupo && saidaGrupo) {
+          const setoresMesmoRele = (MOCK_DB.setores_cerca || []).filter(item =>
+            String(item.id) !== String(setor.id) &&
+            String(item.saida_rele || '').trim() === saidaGrupo &&
+            String(item.modulo_id || item.modulo_cerca_id || '').trim() === moduloGrupo &&
+            (!condoGrupo || String(item.condominio_id || '').trim() === condoGrupo)
+          );
+
+          for (const setorMesmoRele of setoresMesmoRele) {
+            setorMesmoRele.status = statusNorm;
+            setorMesmoRele.status_atual = statusNorm;
+
+            if (statusNorm === 'ativo') {
+              setorMesmoRele.motivo_desarme = '';
+              setorMesmoRele.desarmado_por = '';
+              setorMesmoRele.desarmado_em = null;
+            }
+
+            if (statusNorm === 'desarmado') {
+              setorMesmoRele.motivo_desarme = motivoDesarme;
+              setorMesmoRele.desarmado_por = getNomeResponsavelEventoCerca();
+              setorMesmoRele.desarmado_em = agoraStatus;
+            }
+
+            try {
+              await apiRequest(`/setores-cerca/${encodeURIComponent(setorMesmoRele.id)}/status`, {
+                method: 'PATCH',
+                baseOverride: baseComandoCerca,
+                body: {
+                  status: statusNorm,
+                  status_atual: statusNorm,
+                  motivo_desarme: statusNorm === 'desarmado' ? motivoDesarme : '',
+                  responsavel_nome: getNomeResponsavelEventoCerca()
+                }
+              });
+            } catch (erroSetorMesmoRele) {
+              console.warn('Falha ao atualizar setor do mesmo rele pelo gerente:', setorMesmoRele.nome || setorMesmoRele.id, erroSetorMesmoRele?.message || erroSetorMesmoRele);
+            }
+          }
+        }
       }
     } catch (error) {
       setor.status = statusAnterior;
@@ -7124,21 +7215,6 @@ if (['operador','portaria'].includes(String(currentRole || '').toLowerCase())) {
           if (typeof renderizarMapaCerca === 'function') renderizarMapaCerca();
           if (typeof renderizarAlarmesNoMapa === 'function') renderizarAlarmesNoMapa();
         }
-
-if (window.__JVA_STATUS_FORCADO__ && Date.now() < window.__JVA_STATUS_FORCADO__.ate) {
-  const jva = window.__JVA_STATUS_FORCADO__;
-
-  (MOCK_DB.setores_cerca || []).forEach(s => {
-    if (
-      String(s.condominio_id || '') === String(jva.condominio_id || '') &&
-      String(s.modulo_cerca_id || s.modulo_id || '') === String(jva.modulo_id || '')
-    ) {
-      s.status = jva.status;
-      s.status_atual = jva.status;
-      s.updated_at = new Date().toISOString();
-    }
-  });
-}
         persistMockDb();
       } catch (e) {
         console.warn('Não foi possível carregar setores da cerca pela API:', e?.message || e);
