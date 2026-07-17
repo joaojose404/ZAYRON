@@ -7053,11 +7053,51 @@ function renderizarSetoresCercaAdmin() {
             ? (alarme.updated_at || new Date().toISOString())
             : null
         };
-      });
+        if (['alarme','falha'].includes(statusLocal)) {
+          const setorAtualizado = MOCK_DB.setores_cerca[idx];
+          const criadoEm = alarme.updated_at || new Date().toISOString();
+          const chaveEventoLocal = `local-${setorAtualizado.id}-${statusLocal}-${criadoEm}`;
+          const eventoJaExiste = MOCK_DB.alarmes_cerca.some(item =>
+            String(item.chave_sincronizacao || '') === chaveEventoLocal ||
+            (
+              String(item.setor_id || '') === String(setorAtualizado.id) &&
+              String(item.status_setor || '').toLowerCase() === statusLocal &&
+              String(item.created_at || '') === String(criadoEm)
+            )
+          );
 
+          if (!eventoJaExiste) {
+            const centro = getSetorCentro(setorAtualizado) || {};
+            MOCK_DB.alarmes_cerca.unshift({
+              id: `local-${setorAtualizado.id}-${Date.now()}-${statusLocal}`,
+              chave_sincronizacao: chaveEventoLocal,
+              condominio_id: setorAtualizado.condominio_id,
+              modulo_id: setorAtualizado.modulo_id || setorAtualizado.modulo_cerca_id,
+              setor_id: setorAtualizado.id,
+              setor_nome: setorAtualizado.nome,
+              tipo: statusLocal === 'alarme' ? 'violacao' : 'falha',
+              status_setor: statusLocal,
+              prioridade: statusLocal === 'alarme' ? 'alta' : 'media',
+              responsavel_nome: alarme.responsavel_nome || 'Agente local',
+              motivo: alarme.motivo || alarme.erro || 'entrada_alarme_local',
+              descricao: statusLocal === 'alarme'
+                ? 'Alarme ou disparo registrado no setor.'
+                : 'Falha registrada no setor.',
+              latitude: Number.isFinite(Number(centro.lat)) ? Number(centro.lat) : setorAtualizado.latitude,
+              longitude: Number.isFinite(Number(centro.lng)) ? Number(centro.lng) : setorAtualizado.longitude,
+              created_at: criadoEm
+            });
+          }
+        }
+      });
     persistMockDb();
+    latestFenceEvents = (MOCK_DB.alarmes_cerca || [])
+      .filter(item => !currentCondoId || String(item.condominio_id) === String(currentCondoId))
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      .slice(0, 50);
     renderizarSetoresCercaOperador();
     renderizarMapaCerca();
+    if (typeof renderizarRelatorioEventosCerca === 'function') renderizarRelatorioEventosCerca();
 
   } catch (error) {
     console.warn('Alarmes locais do agente indisponiveis.', error?.message || error);
