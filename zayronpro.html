@@ -167,12 +167,6 @@
 
     .btn-del { background: var(--danger); }
     .btn-mini { background: var(--accent); }
-    .btn-mini:disabled, .btn-del:disabled, .btn:disabled {
-      opacity: .35 !important;
-      cursor: not-allowed !important;
-      filter: grayscale(.35);
-      pointer-events: none;
-    }
 
 
 
@@ -5807,24 +5801,64 @@ data.sort(
     }
 
    function getSetoresCerca(condoId = getFenceCondoId()) {
-  // O estado visual vem somente do estado atual do setor.
-  // O histórico em MOCK_DB.alarmes_cerca não pode reativar alarmes antigos ao entrar no sistema.
-  return (MOCK_DB.setores_cerca || [])
-    .filter(item => !condoId || String(item.condominio_id) === String(condoId))
-    .map(setor => {
-      const statusAtual = String(
-        setor.status_atual ||
-        setor.status ||
-        'ativo'
-      ).toLowerCase();
+  const setores = (MOCK_DB.setores_cerca || [])
+    .filter(item => !condoId || String(item.condominio_id) === String(condoId));
 
-      return {
-        ...setor,
-        status: statusAtual,
-        status_atual: statusAtual
-      };
-    })
-    .sort((a, b) => String(a.nome || '').localeCompare(String(b.nome || '')));
+  const normalizarStatusEvento = (evento) => {
+    const texto = String(
+      evento?.status_setor ||
+      evento?.status ||
+      evento?.tipo ||
+      evento?.descricao ||
+      ''
+    ).toLowerCase();
+
+    if (texto.includes('desarme') || texto.includes('desarmado')) return 'desarmado';
+    if (texto.includes('alarme') || texto.includes('violacao') || texto.includes('disparo')) return 'alarme';
+    if (texto.includes('falha')) return 'falha';
+    if (texto.includes('arme') || texto.includes('ativo') || texto.includes('armado')) return 'ativo';
+
+    return '';
+  };
+
+  const ultimoEventoPorSetor = new Map();
+
+  (MOCK_DB.alarmes_cerca || []).forEach(evento => {
+    if (!evento.setor_id) return;
+    if (condoId && String(evento.condominio_id || '') !== String(condoId)) return;
+
+    const chave = String(evento.setor_id);
+    const dataEvento = new Date(evento.created_at || evento.updated_at || 0).getTime();
+    const atual = ultimoEventoPorSetor.get(chave);
+    const dataAtual = atual ? new Date(atual.created_at || atual.updated_at || 0).getTime() : -1;
+
+    if (!atual || dataEvento >= dataAtual) {
+      ultimoEventoPorSetor.set(chave, evento);
+    }
+  });
+
+  return setores.map(setor => {
+    const evento = ultimoEventoPorSetor.get(String(setor.id));
+
+    let statusFinal = String(
+      setor.status_atual ||
+      setor.status ||
+      'ativo'
+    ).toLowerCase();
+
+    if (evento) {
+      const statusEvento = normalizarStatusEvento(evento);
+      if (['ativo', 'desarmado', 'alarme', 'falha'].includes(statusEvento)) {
+        statusFinal = statusEvento;
+      }
+    }
+
+    return {
+      ...setor,
+      status: statusFinal,
+      status_atual: statusFinal
+    };
+  }).sort((a, b) => String(a.nome || '').localeCompare(String(b.nome || '')));
 }
     function getFenceStatusClass(status) {
       const s = String(status || '').toLowerCase();
@@ -5869,7 +5903,7 @@ data.sort(
     function getResumoStatusSetorCerca(setor) {
       const status = String(setor?.status || 'ativo').toLowerCase();
       if (status.includes('alarme') || status.includes('viol')) return 'Disparo ativo no setor';
-      if (status.includes('falha')) return 'Sem comunicação com o agente local ou com a placa';
+      if (status.includes('falha')) return 'Setor com falha / atenção';
       if (status.includes('desarm')) return 'Setor desarmado';
       return 'Setor armado e monitorando';
     }
@@ -5926,9 +5960,6 @@ data.sort(
     function getPopupSetorCercaHtml(setor) {
       const evento = getUltimoEventoSetorCerca(setor.id);
       const camera = encontrarCameraMaisProximaDoSetor(setor);
-      const statusInterno = String(setor.status_atual || setor.status || 'ativo').toLowerCase();
-      const offlineVisual = statusInterno.includes('falha');
-      const statusExibido = offlineVisual ? 'OFFLINE' : statusInterno.toUpperCase();
       const ultimoEventoTexto = evento
         ? `${escapeHtml(evento.tipo || 'evento').toUpperCase()} · ${formatDateTime(evento.created_at)}`
         : 'Nenhum disparo recente';
@@ -5937,7 +5968,7 @@ data.sort(
           <div style="font-weight:700;font-size:14px;margin-bottom:6px;">${escapeHtml(setor.nome || 'Setor')}</div>
           <div style="margin-bottom:8px;">
             <span class="alert-badge ${String(setor.status || '').toLowerCase().includes('alarme') ? 'badge-danger' : String(setor.status || '').toLowerCase().includes('falha') ? 'badge-warning' : String(setor.status || '').toLowerCase().includes('desarm') ? 'badge-accent' : 'badge-success'}">
-              ${escapeHtml(statusExibido)}
+              ${escapeHtml(String(setor.status || 'ativo').toUpperCase())}
             </span>
           </div>
           <div style="font-size:12px;line-height:1.45;margin-bottom:8px;display:grid;gap:4px;">
@@ -5949,9 +5980,9 @@ data.sort(
             <div><b>Câmera próxima:</b> ${camera ? `${escapeHtml(camera.nome || 'Câmera')} · ${escapeHtml(String(camera.distancia_setor_m || 0))} m` : 'Nenhuma câmera vinculada por coordenada'}</div>
           </div>
           <div class="actions-inline" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
-            <button class="btn-mini" style="background:#10b981;margin-left:0;" ${offlineVisual ? 'disabled' : ''} onclick="atualizarStatusSetorCerca('${setor.id}','ativo')">Armar</button>
-            <button class="btn-mini" style="background:#64748b;margin-left:0;" ${offlineVisual ? 'disabled' : ''} onclick="atualizarStatusSetorCerca('${setor.id}','desarmado')">Desarmar</button>
-            <button class="btn-mini" style="background:#8b5cf6;margin-left:0;grid-column:1 / span 2;" ${offlineVisual ? 'disabled' : ''} onclick="abrirCameraMaisProximaDoSetor('${setor.id}', true)">Abrir câmera do setor</button>
+            <button class="btn-mini" style="background:#10b981;margin-left:0;" onclick="atualizarStatusSetorCerca('${setor.id}','ativo')">Armar</button>
+            <button class="btn-mini" style="background:#64748b;margin-left:0;" onclick="atualizarStatusSetorCerca('${setor.id}','desarmado')">Desarmar</button>
+            <button class="btn-mini" style="background:#8b5cf6;margin-left:0;grid-column:1 / span 2;" onclick="abrirCameraMaisProximaDoSetor('${setor.id}', true)">Abrir câmera do setor</button>
           </div>
         </div>`;
     }
@@ -6939,42 +6970,11 @@ function renderizarSetoresCercaAdmin() {
       headers: { Accept: 'application/json' }
     });
 
-    if (!resp.ok) throw new Error(`Agente local respondeu HTTP ${resp.status}`);
-
     const json = await resp.json().catch(() => null);
     const alarmes = Array.isArray(json?.data) ? json.data : [];
 
     if (!Array.isArray(MOCK_DB.setores_cerca)) return;
     if (!Array.isArray(MOCK_DB.alarmes_cerca)) MOCK_DB.alarmes_cerca = [];
-
-    // A comunicação com o agente/placa foi restabelecida.
-    // Guarda quais setores estavam em estado transitório antes de normalizar.
-    // Na primeira leitura após a reconexão, eventos antigos/repetidos não podem
-    // provocar o piscar vermelho; somente um alarme explicitamente ATIVO agora.
-    const setoresEmReconexao = new Set();
-    MOCK_DB.setores_cerca.forEach(setor => {
-      if (condoId && String(setor.condominio_id || '') !== String(condoId)) return;
-      const estadoAnterior = String(setor.status_atual || setor.status || '').toLowerCase();
-      if (['alarme', 'falha'].includes(estadoAnterior)) {
-        setoresEmReconexao.add(String(setor.id || setor.cloud_id || setor.local_id || ''));
-      }
-    });
-
-    // Remove somente estados transitórios antigos de ALARME/FALHA.
-    // DESARMADO continua cinza; um alarme realmente atual será aplicado logo abaixo.
-    MOCK_DB.setores_cerca = MOCK_DB.setores_cerca.map(setor => {
-      if (condoId && String(setor.condominio_id || '') !== String(condoId)) return setor;
-      const estadoAnterior = String(setor.status_atual || setor.status || '').toLowerCase();
-      if (!['alarme', 'falha'].includes(estadoAnterior)) return setor;
-      return {
-        ...setor,
-        status: 'ativo',
-        status_atual: 'ativo',
-        alarme_por_entrada_local: false,
-        alarme_offline_local: false,
-        erro_alarme_local: null
-      };
-    });
 
     const normalizarStatusLocal = (valor) => {
       const s = String(valor || '').toLowerCase().trim();
@@ -7034,35 +7034,6 @@ function renderizarSetoresCercaAdmin() {
           alarme.tipo ||
           'ativo'
         );
-
-        // Alarmes/violações antigos retornados pelo agente são histórico, não estado atual.
-        // Só mudam o setor para vermelho quando forem atuais ou vierem marcados como ativos agora.
-        const dataSinal = alarme.updated_at || alarme.created_at || alarme.timestamp || alarme.data_hora || null;
-        const tempoSinal = dataSinal ? new Date(dataSinal).getTime() : NaN;
-        const sinalRecente = Number.isFinite(tempoSinal) && (Date.now() - tempoSinal) >= 0 && (Date.now() - tempoSinal) <= 15000;
-        const sinalAtualExplicito = (
-          alarme.ativo === true ||
-          alarme.active === true ||
-          alarme.em_alarme === true ||
-          alarme.disparo_ativo === true ||
-          alarme.entrada_ativa === true ||
-          alarme.current === true ||
-          alarme.estado_atual === true
-        );
-
-        const chaveSetor = String(setor.id || setor.cloud_id || setor.local_id || '');
-
-        // Durante a reconexão, não aceite um alarme apenas por ter timestamp recente.
-        // O agente pode repetir o último evento armazenado. Para ficar vermelho nessa
-        // primeira leitura, a resposta precisa declarar explicitamente que a entrada
-        // está ativa AGORA. Isso elimina o vermelho momentâneo antes de voltar ao verde.
-        if (statusLocal === 'alarme' && setoresEmReconexao.has(chaveSetor) && !sinalAtualExplicito) {
-          return;
-        }
-
-        if (statusLocal === 'alarme' && !sinalRecente && !sinalAtualExplicito) {
-          return;
-        }
 
         MOCK_DB.setores_cerca[idx] = {
           ...setor,
@@ -7354,8 +7325,6 @@ if (['operador','portaria'].includes(String(currentRole || '').toLowerCase())) {
 
   lista.innerHTML = setores.length ? setores.map(setor => {
     const status = String(setor.status_atual || setor.status || 'ativo').toLowerCase();
-    const offlineVisual = status.includes('falha');
-    const statusExibido = offlineVisual ? 'OFFLINE' : status.toUpperCase();
     const pontos = getSetorPolylineCoords(setor);
 
     let classeCard = '';
@@ -7368,7 +7337,7 @@ if (['operador','portaria'].includes(String(currentRole || '').toLowerCase())) {
 
       <div class="fence-sector-line">
         <span class="fence-status-pill ${getFenceStatusClass(status)}">
-          ${escapeHtml(statusExibido)}
+          ${escapeHtml(status.toUpperCase())}
         </span>
         <span class="muted">${pontos.length ? pontos.length + ' ponto(s)' : 'Sem traçado'}</span>
       </div>
@@ -7380,9 +7349,9 @@ if (['operador','portaria'].includes(String(currentRole || '').toLowerCase())) {
 
       <div class="actions-inline" style="margin-top:8px;">
         <button class="btn-mini" onclick="focarSetorCerca('${setor.id}'); abrirPopupSetorCerca('${setor.id}')">Ver no mapa</button>
-        <button class="btn-mini" ${offlineVisual ? 'disabled' : ''} onclick="acionarSetorCerca('${setor.id}','ativo')">Ativar</button>
-        <button class="btn-warning btn-mini" ${offlineVisual ? 'disabled' : ''} onclick="acionarSetorCerca('${setor.id}','desarmado')">Desarmar</button>
-        <button class="btn-del" ${offlineVisual ? 'disabled' : ''} onclick="acionarSetorCerca('${setor.id}','alarme')">Disparar</button>
+        <button class="btn-mini" onclick="acionarSetorCerca('${setor.id}','ativo')">Ativar</button>
+        <button class="btn-warning btn-mini" onclick="acionarSetorCerca('${setor.id}','desarmado')">Desarmar</button>
+        <button class="btn-del" onclick="acionarSetorCerca('${setor.id}','alarme')">Disparar</button>
       </div>
     </div>`;
   }).join('') : '<div class="muted">Nenhum setor de cerca cadastrado.</div>';
