@@ -19608,225 +19608,148 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   async function iniciarCamerasGerenteV43(janela, cameras) {
-    const timers = new Map();
+    const sessoes = new Map();
+    const verificadores = new Map();
+    const estadosInstancias = new Map();
+
+    const chaveFisica = camera => [
+      String(camera?.ip || '').trim(),
+      String(Number(camera?.porta || 554)),
+      String(camera?.canal || camera?.channel || 1)
+    ].join('|');
+
+    const atualizarStatusFisico = (camera, indice, online) => {
+      const chave = chaveFisica(camera);
+      estadosInstancias.set(`${chave}#${indice}`, Boolean(online));
+      const algumOnline = Array.from(estadosInstancias.entries()).some(([k,v]) => k.startsWith(`${chave}#`) && v);
+      atualizarStatusCameraMapaV43(camera, algumOnline ? 'online' : 'offline');
+    };
     let cardAmpliado = null;
-    let encerrado = false;
-
-    const apiCloud = String(
-      typeof API_NUVEM !== 'undefined'
-        ? API_NUVEM
-        : 'https://zayron-api-1011701557501.southamerica-east1.run.app'
-    ).replace(/\/$/, '');
-
-    const tokenCloud =
-      typeof getTokenParaBaseApi === 'function'
-        ? getTokenParaBaseApi(apiCloud)
-        : (
-            (typeof currentSession !== 'undefined' && currentSession)
-              ? (
-                  currentSession.cloud_access_token ||
-                  currentSession.access_token ||
-                  ''
-                )
-              : ''
-          );
 
     const fecharTelaCheia = async () => {
-      if (cardAmpliado) {
-        cardAmpliado.classList.remove('ampliada');
-      }
-
+      if (cardAmpliado) cardAmpliado.classList.remove('ampliada');
       cardAmpliado = null;
-
       try {
-        if (
-          janela.document.fullscreenElement &&
-          janela.document.exitFullscreen
-        ) {
+        if (janela.document.fullscreenElement && janela.document.exitFullscreen) {
           await janela.document.exitFullscreen();
         }
       } catch (_) {}
     };
 
     janela.document.addEventListener('keydown', event => {
-      if (event.key === 'Escape') {
-        fecharTelaCheia();
-      }
+      if (event.key === 'Escape') fecharTelaCheia();
     });
 
+
     const parar = () => {
-      encerrado = true;
-
-      timers.forEach(timer => {
-        clearTimeout(timer);
+      verificadores.forEach(timer => clearInterval(timer));
+      verificadores.clear();
+      sessoes.forEach(sessaoId => {
+        fetch('http://127.0.0.1:3001/local/cameras/mjpeg/parar', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({sessao_id:sessaoId}), keepalive:true
+        }).catch(()=>{});
       });
-
-      timers.clear();
+      sessoes.clear();
     };
+    janela.addEventListener('beforeunload', parar, {once:true});
 
-    janela.addEventListener('beforeunload', parar, { once: true });
-
-    cameras.forEach((camera, index) => {
-      const card = janela.document.querySelector(
-        `[data-camera-index="${index}"]`
-      );
-
-      const img = card && card.querySelector('img.live');
-      const loading = card && card.querySelector('.loading');
-      const label = card && card.querySelector('.label');
-      const status = card && card.querySelector('.status');
-      const frame = card && card.querySelector('.frame');
-
+    cameras.forEach(async (camera,index) => {
+      const card = janela.document.querySelector(`[data-camera-index="${index}"]`);
+      const img = card?.querySelector('img.live');
+      const loading = card?.querySelector('.loading');
+      const label = card?.querySelector('.label');
+      const status = card?.querySelector('.status');
+      const frame = card?.querySelector('.frame');
       if (!card || !img) return;
-
-      let carregando = false;
 
       const aplicarStatus = online => {
         card.classList.toggle('online', online);
         card.classList.toggle('offline', !online);
-
-        if (label) {
-          label.textContent = online ? 'AO VIVO' : 'OFFLINE';
+        if (label) label.textContent = online ? 'AO VIVO' : 'OFFLINE';
+        if (status) status.textContent = online ? 'ONLINE' : 'OFFLINE';
+        if (!online && loading) {
+          loading.style.display = 'block';
+          loading.textContent = 'TRANSMISSÃO INTERROMPIDA';
         }
-
-        if (status) {
-          status.textContent = online ? 'ONLINE' : 'OFFLINE';
-        }
-
-        if (loading) {
-          loading.style.display = online ? 'none' : 'block';
-          loading.textContent = online
-            ? ''
-            : 'AGUARDANDO IMAGEM DA NUVEM...';
-        }
-
-        atualizarStatusCameraMapaV43(
-          camera,
-          online ? 'online' : 'offline'
-        );
+        atualizarStatusFisico(camera, index, online);
       };
 
       if (frame) {
         const botaoFechar = frame.querySelector('.fechar-ampliada');
-
-        if (botaoFechar) {
-          botaoFechar.addEventListener('click', event => {
-            event.preventDefault();
-            event.stopPropagation();
-            fecharTelaCheia();
-          });
-        }
+        botaoFechar?.addEventListener('click', event => {
+          event.preventDefault();
+          event.stopPropagation();
+          fecharTelaCheia();
+        });
 
         frame.addEventListener('click', async event => {
-          if (
-            event.target &&
-            event.target.closest &&
-            event.target.closest('.fechar-ampliada')
-          ) {
-            return;
-          }
-
+          if (event.target.closest('.fechar-ampliada')) return;
           if (card.classList.contains('ampliada')) return;
 
           if (cardAmpliado && cardAmpliado !== card) {
             cardAmpliado.classList.remove('ampliada');
           }
-
           cardAmpliado = card;
           card.classList.add('ampliada');
 
           try {
             const raiz = janela.document.documentElement;
-
-            if (
-              !janela.document.fullscreenElement &&
-              raiz.requestFullscreen
-            ) {
+            if (!janela.document.fullscreenElement && raiz.requestFullscreen) {
               await raiz.requestFullscreen();
             }
-          } catch (_) {}
+          } catch (_) {
+            // O card continua ocupando toda a janela mesmo se o navegador bloquear F11/fullscreen.
+          }
         });
       }
 
-      const agendar = atraso => {
-        if (encerrado || janela.closed) return;
-
-        const anterior = timers.get(index);
-
-        if (anterior) {
-          clearTimeout(anterior);
+      let verificando = false;
+      const verificarOnline = async () => {
+        if (verificando || janela.closed) return;
+        verificando = true;
+        const controle = new AbortController();
+        const timeout = setTimeout(() => controle.abort(), 7000);
+        try {
+          const respostaTeste = await fetch('http://127.0.0.1:3001/local/cameras/testar', {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify(dadosStreamV43(camera)),
+            signal:controle.signal
+          });
+          const dadosTeste = await respostaTeste.json().catch(()=>({}));
+          aplicarStatus(Boolean(respostaTeste.ok && dadosTeste.success && dadosTeste.data?.online !== false));
+        } catch (_) {
+          aplicarStatus(false);
+        } finally {
+          clearTimeout(timeout);
+          verificando = false;
         }
-
-        const timer = setTimeout(atualizarFrame, atraso);
-        timers.set(index, timer);
       };
 
-      const atualizarFrame = () => {
-        if (encerrado || janela.closed) return;
-
-        if (janela.document.hidden || carregando) {
-          agendar(5000);
-          return;
+      try {
+        const resposta = await fetch('http://127.0.0.1:3001/local/cameras/mjpeg/iniciar', {
+          method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(dadosStreamV43(camera))
+        });
+        const dados = await resposta.json().catch(()=>({}));
+        if (!resposta.ok || !dados.success || !dados.data?.sessao_id || !dados.data?.stream_url) {
+          throw new Error(dados.details || dados.message || `Erro HTTP ${resposta.status}`);
         }
-
-        if (!camera || !camera.id) {
-          aplicarStatus(false);
-
-          if (loading) {
-            loading.textContent = 'CÂMERA SEM IDENTIFICADOR';
-          }
-
-          return;
-        }
-
-        if (!tokenCloud) {
-          aplicarStatus(false);
-
-          if (loading) {
-            loading.textContent = 'SESSÃO DA NUVEM SEM TOKEN';
-          }
-
-          return;
-        }
-
-        carregando = true;
-
-        const url =
-          `${apiCloud}/cloud/cameras/` +
-          `${encodeURIComponent(camera.id)}/frame` +
-          `?token=${encodeURIComponent(tokenCloud)}` +
-          `&t=${Date.now()}`;
-
-        let finalizado = false;
-
-        const finalizar = online => {
-          if (finalizado) return;
-          finalizado = true;
-          carregando = false;
-          aplicarStatus(online);
-          agendar(5000);
-        };
-
-        const limite = setTimeout(() => {
-          finalizar(false);
-        }, 9000);
-
+        sessoes.set(index,dados.data.sessao_id);
+        const url = String(dados.data.stream_url).startsWith('http') ? dados.data.stream_url : `http://127.0.0.1:3001${dados.data.stream_url}`;
         img.onload = () => {
-          clearTimeout(limite);
-          img.style.display = 'block';
-          finalizar(true);
+          img.style.display='block';
+          if (loading) loading.style.display='none';
+          aplicarStatus(true);
         };
-
-        img.onerror = () => {
-          clearTimeout(limite);
-          finalizar(false);
-        };
-
-        img.src = url;
-      };
-
-      aplicarStatus(false);
-      agendar(index * 350);
+        img.onerror = () => aplicarStatus(false);
+        img.src=url;
+        await verificarOnline();
+        verificadores.set(index, setInterval(verificarOnline, 10000));
+      } catch(error) {
+        aplicarStatus(false);
+        if (loading) loading.textContent=error?.message || 'NÃO FOI POSSÍVEL ABRIR';
+      }
     });
   }
 
