@@ -13979,14 +13979,6 @@ function obterCamerasOperador() {
     .mapBox{height:calc(100% - 30px);min-height:180px;border-radius:12px;background:linear-gradient(135deg,rgba(15,23,42,.96),rgba(30,41,59,.96));display:flex;align-items:center;justify-content:center;text-align:center;color:#cbd5e1;padding:16px}
     .layout-duplo{display:grid;grid-template-columns:1.1fr 1.4fr;gap:12px}
     .empty{color:#94a3b8;padding:20px;background:#0f172a;border:1px solid #334155;border-radius:14px}
-    .frame{cursor:pointer}
-    .frame::after{content:'CLIQUE PARA AMPLIAR';position:absolute;right:10px;bottom:10px;background:rgba(2,6,23,.82);border:1px solid #334155;border-radius:999px;padding:5px 8px;font-size:10px;color:#bfdbfe;opacity:0;transition:.18s}
-    .frame:hover::after{opacity:1}
-    .tile.ampliada{position:fixed!important;inset:0!important;z-index:999999!important;border:0!important;border-radius:0!important;background:#000!important}
-    .tile.ampliada .frame{position:absolute!important;inset:0!important;width:100vw!important;height:100vh!important;min-height:100vh!important;aspect-ratio:auto!important;border:0!important;background:#000!important}
-    .tile.ampliada .camera-live-image{display:block!important;width:100vw!important;height:100vh!important;object-fit:contain!important}
-    .tile.ampliada .meta{display:none!important}
-    .tile.ampliada .frame::after{content:'ESC PARA VOLTAR';opacity:1;z-index:10}
     @media(max-width:900px){.layout-duplo{grid-template-columns:1fr}.grid{grid-template-columns:1fr}}
   </style>
 </head>
@@ -14036,39 +14028,6 @@ function obterCamerasOperador() {
 
         if (!tile || !imagem) return;
 
-        const frame = tile.querySelector('.frame');
-        const fecharAmpliada = async () => {
-          tile.classList.remove('ampliada');
-          try {
-            if (popup.document.fullscreenElement && popup.document.exitFullscreen) {
-              await popup.document.exitFullscreen();
-            }
-          } catch (_) {}
-        };
-
-        frame?.addEventListener('click', async () => {
-          if (tile.classList.contains('ampliada')) {
-            await fecharAmpliada();
-            return;
-          }
-          popup.document.querySelectorAll('.tile.ampliada').forEach(el => el.classList.remove('ampliada'));
-          tile.classList.add('ampliada');
-          try {
-            const raiz = popup.document.documentElement;
-            if (!popup.document.fullscreenElement && raiz.requestFullscreen) {
-              await raiz.requestFullscreen();
-            }
-          } catch (_) {
-            // Mesmo bloqueada pelo navegador, a câmera ocupa toda a janela do mural.
-          }
-        });
-
-        popup.document.addEventListener('keydown', event => {
-          if (event.key === 'Escape' && tile.classList.contains('ampliada')) {
-            fecharAmpliada();
-          }
-        });
-
         let fabricante = String(camera.fabricante || camera.marca || 'intelbras').trim().toLowerCase();
         if (!fabricante || fabricante === 'generic') fabricante = 'intelbras';
 
@@ -14116,9 +14075,6 @@ function obterCamerasOperador() {
               statusEl.textContent = 'ONLINE';
               statusEl.className = 'camera-card-status camera-status-online';
             }
-            if (typeof window.__zayronSetCameraStatusReal === 'function') {
-              window.__zayronSetCameraStatusReal(camera, 'online');
-            }
           };
 
           imagem.onerror = () => {
@@ -14132,9 +14088,6 @@ function obterCamerasOperador() {
             if (statusEl) {
               statusEl.textContent = 'OFFLINE';
               statusEl.className = 'camera-card-status camera-status-offline';
-            }
-            if (typeof window.__zayronSetCameraStatusReal === 'function') {
-              window.__zayronSetCameraStatusReal(camera, 'offline');
             }
           };
 
@@ -14151,9 +14104,6 @@ function obterCamerasOperador() {
           if (statusEl) {
             statusEl.textContent = 'OFFLINE';
             statusEl.className = 'camera-card-status camera-status-offline';
-          }
-          if (typeof window.__zayronSetCameraStatusReal === 'function') {
-            window.__zayronSetCameraStatusReal(camera, 'offline');
           }
         }
       });
@@ -19658,148 +19608,225 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   async function iniciarCamerasGerenteV43(janela, cameras) {
-    const sessoes = new Map();
-    const verificadores = new Map();
-    const estadosInstancias = new Map();
-
-    const chaveFisica = camera => [
-      String(camera?.ip || '').trim(),
-      String(Number(camera?.porta || 554)),
-      String(camera?.canal || camera?.channel || 1)
-    ].join('|');
-
-    const atualizarStatusFisico = (camera, indice, online) => {
-      const chave = chaveFisica(camera);
-      estadosInstancias.set(`${chave}#${indice}`, Boolean(online));
-      const algumOnline = Array.from(estadosInstancias.entries()).some(([k,v]) => k.startsWith(`${chave}#`) && v);
-      atualizarStatusCameraMapaV43(camera, algumOnline ? 'online' : 'offline');
-    };
+    const timers = new Map();
     let cardAmpliado = null;
+    let encerrado = false;
+
+    const apiCloud = String(
+      typeof API_NUVEM !== 'undefined'
+        ? API_NUVEM
+        : 'https://zayron-api-1011701557501.southamerica-east1.run.app'
+    ).replace(/\/$/, '');
+
+    const tokenCloud =
+      typeof getTokenParaBaseApi === 'function'
+        ? getTokenParaBaseApi(apiCloud)
+        : (
+            (typeof currentSession !== 'undefined' && currentSession)
+              ? (
+                  currentSession.cloud_access_token ||
+                  currentSession.access_token ||
+                  ''
+                )
+              : ''
+          );
 
     const fecharTelaCheia = async () => {
-      if (cardAmpliado) cardAmpliado.classList.remove('ampliada');
+      if (cardAmpliado) {
+        cardAmpliado.classList.remove('ampliada');
+      }
+
       cardAmpliado = null;
+
       try {
-        if (janela.document.fullscreenElement && janela.document.exitFullscreen) {
+        if (
+          janela.document.fullscreenElement &&
+          janela.document.exitFullscreen
+        ) {
           await janela.document.exitFullscreen();
         }
       } catch (_) {}
     };
 
     janela.document.addEventListener('keydown', event => {
-      if (event.key === 'Escape') fecharTelaCheia();
+      if (event.key === 'Escape') {
+        fecharTelaCheia();
+      }
     });
 
-
     const parar = () => {
-      verificadores.forEach(timer => clearInterval(timer));
-      verificadores.clear();
-      sessoes.forEach(sessaoId => {
-        fetch('http://127.0.0.1:3001/local/cameras/mjpeg/parar', {
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({sessao_id:sessaoId}), keepalive:true
-        }).catch(()=>{});
-      });
-      sessoes.clear();
-    };
-    janela.addEventListener('beforeunload', parar, {once:true});
+      encerrado = true;
 
-    cameras.forEach(async (camera,index) => {
-      const card = janela.document.querySelector(`[data-camera-index="${index}"]`);
-      const img = card?.querySelector('img.live');
-      const loading = card?.querySelector('.loading');
-      const label = card?.querySelector('.label');
-      const status = card?.querySelector('.status');
-      const frame = card?.querySelector('.frame');
+      timers.forEach(timer => {
+        clearTimeout(timer);
+      });
+
+      timers.clear();
+    };
+
+    janela.addEventListener('beforeunload', parar, { once: true });
+
+    cameras.forEach((camera, index) => {
+      const card = janela.document.querySelector(
+        `[data-camera-index="${index}"]`
+      );
+
+      const img = card && card.querySelector('img.live');
+      const loading = card && card.querySelector('.loading');
+      const label = card && card.querySelector('.label');
+      const status = card && card.querySelector('.status');
+      const frame = card && card.querySelector('.frame');
+
       if (!card || !img) return;
+
+      let carregando = false;
 
       const aplicarStatus = online => {
         card.classList.toggle('online', online);
         card.classList.toggle('offline', !online);
-        if (label) label.textContent = online ? 'AO VIVO' : 'OFFLINE';
-        if (status) status.textContent = online ? 'ONLINE' : 'OFFLINE';
-        if (!online && loading) {
-          loading.style.display = 'block';
-          loading.textContent = 'TRANSMISSÃO INTERROMPIDA';
+
+        if (label) {
+          label.textContent = online ? 'AO VIVO' : 'OFFLINE';
         }
-        atualizarStatusFisico(camera, index, online);
+
+        if (status) {
+          status.textContent = online ? 'ONLINE' : 'OFFLINE';
+        }
+
+        if (loading) {
+          loading.style.display = online ? 'none' : 'block';
+          loading.textContent = online
+            ? ''
+            : 'AGUARDANDO IMAGEM DA NUVEM...';
+        }
+
+        atualizarStatusCameraMapaV43(
+          camera,
+          online ? 'online' : 'offline'
+        );
       };
 
       if (frame) {
         const botaoFechar = frame.querySelector('.fechar-ampliada');
-        botaoFechar?.addEventListener('click', event => {
-          event.preventDefault();
-          event.stopPropagation();
-          fecharTelaCheia();
-        });
+
+        if (botaoFechar) {
+          botaoFechar.addEventListener('click', event => {
+            event.preventDefault();
+            event.stopPropagation();
+            fecharTelaCheia();
+          });
+        }
 
         frame.addEventListener('click', async event => {
-          if (event.target.closest('.fechar-ampliada')) return;
+          if (
+            event.target &&
+            event.target.closest &&
+            event.target.closest('.fechar-ampliada')
+          ) {
+            return;
+          }
+
           if (card.classList.contains('ampliada')) return;
 
           if (cardAmpliado && cardAmpliado !== card) {
             cardAmpliado.classList.remove('ampliada');
           }
+
           cardAmpliado = card;
           card.classList.add('ampliada');
 
           try {
             const raiz = janela.document.documentElement;
-            if (!janela.document.fullscreenElement && raiz.requestFullscreen) {
+
+            if (
+              !janela.document.fullscreenElement &&
+              raiz.requestFullscreen
+            ) {
               await raiz.requestFullscreen();
             }
-          } catch (_) {
-            // O card continua ocupando toda a janela mesmo se o navegador bloquear F11/fullscreen.
-          }
+          } catch (_) {}
         });
       }
 
-      let verificando = false;
-      const verificarOnline = async () => {
-        if (verificando || janela.closed) return;
-        verificando = true;
-        const controle = new AbortController();
-        const timeout = setTimeout(() => controle.abort(), 7000);
-        try {
-          const respostaTeste = await fetch('http://127.0.0.1:3001/local/cameras/testar', {
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body:JSON.stringify(dadosStreamV43(camera)),
-            signal:controle.signal
-          });
-          const dadosTeste = await respostaTeste.json().catch(()=>({}));
-          aplicarStatus(Boolean(respostaTeste.ok && dadosTeste.success && dadosTeste.data?.online !== false));
-        } catch (_) {
-          aplicarStatus(false);
-        } finally {
-          clearTimeout(timeout);
-          verificando = false;
+      const agendar = atraso => {
+        if (encerrado || janela.closed) return;
+
+        const anterior = timers.get(index);
+
+        if (anterior) {
+          clearTimeout(anterior);
         }
+
+        const timer = setTimeout(atualizarFrame, atraso);
+        timers.set(index, timer);
       };
 
-      try {
-        const resposta = await fetch('http://127.0.0.1:3001/local/cameras/mjpeg/iniciar', {
-          method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(dadosStreamV43(camera))
-        });
-        const dados = await resposta.json().catch(()=>({}));
-        if (!resposta.ok || !dados.success || !dados.data?.sessao_id || !dados.data?.stream_url) {
-          throw new Error(dados.details || dados.message || `Erro HTTP ${resposta.status}`);
+      const atualizarFrame = () => {
+        if (encerrado || janela.closed) return;
+
+        if (janela.document.hidden || carregando) {
+          agendar(5000);
+          return;
         }
-        sessoes.set(index,dados.data.sessao_id);
-        const url = String(dados.data.stream_url).startsWith('http') ? dados.data.stream_url : `http://127.0.0.1:3001${dados.data.stream_url}`;
-        img.onload = () => {
-          img.style.display='block';
-          if (loading) loading.style.display='none';
-          aplicarStatus(true);
+
+        if (!camera || !camera.id) {
+          aplicarStatus(false);
+
+          if (loading) {
+            loading.textContent = 'CÂMERA SEM IDENTIFICADOR';
+          }
+
+          return;
+        }
+
+        if (!tokenCloud) {
+          aplicarStatus(false);
+
+          if (loading) {
+            loading.textContent = 'SESSÃO DA NUVEM SEM TOKEN';
+          }
+
+          return;
+        }
+
+        carregando = true;
+
+        const url =
+          `${apiCloud}/cloud/cameras/` +
+          `${encodeURIComponent(camera.id)}/frame` +
+          `?token=${encodeURIComponent(tokenCloud)}` +
+          `&t=${Date.now()}`;
+
+        let finalizado = false;
+
+        const finalizar = online => {
+          if (finalizado) return;
+          finalizado = true;
+          carregando = false;
+          aplicarStatus(online);
+          agendar(5000);
         };
-        img.onerror = () => aplicarStatus(false);
-        img.src=url;
-        // Status real é controlado pelo carregamento do MJPEG e pelo verificador de snapshot global.
-        aplicarStatus(true);
-      } catch(error) {
-        aplicarStatus(false);
-        if (loading) loading.textContent=error?.message || 'NÃO FOI POSSÍVEL ABRIR';
-      }
+
+        const limite = setTimeout(() => {
+          finalizar(false);
+        }, 9000);
+
+        img.onload = () => {
+          clearTimeout(limite);
+          img.style.display = 'block';
+          finalizar(true);
+        };
+
+        img.onerror = () => {
+          clearTimeout(limite);
+          finalizar(false);
+        };
+
+        img.src = url;
+      };
+
+      aplicarStatus(false);
+      agendar(index * 350);
     });
   }
 
@@ -19902,96 +19929,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.addEventListener('DOMContentLoaded',()=>setTimeout(atualizarBotoesV43,1200));
   setInterval(atualizarBotoesV43,1000);
-})();
-</script>
-
-<script>
-/* ===== CORREÇÃO DEFINITIVA: STATUS REAL AZUL/VERMELHO NO MAPA ===== */
-(function () {
-  if (window.__ZAYRON_STATUS_REAL_CAMERA__) return;
-  window.__ZAYRON_STATUS_REAL_CAMERA__ = true;
-
-  const chaveFisica = camera => [
-    String(camera?.ip || '').trim(),
-    String(Number(camera?.porta || 554)),
-    String(camera?.canal || camera?.channel || 1)
-  ].join('|');
-
-  window.__zayronSetCameraStatusReal = function (camera, statusNovo) {
-    const status = statusNovo === 'online' ? 'online' : 'offline';
-    const chave = chaveFisica(camera);
-    const agora = new Date().toISOString();
-    const cameras = (window.MOCK_DB && Array.isArray(MOCK_DB.cameras_cadastro))
-      ? MOCK_DB.cameras_cadastro
-      : [];
-
-    // Todos os cadastros duplicados da mesma câmera recebem o mesmo estado.
-    cameras.forEach(item => {
-      if (chaveFisica(item) === chave) {
-        item.status = status;
-        item.status_atual = status;
-        item.ultima_checagem = agora;
-      }
-    });
-
-    if (camera) {
-      camera.status = status;
-      camera.status_atual = status;
-      camera.ultima_checagem = agora;
-    }
-
-    if (typeof window.renderizarCamerasIANoMapa === 'function') {
-      window.renderizarCamerasIANoMapa();
-    }
-  };
-
-  async function testarPorSnapshot(camera) {
-    let fabricante = String(camera?.fabricante || camera?.marca || 'intelbras').trim().toLowerCase();
-    if (!fabricante || fabricante === 'generic') fabricante = 'intelbras';
-    const canal = Math.max(1, Number(camera?.canal || camera?.channel || 1));
-    const stream = 'secundario';
-    const controle = new AbortController();
-    const timeout = setTimeout(() => controle.abort(), 8000);
-
-    try {
-      const resposta = await fetch('http://127.0.0.1:3001/local/cameras/snapshot', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-          fabricante,
-          ip: String(camera?.ip || '').trim(),
-          porta: Number(camera?.porta) === 504 ? 554 : Number(camera?.porta || 554),
-          usuario: camera?.usuario || camera?.user || camera?.login || '',
-          senha: camera?.senha || camera?.password || '',
-          canal,
-          stream,
-          path: camera?.stream_path_mural || `/cam/realmonitor?channel=${canal}&subtype=1`
-        }),
-        signal: controle.signal
-      });
-      window.__zayronSetCameraStatusReal(camera, resposta.ok ? 'online' : 'offline');
-    } catch (_) {
-      window.__zayronSetCameraStatusReal(camera, 'offline');
-    } finally {
-      clearTimeout(timeout);
-    }
-  }
-
-  async function verificarTodas() {
-    const cameras = (window.MOCK_DB && Array.isArray(MOCK_DB.cameras_cadastro))
-      ? MOCK_DB.cameras_cadastro
-      : [];
-    const unicas = new Map();
-    cameras.forEach(camera => {
-      if (camera?.ip) unicas.set(chaveFisica(camera), camera);
-    });
-    for (const camera of unicas.values()) {
-      await testarPorSnapshot(camera);
-    }
-  }
-
-  setTimeout(verificarTodas, 2500);
-  setInterval(verificarTodas, 15000);
 })();
 </script>
 </body>
