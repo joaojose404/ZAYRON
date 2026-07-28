@@ -18044,10 +18044,23 @@ document.addEventListener('DOMContentLoaded', () => {
   const CHAVE_V41 = 'zayronTransmissoesGerente';
   const janelasV41 = new Map();
 
- function lerTransmissoesV41(condominioId) {
+function lerTransmissoesV41(condominioId) {
   const idEmpresa = String(
     condominioId || ''
   );
+
+  const tokenCloud =
+    currentSession?.cloud_access_token ||
+    currentSession?.access_token ||
+    localStorage.getItem('access_token') ||
+    localStorage.getItem('token') ||
+    '';
+
+  const apiCloud = String(
+    typeof API_NUVEM !== 'undefined' && API_NUVEM
+      ? API_NUVEM
+      : 'https://zayron-api-1011701557501.southamerica-east1.run.app'
+  ).replace(/\/$/, '');
 
   const cadastradas = (
     MOCK_DB.cameras_cadastro || []
@@ -18065,95 +18078,102 @@ document.addEventListener('DOMContentLoaded', () => {
     return cameraCondo === idEmpresa;
   });
 
-  return cadastradas.map(camera => ({
-    id: `camera-gerente-${camera.id}`,
+  return cadastradas.map(camera => {
+    const cameraId = String(
+      camera.id || ''
+    ).trim();
 
-    camera_id:
-      camera.id,
+    const snapshotCloud =
+      cameraId && tokenCloud
+        ? (
+          `${apiCloud}/cloud/cameras/` +
+          `${encodeURIComponent(cameraId)}/frame` +
+          `?token=${encodeURIComponent(tokenCloud)}` +
+          `&t=${Date.now()}`
+        )
+        : '';
 
-    condominio_id:
-      idEmpresa,
+    return {
+      id: `camera-gerente-${cameraId}`,
 
-    camera_nome:
-      camera.nome ||
-      camera.nome_camera ||
-      'Câmera',
+      camera_id:
+        cameraId,
 
-    setor:
-      camera.setor ||
-      camera.local_instalacao ||
-      camera.descricao ||
-      '-',
+      condominio_id:
+        idEmpresa,
 
-    operador:
-      'Gerente',
+      camera_nome:
+        camera.nome ||
+        camera.nome_camera ||
+        'Câmera',
 
-    ativo:
-      true,
+      setor:
+        camera.setor ||
+        camera.local_instalacao ||
+        camera.descricao ||
+        '-',
 
-    stream_tipo:
-      String(
-        camera.stream_tipo ||
-        camera.stream ||
-        'rtsp'
-      ).toLowerCase(),
+      operador:
+        'Gerente',
 
-    stream_url:
-      camera.stream_url ||
-      camera.hls_url ||
-      camera.http_url ||
-      '',
+      ativo:
+        true,
 
-    snapshot_url:
-      camera.snapshot_url ||
-      '',
+      stream_tipo:
+        'snapshot',
 
-    fabricante:
-      camera.fabricante ||
-      camera.marca ||
-      'intelbras',
+      stream_url:
+        '',
 
-    ip:
-      camera.ip ||
-      '',
+      snapshot_url:
+        snapshotCloud,
 
-    porta:
-      Number(
-        camera.porta || 554
-      ),
+      fabricante:
+        camera.fabricante ||
+        camera.marca ||
+        'intelbras',
 
-    usuario:
-      camera.usuario ||
-      camera.user ||
-      camera.login ||
-      '',
+      ip:
+        camera.ip ||
+        '',
 
-    senha:
-      camera.senha ||
-      camera.password ||
-      '',
+      porta:
+        Number(
+          camera.porta || 554
+        ),
 
-    canal:
-      Number(
-        camera.canal ||
-        camera.channel ||
-        1
-      ),
+      usuario:
+        camera.usuario ||
+        camera.user ||
+        camera.login ||
+        '',
 
-    stream_path:
-      camera.stream_path ||
-      camera.path ||
-      camera.rtsp_path ||
-      '',
+      senha:
+        camera.senha ||
+        camera.password ||
+        '',
 
-    iniciada_em:
-      new Date().toISOString(),
+      canal:
+        Number(
+          camera.canal ||
+          camera.channel ||
+          1
+        ),
 
-    camera_original:
-      camera
-  }));
+      stream_path:
+        camera.stream_path ||
+        camera.path ||
+        camera.rtsp_path ||
+        '',
+
+      iniciada_em:
+        new Date().toISOString(),
+
+      camera_original:
+        camera
+    };
+  });
 }
-
   function nomeEmpresaV41(condominioId) {
     return typeof getNomeEmpresaPorIdGerente === 'function'
       ? getNomeEmpresaPorIdGerente(condominioId)
