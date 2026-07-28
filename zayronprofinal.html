@@ -18382,6 +18382,92 @@ function documentoJanelaV41(
 </body>
 </html>`;
 }
+
+	window.abrirCamerasEmpresaGerenteV41 = function(condominioId) {
+  const titulo = `Cameras ao vivo - ${nomeEmpresaV41(condominioId)}`;
+  const chave = `empresa-${condominioId}`;
+
+  let janela = janelasV41.get(chave);
+
+  if (janela && !janela.closed) {
+    janela.focus();
+    return;
+  }
+
+  janela = window.open(
+    '',
+    `zayron-cameras-${condominioId}`,
+    'width=1280,height=820,resizable=yes,scrollbars=yes'
+  );
+
+  if (!janela) {
+    alert('Permita pop-ups para abrir as telas de câmeras.');
+    return;
+  }
+
+  janela.document.write(
+    documentoJanelaV41(
+      titulo,
+      window.__htmlMuralGerenteV41(condominioId),
+      `window.opener.__htmlMuralGerenteV41('${String(condominioId).replace(/'/g, "\\'")}')`
+    )
+  );
+
+  janela.document.close();
+
+  janelasV41.set(chave, janela);
+};
+
+
+window.abrirCameraIndividualGerenteV41 = function(
+  condominioId,
+  cameraId
+) {
+  const chave = `camera-${cameraId}`;
+
+  let janela = janelasV41.get(chave);
+
+  if (janela && !janela.closed) {
+    janela.focus();
+    return;
+  }
+
+  const item = lerTransmissoesV41(condominioId).find(
+    camera =>
+      String(camera.camera_id) ===
+      String(cameraId)
+  );
+
+  const titulo =
+    item?.camera_nome ||
+    'Camera ao vivo';
+
+  janela = window.open(
+    '',
+    `zayron-camera-${cameraId}`,
+    'width=1100,height=820,resizable=yes,scrollbars=yes'
+  );
+
+  if (!janela) {
+    alert('Permita pop-ups para abrir a câmera.');
+    return;
+  }
+
+  janela.document.write(
+    documentoJanelaV41(
+      titulo,
+      window.__htmlCameraGerenteV41(
+        condominioId,
+        cameraId
+      ),
+      `window.opener.__htmlCameraGerenteV41('${String(condominioId).replace(/'/g, "\\'")}','${String(cameraId).replace(/'/g, "\\'")}')`
+    )
+  );
+
+  janela.document.close();
+
+  janelasV41.set(chave, janela);
+};
   function manterPrincipalLimpaV41() {
     const transmissoesPrincipal = document.getElementById('transmissoes-gerente-v40');
     if (transmissoesPrincipal) {
