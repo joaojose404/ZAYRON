@@ -20503,16 +20503,7 @@ async function(
   );
 };
 
-  window.abrirCameraIndividualGerenteV41 = function(condominioId,cameraId) {
-    const camera = camerasEmpresaV43(condominioId).find(item => String(item.id) === String(cameraId));
-    if (!camera) return alert('Câmera não encontrada para esta empresa.');
-    const nome = typeof getNomeEmpresaPorIdGerente === 'function' ? getNomeEmpresaPorIdGerente(condominioId) : 'Empresa';
-    const janela = window.open('', `zayron-camera-${cameraId}`, 'width=1100,height=820,resizable=yes');
-    if (!janela) return alert('Permita pop-ups para abrir a câmera.');
-    janela.document.write(htmlGerenteV43(`${camera.nome || 'Câmera'} - ${nome}`, [camera]));
-    janela.document.close();
-    iniciarCamerasGerenteV43(janela,[camera]);
-  };
+ 
 
   function atualizarBotoesV43() {
     if (typeof currentRole === 'undefined' || currentRole !== 'gerente') return;
