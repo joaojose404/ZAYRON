@@ -18231,15 +18231,21 @@ document.addEventListener('DOMContentLoaded', () => {
     </div>
   `;
 }
- function documentoJanelaV41(
+function documentoJanelaV41(
   titulo,
   corpoInicial,
   funcaoAtualizacao
 ) {
   return `<!doctype html>
-<html>
+<html lang="pt-BR">
 <head>
   <meta charset="utf-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1"
+  >
+
   <title>${escapeHtml(titulo)}</title>
 
   <style>
@@ -18249,16 +18255,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     body {
       margin: 0;
+      padding: 16px;
       background: #020617;
       color: #e2e8f0;
-      font-family: Arial;
-      padding: 16px;
+      font-family: Arial, sans-serif;
     }
 
     header {
       display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 10px;
       margin-bottom: 14px;
       padding: 10px 14px;
       background: #0f172a;
@@ -18267,28 +18274,29 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     h1 {
-      font-size: 20px;
       margin: 0;
+      font-size: 20px;
     }
 
     .status {
       color: #86efac;
       font-size: 12px;
+      white-space: nowrap;
     }
 
     .grid {
       display: grid;
       grid-template-columns:
-        repeat(auto-fit, minmax(390px, 1fr));
+        repeat(auto-fit, minmax(320px, 1fr));
       gap: 12px;
     }
 
     .camera,
     .camera-unica {
+      overflow: hidden;
       background: #0f172a;
       border: 1px solid #334155;
       border-radius: 10px;
-      overflow: hidden;
     }
 
     .info {
@@ -18308,28 +18316,52 @@ document.addEventListener('DOMContentLoaded', () => {
 
     small {
       display: block;
-      color: #94a3b8;
       margin-top: 5px;
+      color: #94a3b8;
     }
 
     button {
       margin-top: 10px;
+      padding: 9px 12px;
       background: #2563eb;
-      color: white;
+      color: #ffffff;
       border: 0;
       border-radius: 6px;
-      padding: 9px 12px;
       cursor: pointer;
+      touch-action: manipulation;
+    }
+
+    button:hover {
+      background: #1d4ed8;
+    }
+
+    button:active {
+      transform: translateY(1px);
     }
 
     .vazio {
       padding: 40px;
-      text-align: center;
       color: #94a3b8;
+      text-align: center;
     }
 
     img[data-camera-cloud="true"] {
       transition: opacity 0.2s ease;
+    }
+
+    @media (max-width: 600px) {
+      body {
+        padding: 8px;
+      }
+
+      header {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .grid {
+        grid-template-columns: 1fr;
+      }
     }
   </style>
 </head>
@@ -18337,6 +18369,7 @@ document.addEventListener('DOMContentLoaded', () => {
 <body>
   <header>
     <h1>${escapeHtml(titulo)}</h1>
+
     <div class="status">
       IMAGENS DA NUVEM
     </div>
@@ -18347,69 +18380,101 @@ document.addEventListener('DOMContentLoaded', () => {
   </main>
 
   <script>
-    let atualizacaoEmAndamento = false;
-    let paginaEncerrada = false;
+    var paginaEncerrada = false;
+    var atualizacaoEmAndamento = false;
+    var temporizadoresCameras = [];
 
-    window.addEventListener('beforeunload', function () {
-      paginaEncerrada = true;
-    });
+    window.addEventListener(
+      'beforeunload',
+      function () {
+        paginaEncerrada = true;
+
+        temporizadoresCameras.forEach(
+          function (temporizador) {
+            clearTimeout(temporizador);
+          }
+        );
+
+        temporizadoresCameras = [];
+      }
+    );
 
     function atualizarImagensCloud() {
       if (
         paginaEncerrada ||
-        atualizacaoEmAndamento ||
+        atualizacaoEmAndamento
+      ) {
+        return;
+      }
+
+      if (
         !window.opener ||
         window.opener.closed
       ) {
         return;
       }
 
+      var imagens = document.querySelectorAll(
+        'img[data-camera-cloud="true"]'
+      );
+
+      if (!imagens.length) {
+        return;
+      }
+
       atualizacaoEmAndamento = true;
+      temporizadoresCameras = [];
 
-      try {
-        const imagens = document.querySelectorAll(
-          'img[data-camera-cloud="true"]'
-        );
-
-        imagens.forEach(function (imagem, index) {
-          const urlBase =
-            imagem.getAttribute('data-base-url');
+      imagens.forEach(
+        function (imagem, index) {
+          var urlBase = imagem.getAttribute(
+            'data-base-url'
+          );
 
           if (!urlBase) {
             return;
           }
 
-          setTimeout(function () {
-            if (
-              paginaEncerrada ||
-              !window.opener ||
-              window.opener.closed
-            ) {
-              return;
-            }
+          var temporizador = setTimeout(
+            function () {
+              if (
+                paginaEncerrada ||
+                !window.opener ||
+                window.opener.closed
+              ) {
+                return;
+              }
 
-            const separador =
-              urlBase.includes('?')
-                ? '&'
-                : '?';
+              var separador =
+                urlBase.indexOf('?') >= 0
+                  ? '&'
+                  : '?';
 
-            imagem.src =
-              urlBase +
-              separador +
-              't=' +
-              Date.now();
+              imagem.src =
+                urlBase +
+                separador +
+                '_zayron=' +
+                Date.now();
 
-          }, index * 350);
-        });
+            },
+            index * 350
+          );
 
-      } finally {
-        setTimeout(function () {
+          temporizadoresCameras.push(
+            temporizador
+          );
+        }
+      );
+
+      setTimeout(
+        function () {
           atualizacaoEmAndamento = false;
-        }, 2500);
-      }
+        },
+        3000
+      );
     }
 
-    setInterval(
+    window.setInterval(
       atualizarImagensCloud,
       5000
     );
