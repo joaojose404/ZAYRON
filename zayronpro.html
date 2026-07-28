@@ -19493,233 +19493,219 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  async function iniciarCamerasGerenteV43(janela, cameras) {
-    const sessoes = new Map();
-    const verificadores = new Map();
-    const estadosInstancias = new Map();
+ async function iniciarCamerasGerenteV43(
+  janela,
+  cameras
+) {
+  const timers = new Set();
+  let encerrado = false;
 
-    const chaveFisica = camera => [
-      String(camera?.ip || '').trim(),
-      String(Number(camera?.porta || 554)),
-      String(camera?.canal || camera?.channel || 1)
-    ].join('|');
+  const tokenCloud =
+    currentSession?.cloud_access_token ||
+    currentSession?.access_token ||
+    '';
 
-    const atualizarStatusFisico = (camera, indice, online) => {
-      const chave = chaveFisica(camera);
-      estadosInstancias.set(`${chave}#${indice}`, Boolean(online));
-      const algumOnline = Array.from(estadosInstancias.entries()).some(([k,v]) => k.startsWith(`${chave}#`) && v);
-      atualizarStatusCameraMapaV43(camera, algumOnline ? 'online' : 'offline');
-    };
-    let cardAmpliado = null;
+  const apiCloud = String(
+    API_NUVEM ||
+    'https://zayron-api-1011701557501.southamerica-east1.run.app'
+  ).replace(/\/$/, '');
 
-    const fecharTelaCheia = async () => {
-      if (cardAmpliado) cardAmpliado.classList.remove('ampliada');
-      cardAmpliado = null;
-      try {
-        if (janela.document.fullscreenElement && janela.document.exitFullscreen) {
-          await janela.document.exitFullscreen();
-        }
-      } catch (_) {}
-    };
+  const INTERVALO_FRAME_MS = 3000;
+  const ATRASO_ENTRE_CAMERAS_MS = 300;
+  const LIMITE_CARREGAMENTO_MS = 12000;
 
-    janela.document.addEventListener('keydown', event => {
-      if (event.key === 'Escape') fecharTelaCheia();
-    });
+  function criarTimer(funcao, atraso) {
+    const timer = setTimeout(() => {
+      timers.delete(timer);
+      funcao();
+    }, atraso);
 
-
-    const parar = () => {
-      verificadores.forEach(timer => clearInterval(timer));
-      verificadores.clear();
-      sessoes.forEach(sessaoId => {
-        fetch('http://127.0.0.1:3001/local/cameras/mjpeg/parar', {
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({sessao_id:sessaoId}), keepalive:true
-        }).catch(()=>{});
-      });
-      sessoes.clear();
-    };
-    janela.addEventListener('beforeunload', parar, {once:true});
-
-    cameras.forEach(async (camera,index) => {
-      const card = janela.document.querySelector(`[data-camera-index="${index}"]`);
-      const img = card?.querySelector('img.live');
-      const loading = card?.querySelector('.loading');
-      const label = card?.querySelector('.label');
-      const status = card?.querySelector('.status');
-      const frame = card?.querySelector('.frame');
-      if (!card || !img) return;
-
-      const aplicarStatus = online => {
-        card.classList.toggle('online', online);
-        card.classList.toggle('offline', !online);
-        if (label) label.textContent = online ? 'AO VIVO' : 'OFFLINE';
-        if (status) status.textContent = online ? 'ONLINE' : 'OFFLINE';
-        if (!online && loading) {
-          loading.style.display = 'block';
-          loading.textContent = 'TRANSMISSÃO INTERROMPIDA';
-        }
-        atualizarStatusFisico(camera, index, online);
-      };
-
-      if (frame) {
-        const botaoFechar = frame.querySelector('.fechar-ampliada');
-        botaoFechar?.addEventListener('click', event => {
-          event.preventDefault();
-          event.stopPropagation();
-          fecharTelaCheia();
-        });
-
-        frame.addEventListener('click', async event => {
-          if (event.target.closest('.fechar-ampliada')) return;
-          if (card.classList.contains('ampliada')) return;
-
-          if (cardAmpliado && cardAmpliado !== card) {
-            cardAmpliado.classList.remove('ampliada');
-          }
-          cardAmpliado = card;
-          card.classList.add('ampliada');
-
-          try {
-            const raiz = janela.document.documentElement;
-            if (!janela.document.fullscreenElement && raiz.requestFullscreen) {
-              await raiz.requestFullscreen();
-            }
-          } catch (_) {
-            // O card continua ocupando toda a janela mesmo se o navegador bloquear F11/fullscreen.
-          }
-        });
-      }
-
-      let verificando = false;
-      const verificarOnline = async () => {
-        if (verificando || janela.closed) return;
-        verificando = true;
-        const controle = new AbortController();
-        const timeout = setTimeout(() => controle.abort(), 7000);
-        try {
-          const respostaTeste = await fetch('http://127.0.0.1:3001/local/cameras/testar', {
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body:JSON.stringify(dadosStreamV43(camera)),
-            signal:controle.signal
-          });
-          const dadosTeste = await respostaTeste.json().catch(()=>({}));
-          aplicarStatus(Boolean(respostaTeste.ok && dadosTeste.success && dadosTeste.data?.online !== false));
-        } catch (_) {
-          aplicarStatus(false);
-        } finally {
-          clearTimeout(timeout);
-          verificando = false;
-        }
-      };
-
-      try {
-        const resposta = await fetch('http://127.0.0.1:3001/local/cameras/mjpeg/iniciar', {
-          method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(dadosStreamV43(camera))
-        });
-        const dados = await resposta.json().catch(()=>({}));
-        if (!resposta.ok || !dados.success || !dados.data?.sessao_id || !dados.data?.stream_url) {
-          throw new Error(dados.details || dados.message || `Erro HTTP ${resposta.status}`);
-        }
-        sessoes.set(index,dados.data.sessao_id);
-        const url = String(dados.data.stream_url).startsWith('http') ? dados.data.stream_url : `http://127.0.0.1:3001${dados.data.stream_url}`;
-        img.onload = () => {
-          img.style.display='block';
-          if (loading) loading.style.display='none';
-          aplicarStatus(true);
-        };
-        img.onerror = () => aplicarStatus(false);
-        img.src=url;
-        await verificarOnline();
-        verificadores.set(index, setInterval(verificarOnline, 10000));
-      } catch(error) {
-        aplicarStatus(false);
-        if (loading) loading.textContent=error?.message || 'NÃO FOI POSSÍVEL ABRIR';
-      }
-    });
+    timers.add(timer);
+    return timer;
   }
 
-  window.abrirCamerasEmpresaGerenteV41 = async function(condominioId) {
-    const nome = typeof getNomeEmpresaPorIdGerente === 'function'
-      ? getNomeEmpresaPorIdGerente(condominioId)
-      : 'Empresa';
+  function cancelarTodosTimers() {
+    encerrado = true;
 
-    const chave = `empresa-${condominioId}`;
-    let janela = janelasGerenteV43.get(chave);
+    for (const timer of timers) {
+      clearTimeout(timer);
+    }
 
-    if (janela && !janela.closed) {
-      janela.focus();
+    timers.clear();
+  }
+
+  janela.addEventListener(
+    'beforeunload',
+    cancelarTodosTimers,
+    { once: true }
+  );
+
+  cameras.forEach((camera, index) => {
+    const card = janela.document.querySelector(
+      `[data-camera-index="${index}"]`
+    );
+
+    const img = card?.querySelector('img.live');
+    const loading = card?.querySelector('.loading');
+    const label = card?.querySelector('.label');
+    const status = card?.querySelector('.status');
+
+    if (!card || !img) {
       return;
     }
 
-    // Abre imediatamente para o navegador não bloquear o pop-up enquanto a API carrega.
-    janela = window.open(
-      '',
-      `zayron-cameras-${condominioId}`,
-      'width=1400,height=900,resizable=yes,scrollbars=yes'
-    );
+    let carregando = false;
+    let timerLimite = null;
 
-    if (!janela) {
-      alert('Permita pop-ups para abrir as câmeras.');
+    function aplicarStatus(online, mensagem = '') {
+      card.classList.toggle('online', online);
+      card.classList.toggle('offline', !online);
+
+      if (label) {
+        label.textContent =
+          online ? 'AO VIVO' : 'OFFLINE';
+      }
+
+      if (status) {
+        status.textContent =
+          online ? 'ONLINE' : 'OFFLINE';
+      }
+
+      if (loading) {
+        loading.style.display =
+          online ? 'none' : 'block';
+
+        loading.textContent =
+          online
+            ? ''
+            : mensagem ||
+              'AGUARDANDO IMAGEM DA NUVEM...';
+      }
+
+      if (
+        typeof atualizarStatusCameraMapaV43 ===
+        'function'
+      ) {
+        atualizarStatusCameraMapaV43(
+          camera,
+          online ? 'online' : 'offline'
+        );
+      }
+    }
+
+    if (!camera?.id) {
+      aplicarStatus(
+        false,
+        'CÂMERA SEM ID'
+      );
       return;
     }
 
-    janela.document.write(`<!doctype html><html lang="pt-br"><head><meta charset="utf-8"><title>Câmeras ao vivo - ${escapeHtml(nome)}</title><style>*{box-sizing:border-box}body{margin:0;background:#020617;color:#e2e8f0;font-family:Segoe UI,Arial,sans-serif;padding:16px}.carregando{min-height:220px;display:flex;align-items:center;justify-content:center;color:#93c5fd;background:#0f172a;border:1px solid #334155;border-radius:12px;font-weight:700}</style></head><body><div class="carregando">CARREGANDO CÂMERAS DA EMPRESA...</div></body></html>`);
-    janela.document.close();
-    janelasGerenteV43.set(chave, janela);
-
-    let cameras = [];
-
-    try {
-      // O gerente precisa buscar as câmeras da empresa antes de montar o mural.
-      if (typeof carregarCameras === 'function') {
-        const carregadas = await carregarCameras(condominioId);
-
-        if (Array.isArray(carregadas) && carregadas.length) {
-          cameras = carregadas.map(raw => ({
-            ...raw,
-            tipo: raw.tipo || raw.tipo_camera || 'cftv',
-            setor: raw.setor || raw.local_instalacao || raw.descricao || '',
-            latitude: raw.latitude ?? raw.lat ?? null,
-            longitude: raw.longitude ?? raw.lng ?? null
-          }));
-        }
-      }
-
-      // Fallback para o cache local, inclusive APIs antigas sem condominio_id.
-      if (!cameras.length) {
-        window.currentCondoId = condominioId;
-        cameras = camerasEmpresaV43(condominioId);
-      }
-    } catch (error) {
-      console.error('Erro carregando câmeras do gerente:', error);
-      window.currentCondoId = condominioId;
-      cameras = camerasEmpresaV43(condominioId);
+    if (!tokenCloud) {
+      aplicarStatus(
+        false,
+        'SESSÃO DA NUVEM SEM TOKEN'
+      );
+      return;
     }
 
-    if (janela.closed) return;
+    function agendarProximoFrame(atraso) {
+      if (
+        encerrado ||
+        janela.closed
+      ) {
+        return;
+      }
 
-    janela.document.open();
-    janela.document.write(
-      htmlGerenteV43(`Câmeras ao vivo - ${nome}`, cameras)
+      criarTimer(
+        atualizarFrame,
+        atraso
+      );
+    }
+
+    function finalizarCarregamento(online) {
+      if (timerLimite) {
+        clearTimeout(timerLimite);
+        timers.delete(timerLimite);
+        timerLimite = null;
+      }
+
+      carregando = false;
+
+      if (
+        encerrado ||
+        janela.closed
+      ) {
+        return;
+      }
+
+      if (online) {
+        img.style.display = 'block';
+        aplicarStatus(true);
+      } else {
+        img.style.display = 'none';
+
+        aplicarStatus(
+          false,
+          'TRANSMISSÃO INTERROMPIDA'
+        );
+      }
+
+      agendarProximoFrame(
+        INTERVALO_FRAME_MS
+      );
+    }
+
+    function atualizarFrame() {
+      if (
+        encerrado ||
+        janela.closed ||
+        carregando
+      ) {
+        return;
+      }
+
+      carregando = true;
+
+      const url =
+        `${apiCloud}/cloud/cameras/` +
+        `${encodeURIComponent(camera.id)}` +
+        `/frame` +
+        `?token=${encodeURIComponent(tokenCloud)}` +
+        `&t=${Date.now()}`;
+
+      img.onload = () => {
+        finalizarCarregamento(true);
+      };
+
+      img.onerror = () => {
+        finalizarCarregamento(false);
+      };
+
+      timerLimite = criarTimer(() => {
+        timerLimite = null;
+        carregando = false;
+
+        img.style.display = 'none';
+
+        aplicarStatus(
+          false,
+          'TEMPO LIMITE DA NUVEM'
+        );
+
+        agendarProximoFrame(
+          INTERVALO_FRAME_MS
+        );
+      }, LIMITE_CARREGAMENTO_MS);
+
+      img.src = url;
+    }
+
+    agendarProximoFrame(
+      index * ATRASO_ENTRE_CAMERAS_MS
     );
-    janela.document.close();
-
-    if (cameras.length) {
-      iniciarCamerasGerenteV43(janela, cameras);
-    }
-  };
-
-  window.abrirCameraIndividualGerenteV41 = function(condominioId,cameraId) {
-    const camera = camerasEmpresaV43(condominioId).find(item => String(item.id) === String(cameraId));
-    if (!camera) return alert('Câmera não encontrada para esta empresa.');
-    const nome = typeof getNomeEmpresaPorIdGerente === 'function' ? getNomeEmpresaPorIdGerente(condominioId) : 'Empresa';
-    const janela = window.open('', `zayron-camera-${cameraId}`, 'width=1100,height=820,resizable=yes');
-    if (!janela) return alert('Permita pop-ups para abrir a câmera.');
-    janela.document.write(htmlGerenteV43(`${camera.nome || 'Câmera'} - ${nome}`, [camera]));
-    janela.document.close();
-    iniciarCamerasGerenteV43(janela,[camera]);
-  };
+  });
+}
 
   function atualizarBotoesV43() {
     if (typeof currentRole === 'undefined' || currentRole !== 'gerente') return;
