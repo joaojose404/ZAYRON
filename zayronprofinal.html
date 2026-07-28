@@ -18180,48 +18180,108 @@ function lerTransmissoesV41(condominioId) {
       : 'Empresa';
   }
 
-  function midiaV41(item, altura = 250) {
-    const url = String(item.stream_url || item.snapshot_url || '');
-    const tipo = String(item.stream_tipo || '').toLowerCase();
-    if (item.snapshot_url) {
-      return `<img src="${escapeHtml(item.snapshot_url)}" style="width:100%;height:${altura}px;object-fit:cover;background:#020617;">`;
-    }
-    if (/^https?:/i.test(url) && (/\\.(mp4|webm|ogg)($|\\?)/i.test(url) || tipo === 'hls' || /\\.m3u8($|\\?)/i.test(url))) {
-      return `<video src="${escapeHtml(url)}" controls autoplay muted playsinline style="width:100%;height:${altura}px;background:#020617;"></video>`;
-    }
-    return `<div style="height:${altura}px;background:#020617;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px;color:#fbbf24;">
-      <div>STREAM ${escapeHtml(tipo.toUpperCase() || 'RTSP')}<br><small style="color:#94a3b8;">Aguardando saída HLS/WebRTC do servidor Zayron.</small></div>
-    </div>`;
+function midiaV41(item, altura = 250) {
+  const cameraId = String(
+    item.camera_id ||
+    item.camera_original?.id ||
+    ''
+  ).trim();
+
+  const token =
+    currentSession?.cloud_access_token ||
+    currentSession?.access_token ||
+    localStorage.getItem('access_token') ||
+    localStorage.getItem('token') ||
+    '';
+
+  const apiCloud = String(
+    typeof API_NUVEM !== 'undefined' && API_NUVEM
+      ? API_NUVEM
+      : 'https://zayron-api-1011701557501.southamerica-east1.run.app'
+  ).replace(/\/$/, '');
+
+  if (!cameraId) {
+    return `
+      <div style="
+        height:${altura}px;
+        background:#020617;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        color:#fca5a5;
+      ">
+        CÂMERA SEM ID
+      </div>
+    `;
   }
 
-  window.__htmlMuralGerenteV41 = function(condominioId) {
-    const itens = lerTransmissoesV41(condominioId);
-    if (!itens.length) {
-      return '<div class="vazio">Nenhuma câmera está sendo transmitida pelo operador desta empresa.</div>';
-    }
-    return itens.map(item => `
-      <article class="camera">
-        ${midiaV41(item, 260)}
-        <div class="info">
-          <div><b>${escapeHtml(item.camera_nome || 'Camera')}</b><span>AO VIVO</span></div>
-          <small>Setor: ${escapeHtml(item.setor || '-')} | Operador: ${escapeHtml(item.operador || '-')}</small>
-          <small>Iniciada: ${escapeHtml(formatDateTime(item.iniciada_em))}</small>
-          <button onclick="opener.abrirCameraIndividualGerenteV41('${escapeHtml(condominioId)}','${escapeHtml(item.camera_id)}')">Abrir câmera em tela separada</button>
-        </div>
-      </article>`).join('');
-  };
+  if (!token) {
+    return `
+      <div style="
+        height:${altura}px;
+        background:#020617;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        color:#fca5a5;
+      ">
+        TOKEN DA NUVEM NÃO ENCONTRADO
+      </div>
+    `;
+  }
 
-  window.__htmlCameraGerenteV41 = function(condominioId, cameraId) {
-    const item = lerTransmissoesV41(condominioId)
-      .find(camera => String(camera.camera_id) === String(cameraId));
-    if (!item) return '<div class="vazio">Transmissão encerrada pelo operador.</div>';
-    return `<div class="camera-unica">
-      ${midiaV41(item, 620)}
-      <div class="info"><h2>${escapeHtml(item.camera_nome || 'Camera')}</h2>
-      <div>Empresa: ${escapeHtml(nomeEmpresaV41(condominioId))} | Setor: ${escapeHtml(item.setor || '-')} | Operador: ${escapeHtml(item.operador || '-')}</div></div>
-    </div>`;
-  };
+  const frameUrl =
+    `${apiCloud}/cloud/cameras/` +
+    `${encodeURIComponent(cameraId)}/frame` +
+    `?token=${encodeURIComponent(token)}` +
+    `&t=${Date.now()}`;
 
+  return `
+    <div style="
+      position:relative;
+      width:100%;
+      height:${altura}px;
+      background:#020617;
+      overflow:hidden;
+    ">
+      <img
+        src="${frameUrl}"
+        style="
+          display:block;
+          width:100%;
+          height:${altura}px;
+          object-fit:cover;
+          background:#020617;
+        "
+        alt="${escapeHtml(item.camera_nome || 'Câmera')}"
+        onload="
+          this.style.display='block';
+          const aviso=this.nextElementSibling;
+          if(aviso) aviso.style.display='none';
+        "
+        onerror="
+          this.style.display='none';
+          const aviso=this.nextElementSibling;
+          if(aviso) aviso.style.display='flex';
+        "
+      >
+
+      <div style="
+        display:none;
+        position:absolute;
+        inset:0;
+        align-items:center;
+        justify-content:center;
+        text-align:center;
+        padding:20px;
+        color:#fca5a5;
+        background:#020617;
+      ">
+        IMAGEM DA NUVEM INDISPONÍVEL
+      </div>
+    </div>
+  `;
+}
   function documentoJanelaV41(titulo, corpoInicial, funcaoAtualizacao) {
     return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(titulo)}</title>
       <style>
