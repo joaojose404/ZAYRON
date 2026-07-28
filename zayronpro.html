@@ -10482,125 +10482,38 @@ modal.style.display = 'flex';
 }
 
 async function iniciarStreamPreviewCamera(camera) {
-  let fabricante = String(
-    camera.fabricante ||
-    camera.marca ||
-    'intelbras'
-  ).trim().toLowerCase();
+  const cameraId = String(camera?.id || '').trim();
 
-  if (
-    !fabricante ||
-    fabricante === 'generic'
-  ) {
-    fabricante = 'intelbras';
+  if (!cameraId) {
+    throw new Error('Câmera sem ID para buscar imagem na nuvem.');
   }
 
-  const canal = Math.max(
-    1,
-    Number(
-      camera.canal ||
-      camera.channel ||
-      1
-    )
-  );
+  const tokenCloud =
+    currentSession?.cloud_access_token ||
+    currentSession?.access_token ||
+    '';
 
-  const stream = String(
-    camera.stream ||
-    camera.perfil ||
-    camera.stream_perfil ||
-    'principal'
-  ).trim().toLowerCase();
-
-  const pathCamera =
-    camera.stream_path ||
-    camera.path ||
-    camera.rtsp_path ||
-    `/cam/realmonitor?channel=${canal}&subtype=${
-      stream === 'secundario' ||
-      stream === 'substream' ||
-      stream === 'sub'
-        ? 1
-        : 0
-    }`;
-
-  const resposta = await fetch(
-    'http://127.0.0.1:3001/local/cameras/mjpeg/iniciar',
-    {
-      method: 'POST',
-
-      headers: {
-        'Content-Type': 'application/json'
-      },
-
-      body: JSON.stringify({
-        fabricante,
-
-        ip: String(
-          camera.ip || ''
-        ).trim(),
-
-        porta:
-          Number(camera.porta) === 504
-            ? 554
-            : Number(camera.porta || 554),
-
-        usuario:
-          camera.usuario ||
-          camera.user ||
-          camera.login ||
-          '',
-
-        senha:
-          camera.senha ||
-          camera.password ||
-          '',
-
-        canal,
-        stream,
-        path: pathCamera,
-
-        fps: 15,
-        qualidade_mjpeg: 6
-      })
-    }
-  );
-
-  const dados = await resposta
-    .json()
-    .catch(() => ({}));
-
-  if (!resposta.ok || !dados.success) {
+  if (!tokenCloud) {
     throw new Error(
-      dados.details ||
-      dados.message ||
-      `Erro HTTP ${resposta.status}`
+      'Sessão da nuvem sem token. Faça login novamente.'
     );
   }
 
-  cameraPreviewSessaoId =
-    dados.data?.sessao_id || null;
+  const apiCloud = String(
+    API_NUVEM ||
+    'https://zayron-api-1011701557501.southamerica-east1.run.app'
+  ).replace(/\/$/, '');
 
-  const streamUrl =
-    dados.data?.stream_url || '';
-
-  if (
-    !cameraPreviewSessaoId ||
-    !streamUrl
-  ) {
-    throw new Error(
-      'O agente não retornou a sessão MJPEG.'
-    );
-  }
+  cameraPreviewSessaoId = null;
 
   cameraPreviewStreamUrl =
-    streamUrl.startsWith('http')
-      ? streamUrl
-      : `http://127.0.0.1:3001${streamUrl}`;
+    `${apiCloud}/cloud/cameras/` +
+    `${encodeURIComponent(cameraId)}/frame` +
+    `?token=${encodeURIComponent(tokenCloud)}` +
+    `&t=${Date.now()}`;
 
   return cameraPreviewStreamUrl;
 }
-
-
 async function fecharStreamPreviewCamera(
   fecharModal = true
 ) {
