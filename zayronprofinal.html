@@ -19703,7 +19703,7 @@ document.addEventListener('DOMContentLoaded', () => {
       verificadores.forEach(timer => clearInterval(timer));
       verificadores.clear();
 
-      atualizadoresCloud.forEach(timer => clearInterval(timer));
+      atualizadoresCloud.forEach(timer => clearTimeout(timer));
       atualizadoresCloud.clear();
 
       sessoes.forEach(sessaoId => {
@@ -19804,6 +19804,20 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         let carregandoFrame = false;
+        let timerCloud = null;
+        let falhasSeguidas = 0;
+
+        const agendarProximoFrame = atraso => {
+          if (janela.closed) return;
+          if (timerCloud) clearTimeout(timerCloud);
+
+          timerCloud = setTimeout(
+            atualizarFrameCloud,
+            Math.max(250, Number(atraso) || 900)
+          );
+
+          atualizadoresCloud.set(index, timerCloud);
+        };
 
         const atualizarFrameCloud = () => {
           if (janela.closed || carregandoFrame) return;
@@ -19815,41 +19829,49 @@ document.addEventListener('DOMContentLoaded', () => {
             `?token=${encodeURIComponent(token)}` +
             `&_=${Date.now()}`;
 
-          const liberar = () => {
+          /*
+           * O próximo JPEG é carregado em memória. A imagem que já está
+           * visível não é tocada durante a requisição, evitando piscadas,
+           * quadros pretos e engasgos a cada atualização da nuvem.
+           */
+          const proximoFrame = new janela.Image();
+          proximoFrame.decoding = 'async';
+
+          proximoFrame.onload = () => {
+            try {
+              img.src = proximoFrame.src;
+              img.style.display = 'block';
+
+              if (loading) loading.style.display = 'none';
+
+              falhasSeguidas = 0;
+              aplicarStatus(true);
+            } finally {
+              carregandoFrame = false;
+              agendarProximoFrame(700);
+            }
+          };
+
+          proximoFrame.onerror = () => {
+            falhasSeguidas += 1;
             carregandoFrame = false;
-          };
 
-          img.onload = () => {
-            img.style.display = 'block';
-
-            if (loading) {
-              loading.style.display = 'none';
+            /* Mantém o último quadro bom na tela durante falhas transitórias. */
+            if (!img.src) {
+              aplicarStatus(false);
+              if (loading) {
+                loading.style.display = 'block';
+                loading.textContent = 'AGUARDANDO FRAME DA NUVEM';
+              }
             }
 
-            aplicarStatus(true);
-            liberar();
+            agendarProximoFrame(Math.min(3000, 700 + falhasSeguidas * 350));
           };
 
-          img.onerror = () => {
-            aplicarStatus(false);
-
-            if (loading) {
-              loading.style.display = 'block';
-              loading.textContent = 'AGUARDANDO FRAME DA NUVEM';
-            }
-
-            liberar();
-          };
-
-          img.src = url;
+          proximoFrame.src = url;
         };
 
         atualizarFrameCloud();
-
-        atualizadoresCloud.set(
-          index,
-          setInterval(atualizarFrameCloud, 1200)
-        );
       };
 
       const iniciarLocal = async () => {
