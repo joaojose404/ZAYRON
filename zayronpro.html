@@ -10525,38 +10525,12 @@ async function fecharStreamPreviewCamera(
     imagem.onload = null;
     imagem.onerror = null;
     imagem.removeAttribute('src');
+    imagem.style.display = 'none';
   }
-
-  const sessaoId =
-    cameraPreviewSessaoId;
 
   cameraPreviewSessaoId = null;
   cameraPreviewStreamUrl = null;
   cameraPreviewAtual = null;
-
-  if (sessaoId) {
-    try {
-      await fetch(
-        'http://127.0.0.1:3001/local/cameras/mjpeg/parar',
-        {
-          method: 'POST',
-
-          headers: {
-            'Content-Type': 'application/json'
-          },
-
-          body: JSON.stringify({
-            sessao_id: sessaoId
-          })
-        }
-      );
-    } catch (error) {
-      console.warn(
-        'Erro ao encerrar stream MJPEG:',
-        error
-      );
-    }
-  }
 
   if (fecharModal) {
     const modal = document.getElementById(
@@ -10568,7 +10542,6 @@ async function fecharStreamPreviewCamera(
     }
   }
 }
-
     function previewCameraCadastro() {
       const camera = coletarDadosFormularioCamera();
       if (!camera.nome) return alert('Informe o nome da câmera para visualizar.');
