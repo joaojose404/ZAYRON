@@ -10278,45 +10278,7 @@ let cameraPreviewAtual = null;
   }
 
   modal.classList.remove('hidden');
-  modal.style.display = 'flex';
-
-  const previewBox = modal.querySelector('.camera-preview-box');
-
-  if (previewBox && !previewBox.dataset.fullscreenReady) {
-    previewBox.dataset.fullscreenReady = '1';
-    previewBox.title = 'Clique duas vezes para abrir em tela cheia';
-    previewBox.style.cursor = 'zoom-in';
-
-    previewBox.addEventListener('dblclick', async () => {
-      try {
-        if (document.fullscreenElement) {
-          await document.exitFullscreen?.();
-          return;
-        }
-
-        if (previewBox.requestFullscreen) {
-          await previewBox.requestFullscreen();
-        } else if (previewBox.webkitRequestFullscreen) {
-          previewBox.webkitRequestFullscreen();
-        }
-      } catch (erro) {
-        console.warn('Não foi possível abrir a câmera em tela cheia:', erro);
-      }
-    });
-
-    document.addEventListener('fullscreenchange', () => {
-      const emTelaCheia = document.fullscreenElement === previewBox;
-      previewBox.style.cursor = emTelaCheia ? 'zoom-out' : 'zoom-in';
-
-      const imagemAtual = previewBox.querySelector('#camera-preview-image');
-      if (imagemAtual) {
-        imagemAtual.style.maxHeight = emTelaCheia ? '100vh' : '65vh';
-        imagemAtual.style.width = '100%';
-        imagemAtual.style.height = emTelaCheia ? '100vh' : 'auto';
-        imagemAtual.style.objectFit = 'contain';
-      }
-    });
-  }
+modal.style.display = 'flex';
 
   let fabricante = String(
     camera.fabricante ||
@@ -19570,12 +19532,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let fabricante = String(camera.fabricante || camera.marca || 'intelbras').trim().toLowerCase();
     if (!fabricante || fabricante === 'generic') fabricante = 'intelbras';
     const canal = Math.max(1, Number(camera.canal || camera.channel || 1));
-    const stream = String(
-      camera.stream ||
-      camera.perfil ||
-      camera.stream_perfil ||
-      'principal'
-    ).trim().toLowerCase();
+    const stream = 'secundario';
     return {
       fabricante,
       ip: String(camera.ip || '').trim(),
@@ -19584,9 +19541,9 @@ document.addEventListener('DOMContentLoaded', () => {
       senha: camera.senha || camera.password || '',
       canal,
       stream,
-      path: camera.stream_path_mural || camera.stream_path || `/cam/realmonitor?channel=${canal}&subtype=${stream === 'secundario' || stream === 'substream' || stream === 'sub' ? 1 : 0}`,
-      fps: 15,
-      qualidade_mjpeg: 4
+      path: camera.stream_path_mural || `/cam/realmonitor?channel=${canal}&subtype=1`,
+      fps: 8,
+      qualidade_mjpeg: 8
     };
   }
 
@@ -19847,82 +19804,51 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         let carregandoFrame = false;
-        let ultimoBlobUrl = null;
-        let falhasSeguidas = 0;
 
-        const atualizarFrameCloud = async () => {
+        const atualizarFrameCloud = () => {
           if (janela.closed || carregandoFrame) return;
 
           carregandoFrame = true;
 
-          try {
-            const url =
-              `${api}/cloud/cameras/${encodeURIComponent(cameraId)}/frame` +
-              `?token=${encodeURIComponent(token)}` +
-              `&_=${Date.now()}`;
+          const url =
+            `${api}/cloud/cameras/${encodeURIComponent(cameraId)}/frame` +
+            `?token=${encodeURIComponent(token)}` +
+            `&_=${Date.now()}`;
 
-            const resposta = await fetch(url, {
-              method: 'GET',
-              cache: 'no-store',
-              headers: {
-                'Cache-Control': 'no-cache, no-store, must-revalidate',
-                Pragma: 'no-cache'
-              }
-            });
+          const liberar = () => {
+            carregandoFrame = false;
+          };
 
-            if (!resposta.ok) {
-              throw new Error(`Frame HTTP ${resposta.status}`);
-            }
-
-            const blob = await resposta.blob();
-
-            if (!blob || blob.size < 200) {
-              throw new Error('Frame vazio recebido da nuvem');
-            }
-
-            const novaBlobUrl = URL.createObjectURL(blob);
-
-            await new Promise((resolve, reject) => {
-              const imagemTeste = new Image();
-              imagemTeste.onload = resolve;
-              imagemTeste.onerror = reject;
-              imagemTeste.src = novaBlobUrl;
-            });
-
-            const anterior = ultimoBlobUrl;
-            ultimoBlobUrl = novaBlobUrl;
-            img.src = novaBlobUrl;
+          img.onload = () => {
             img.style.display = 'block';
 
-            if (loading) loading.style.display = 'none';
+            if (loading) {
+              loading.style.display = 'none';
+            }
 
-            falhasSeguidas = 0;
             aplicarStatus(true);
+            liberar();
+          };
 
-            if (anterior) {
-              setTimeout(() => URL.revokeObjectURL(anterior), 1500);
+          img.onerror = () => {
+            aplicarStatus(false);
+
+            if (loading) {
+              loading.style.display = 'block';
+              loading.textContent = 'AGUARDANDO FRAME DA NUVEM';
             }
-          } catch (erro) {
-            falhasSeguidas += 1;
 
-            if (falhasSeguidas >= 3) {
-              aplicarStatus(false);
+            liberar();
+          };
 
-              if (loading) {
-                loading.style.display = 'block';
-                loading.textContent = 'AGUARDANDO NOVOS QUADROS DA NUVEM';
-              }
-            }
-          } finally {
-            carregandoFrame = false;
-          }
+          img.src = url;
         };
 
         atualizarFrameCloud();
 
         atualizadoresCloud.set(
           index,
-          setInterval(atualizarFrameCloud, 500)
+          setInterval(atualizarFrameCloud, 1200)
         );
       };
 
