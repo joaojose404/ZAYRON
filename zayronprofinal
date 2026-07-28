@@ -18237,16 +18237,13 @@ function documentoJanelaV41(
   funcaoAtualizacao
 ) {
   return `<!doctype html>
-<html lang="pt-BR">
+<html>
 <head>
   <meta charset="utf-8">
 
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1"
-  >
-
-  <title>${escapeHtml(titulo)}</title>
+  <title>
+    ${escapeHtml(titulo)}
+  </title>
 
   <style>
     * {
@@ -18255,17 +18252,16 @@ function documentoJanelaV41(
 
     body {
       margin: 0;
-      padding: 16px;
       background: #020617;
       color: #e2e8f0;
-      font-family: Arial, sans-serif;
+      font-family: Arial;
+      padding: 16px;
     }
 
     header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 10px;
       margin-bottom: 14px;
       padding: 10px 14px;
       background: #0f172a;
@@ -18274,29 +18270,28 @@ function documentoJanelaV41(
     }
 
     h1 {
-      margin: 0;
       font-size: 20px;
+      margin: 0;
     }
 
     .status {
       color: #86efac;
       font-size: 12px;
-      white-space: nowrap;
     }
 
     .grid {
       display: grid;
       grid-template-columns:
-        repeat(auto-fit, minmax(320px, 1fr));
+        repeat(auto-fit, minmax(390px, 1fr));
       gap: 12px;
     }
 
     .camera,
     .camera-unica {
-      overflow: hidden;
       background: #0f172a;
       border: 1px solid #334155;
       border-radius: 10px;
+      overflow: hidden;
     }
 
     .info {
@@ -18316,167 +18311,72 @@ function documentoJanelaV41(
 
     small {
       display: block;
-      margin-top: 5px;
       color: #94a3b8;
+      margin-top: 5px;
     }
 
     button {
       margin-top: 10px;
-      padding: 9px 12px;
       background: #2563eb;
-      color: #ffffff;
+      color: white;
       border: 0;
       border-radius: 6px;
+      padding: 9px 12px;
       cursor: pointer;
-      touch-action: manipulation;
-    }
-
-    button:hover {
-      background: #1d4ed8;
-    }
-
-    button:active {
-      transform: translateY(1px);
     }
 
     .vazio {
       padding: 40px;
-      color: #94a3b8;
       text-align: center;
-    }
-
-    img[data-camera-cloud="true"] {
-      transition: opacity 0.2s ease;
-    }
-
-    @media (max-width: 600px) {
-      body {
-        padding: 8px;
-      }
-
-      header {
-        align-items: flex-start;
-        flex-direction: column;
-      }
-
-      .grid {
-        grid-template-columns: 1fr;
-      }
+      color: #94a3b8;
     }
   </style>
 </head>
 
 <body>
   <header>
-    <h1>${escapeHtml(titulo)}</h1>
+    <h1>
+      ${escapeHtml(titulo)}
+    </h1>
 
     <div class="status">
-      IMAGENS DA NUVEM
+      ATUALIZAÇÃO AUTOMÁTICA
     </div>
   </header>
 
-  <main id="conteudo" class="grid">
+  <main
+    id="conteudo"
+    class="grid"
+  >
     ${corpoInicial}
   </main>
 
   <script>
-    var paginaEncerrada = false;
-    var atualizacaoEmAndamento = false;
-    var temporizadoresCameras = [];
-
-    window.addEventListener(
-      'beforeunload',
-      function () {
-        paginaEncerrada = true;
-
-        temporizadoresCameras.forEach(
-          function (temporizador) {
-            clearTimeout(temporizador);
-          }
-        );
-
-        temporizadoresCameras = [];
-      }
-    );
-
-    function atualizarImagensCloud() {
-      if (
-        paginaEncerrada ||
-        atualizacaoEmAndamento
-      ) {
-        return;
-      }
-
-      if (
-        !window.opener ||
-        window.opener.closed
-      ) {
-        return;
-      }
-
-      var imagens = document.querySelectorAll(
-        'img[data-camera-cloud="true"]'
-      );
-
-      if (!imagens.length) {
-        return;
-      }
-
-      atualizacaoEmAndamento = true;
-      temporizadoresCameras = [];
-
-      imagens.forEach(
-        function (imagem, index) {
-          var urlBase = imagem.getAttribute(
-            'data-base-url'
-          );
-
-          if (!urlBase) {
-            return;
-          }
-
-          var temporizador = setTimeout(
-            function () {
-              if (
-                paginaEncerrada ||
-                !window.opener ||
-                window.opener.closed
-              ) {
-                return;
-              }
-
-              var separador =
-                urlBase.indexOf('?') >= 0
-                  ? '&'
-                  : '?';
-
-              imagem.src =
-                urlBase +
-                separador +
-                '_zayron=' +
-                Date.now();
-
-            },
-            index * 350
-          );
-
-          temporizadoresCameras.push(
-            temporizador
-          );
+    function atualizar() {
+      try {
+        if (
+          !window.opener ||
+          window.opener.closed
+        ) {
+          return;
         }
-      );
 
-      setTimeout(
-        function () {
-          atualizacaoEmAndamento = false;
-        },
-        3000
-      );
+        document.getElementById(
+          'conteudo'
+        ).innerHTML =
+          ${funcaoAtualizacao};
+
+      } catch (e) {
+        console.error(
+          'Erro atualizando câmeras:',
+          e
+        );
+      }
     }
 
-    window.setInterval(
-      atualizarImagensCloud,
-      5000
+    setInterval(
+      atualizar,
+      2000
     );
   <\/script>
 </body>
