@@ -18,7 +18,7 @@
       --muted: #94a3b8;
       --purple: #8b5cf6;
       --pink: #ec4899;
-    }abrirPreviewCameraSalva(
+    }
 
     * { box-sizing: border-box; }
 
@@ -5950,50 +5950,59 @@ data.sort(
       return melhor;
     }
 
-  function abrirCameraMaisProximaDoSetor(
-  setorId,
-  abrirPopupDepois = false
-) {
-  const setor = (
-    MOCK_DB.setores_cerca || []
-  ).find(
-    item => String(item.id) === String(setorId)
-  );
+    function abrirCameraMaisProximaDoSetor(setorId, abrirPopupDepois = false) {
+      const setor = (MOCK_DB.setores_cerca || []).find(
+        item => String(item.id) === String(setorId)
+      );
 
-  if (!setor) {
-    alert('Setor não encontrado.');
-    return;
-  }
+      if (!setor) {
+        alert('Setor não encontrado.');
+        return;
+      }
 
-  const camera =
-    encontrarCameraMaisProximaDoSetor(setor);
+      const camera = encontrarCameraMaisProximaDoSetor(setor);
 
-  if (!camera) {
-    alert(
-      'Nenhuma câmera com coordenadas foi encontrada próxima a este setor.'
-    );
-    return;
-  }
+      if (!camera) {
+        alert('Nenhuma câmera com coordenadas foi encontrada próxima a este setor.');
+        return;
+      }
 
-  if (
-    String(currentRole || '').toLowerCase() === 'gerente' &&
-    typeof window.abrirCameraIndividualGerenteV41 === 'function'
-  ) {
-    window.abrirCameraIndividualGerenteV41(
-      camera.condominio_id || setor.condominio_id,
-      camera.id
-    );
-  } else {
-    abrirPreviewCamera(camera);
-  }
+      const papelAtual = String(
+        typeof currentRole !== 'undefined' ? currentRole : ''
+      ).trim().toLowerCase();
 
-  if (abrirPopupDepois) {
-    setTimeout(
-      () => abrirPopupSetorCerca(setorId),
-      180
-    );
-  }
-}
+      if (
+        papelAtual === 'gerente' &&
+        typeof window.abrirCameraIndividualGerenteV41 === 'function'
+      ) {
+        const condominioId = String(
+          camera.condominio_id || setor.condominio_id || ''
+        );
+
+        const cameraId = String(
+          camera.id || camera.camera_id || ''
+        );
+
+        if (!condominioId || !cameraId) {
+          alert('Não foi possível identificar a empresa ou a câmera para abertura pela nuvem.');
+          return;
+        }
+
+        window.abrirCameraIndividualGerenteV41(
+          condominioId,
+          cameraId
+        );
+
+        return;
+      }
+
+      abrirPreviewCamera(camera);
+
+      if (abrirPopupDepois) {
+        setTimeout(() => abrirPopupSetorCerca(setorId), 180);
+      }
+    }
+
     function getPopupSetorCercaHtml(setor) {
       const evento = getUltimoEventoSetorCerca(setor.id);
       const camera = encontrarCameraMaisProximaDoSetor(setor);
