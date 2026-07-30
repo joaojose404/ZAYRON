@@ -5950,17 +5950,50 @@ data.sort(
       return melhor;
     }
 
-    function abrirCameraMaisProximaDoSetor(setorId, abrirPopupDepois = false) {
-      const setor = (MOCK_DB.setores_cerca || []).find(item => item.id === setorId);
-      if (!setor) return alert('Setor não encontrado.');
-      const camera = encontrarCameraMaisProximaDoSetor(setor);
-      if (!camera) return alert('Nenhuma câmera com coordenadas foi encontrada próxima a este setor.');
-      abrirPreviewCamera(camera);
-      if (abrirPopupDepois) {
-        setTimeout(() => abrirPopupSetorCerca(setorId), 180);
-      }
-    }
+  function abrirCameraMaisProximaDoSetor(
+  setorId,
+  abrirPopupDepois = false
+) {
+  const setor = (
+    MOCK_DB.setores_cerca || []
+  ).find(
+    item => String(item.id) === String(setorId)
+  );
 
+  if (!setor) {
+    alert('Setor não encontrado.');
+    return;
+  }
+
+  const camera =
+    encontrarCameraMaisProximaDoSetor(setor);
+
+  if (!camera) {
+    alert(
+      'Nenhuma câmera com coordenadas foi encontrada próxima a este setor.'
+    );
+    return;
+  }
+
+  if (
+    String(currentRole || '').toLowerCase() === 'gerente' &&
+    typeof window.abrirCameraIndividualGerenteV41 === 'function'
+  ) {
+    window.abrirCameraIndividualGerenteV41(
+      camera.condominio_id || setor.condominio_id,
+      camera.id
+    );
+  } else {
+    abrirPreviewCamera(camera);
+  }
+
+  if (abrirPopupDepois) {
+    setTimeout(
+      () => abrirPopupSetorCerca(setorId),
+      180
+    );
+  }
+}
     function getPopupSetorCercaHtml(setor) {
       const evento = getUltimoEventoSetorCerca(setor.id);
       const camera = encontrarCameraMaisProximaDoSetor(setor);
