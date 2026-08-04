@@ -977,6 +977,17 @@
           <button class="btn btn-warning" onclick="salvarPortariaCondo()">Salvar Portaria</button>
         </div>
 
+        <div id="admin-card-agente-local" class="card">
+          <div class="section-header">5. Agente Local / Servidor</div>
+          <select id="sel_condo_agente" onchange="preencherAgenteLocalCondo(true)"></select>
+          <input type="text" id="url_agente_local" placeholder="http://IP-DO-SERVIDOR:3001" />
+          <div class="row">
+            <button class="btn btn-success" onclick="salvarAgenteLocalCondo()">Salvar Endereço</button>
+            <button class="btn btn-warning" onclick="testarAgenteLocalCondo()">Testar Conexão</button>
+          </div>
+          <div id="status_agente_local" class="muted">Sem endereço definido: será usado 127.0.0.1:3001.</div>
+        </div>
+
         <div id="admin-card-ronda-pontos" class="card">
           <div class="section-header">5. Cadastro de Pontos da Ronda</div>
           <select id="sel_condo_ponto"></select>
@@ -2555,7 +2566,79 @@ function renderizarVisitantesPortaria() {
     ? location.origin
     : 'http://127.0.0.1:3000';
 const API_LOCAL_3000 = 'http://127.0.0.1:3000';
-const API_LOCAL_3001 = 'http://127.0.0.1:3001';
+const API_LOCAL_3001_PADRAO = 'http://127.0.0.1:3001';
+const AGENTE_LOCAL_STORAGE_KEY = 'zayron_agente_local_por_condominio_v1';
+
+function normalizarUrlAgenteLocal(valor) {
+  let url = String(valor || '').trim();
+  if (!url) return '';
+  if (!/^https?:\/\//i.test(url)) url = `http://${url}`;
+  return url.replace(/\/+$/, '');
+}
+
+function lerAgentesLocaisSalvos() {
+  try {
+    const dados = JSON.parse(localStorage.getItem(AGENTE_LOCAL_STORAGE_KEY) || '{}');
+    return dados && typeof dados === 'object' && !Array.isArray(dados) ? dados : {};
+  } catch (e) { return {}; }
+}
+
+function getCondominioIdAgenteLocal() {
+  return String(currentCondoId || currentUser?.condominio_id || currentSession?.usuario?.condominio_id || '').trim();
+}
+
+function getApiLocal3001(condominioId = null) {
+  const id = String(condominioId || getCondominioIdAgenteLocal() || '').trim();
+  const salvos = lerAgentesLocaisSalvos();
+  return normalizarUrlAgenteLocal(id ? salvos[id] : salvos.__padrao__) || API_LOCAL_3001_PADRAO;
+}
+
+function salvarUrlAgenteLocal(condominioId, valor) {
+  const id = String(condominioId || '').trim() || '__padrao__';
+  const salvos = lerAgentesLocaisSalvos();
+  const url = normalizarUrlAgenteLocal(valor);
+  if (url) salvos[id] = url;
+  else delete salvos[id];
+  localStorage.setItem(AGENTE_LOCAL_STORAGE_KEY, JSON.stringify(salvos));
+  return url || API_LOCAL_3001_PADRAO;
+}
+
+function preencherAgenteLocalCondo(forcarAtualizacao = false) {
+  const seletor = document.getElementById('sel_condo_agente');
+  const campo = document.getElementById('url_agente_local');
+  const status = document.getElementById('status_agente_local');
+  if (!campo) return;
+  if (!forcarAtualizacao && document.activeElement === campo) return;
+  const id = String(seletor?.value || getCondominioIdAgenteLocal() || '').trim();
+  const salvos = lerAgentesLocaisSalvos();
+  campo.value = id && salvos[id] ? salvos[id] : '';
+  if (status) status.textContent = campo.value ? `Configurado: ${campo.value}` : `Padrão: ${API_LOCAL_3001_PADRAO}`;
+}
+
+function salvarAgenteLocalCondo() {
+  const id = String(document.getElementById('sel_condo_agente')?.value || '').trim();
+  if (!id) return alert('Selecione o condomínio.');
+  const url = salvarUrlAgenteLocal(id, document.getElementById('url_agente_local')?.value || '');
+  preencherAgenteLocalCondo(true);
+  alert(`Endereço do agente salvo: ${url}`);
+}
+
+async function testarAgenteLocalCondo() {
+  const id = String(document.getElementById('sel_condo_agente')?.value || getCondominioIdAgenteLocal() || '').trim();
+  const campo = document.getElementById('url_agente_local');
+  const status = document.getElementById('status_agente_local');
+  const base = normalizarUrlAgenteLocal(campo?.value) || getApiLocal3001(id);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+  if (status) status.textContent = `Testando ${base}/health...`;
+  try {
+    const resposta = await fetch(`${base}/health`, { signal: controller.signal, cache: 'no-store' });
+    if (!resposta.ok) throw new Error(`HTTP ${resposta.status}`);
+    if (status) status.textContent = `Conectado com sucesso: ${base}`;
+  } catch (erro) {
+    if (status) status.textContent = `Sem conexão com ${base}. Verifique agente, IP, porta e firewall.`;
+  } finally { clearTimeout(timeout); }
+}
 const API_NUVEM = 'https://zayron-api-1011701557501.southamerica-east1.run.app';
 const SESSION_SCHEMA_VERSION = 'zayron-local-token-v4';
 
@@ -2818,7 +2901,7 @@ function getApiBase() {
     }
     function getApiLocalBases() {
       // Agente local exclusivo para comando fisico de rele/cerca.
-      return [API_LOCAL_3001];
+      return [getApiLocal3001()];
     }
 
     function getApiLocalLoginBases() {
@@ -4674,6 +4757,14 @@ setTimeout(() => {
           .filter(Boolean);
 
         const optionHtml = condosCache.map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.nome || '-')}</option>`).join('');
+        const selAgente = document.getElementById('sel_condo_agente');
+        if (selAgente) {
+          const agenteAtual = selAgente.value;
+          selAgente.innerHTML = `<option value="">Selecione</option>${optionHtml}`;
+          if (agenteAtual && condosCache.some(c => String(c.id) === String(agenteAtual))) selAgente.value = agenteAtual;
+          else if (currentCondoId && condosCache.some(c => String(c.id) === String(currentCondoId))) selAgente.value = currentCondoId;
+          else if (condosCache.length === 1) selAgente.value = condosCache[0].id;
+        }
         selects.forEach(sel => {
           const current = sel.value;
           sel.innerHTML = `<option value="">Selecione</option>${optionHtml}`;
@@ -4716,6 +4807,7 @@ setTimeout(() => {
 
         
         sincronizarPortariaCondominio();
+        preencherAgenteLocalCondo();
 
       } catch (error) {
         console.warn('Falha ao carregar condominios pela API; usando condominios conhecidos/local.', error);
@@ -4732,6 +4824,11 @@ setTimeout(() => {
           'sel_condo_access','sel_condo_dispositivo','sel_condo_cerca_modulo','sel_condo_cerca_setor','sel_condo_relatorio_cerca'
         ].map(id => document.getElementById(id)).filter(Boolean);
         const optionFallback = condosCache.map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.nome || c.nome_condominio || '-')}</option>`).join('');
+        const selAgenteFallback = document.getElementById('sel_condo_agente');
+        if (selAgenteFallback) {
+          selAgenteFallback.innerHTML = `<option value="">Selecione</option>${optionFallback}`;
+          if (currentCondoId) selAgenteFallback.value = currentCondoId;
+        }
         selectsFallback.forEach(sel => {
           const atual = sel.value;
           sel.innerHTML = `<option value="">Selecione</option>${optionFallback}`;
@@ -4753,6 +4850,7 @@ setTimeout(() => {
           `).join('') : '<div class="muted">Nenhum condomínio cadastrado.</div>';
         }
         sincronizarPortariaCondominio();
+        preencherAgenteLocalCondo();
       }
 
 
@@ -5954,18 +6052,21 @@ data.sort(
       const setor = (MOCK_DB.setores_cerca || []).find(
         item => String(item.id) === String(setorId)
       );
+      if (!setor) return alert('Setor não encontrado.');
 
-      if (!setor) {
-        alert('Setor não encontrado.');
-        return;
-      }
+      const vinculo = (MOCK_DB.vinculos_cerca_camera || []).find(
+        item => String(item.setor_id) === String(setorId)
+      );
+      const cameraVinculada = vinculo
+        ? (MOCK_DB.cameras_cadastro || []).find(
+            item => String(item.id) === String(vinculo.camera_id)
+          )
+        : (MOCK_DB.cameras_cadastro || []).find(
+            item => String(item.setor_cerca_id || '') === String(setorId)
+          );
+      const camera = cameraVinculada || encontrarCameraMaisProximaDoSetor(setor);
 
-      const camera = encontrarCameraMaisProximaDoSetor(setor);
-
-      if (!camera) {
-        alert('Nenhuma câmera com coordenadas foi encontrada próxima a este setor.');
-        return;
-      }
+      if (!camera) return alert('Nenhuma câmera está vinculada a este setor.');
 
       const papelAtual = String(
         typeof currentRole !== 'undefined' ? currentRole : ''
@@ -5975,29 +6076,16 @@ data.sort(
         papelAtual === 'gerente' &&
         typeof window.abrirCameraIndividualGerenteV41 === 'function'
       ) {
-        const condominioId = String(
-          camera.condominio_id || setor.condominio_id || ''
-        );
-
-        const cameraId = String(
-          camera.id || camera.camera_id || ''
-        );
-
+        const condominioId = String(camera.condominio_id || setor.condominio_id || '');
+        const cameraId = String(camera.id || camera.camera_id || '');
         if (!condominioId || !cameraId) {
-          alert('Não foi possível identificar a empresa ou a câmera para abertura pela nuvem.');
-          return;
+          return alert('Não foi possível identificar a empresa ou a câmera deste setor.');
         }
-
-        window.abrirCameraIndividualGerenteV41(
-          condominioId,
-          cameraId
-        );
-
+        window.abrirCameraIndividualGerenteV41(condominioId, cameraId);
         return;
       }
 
       abrirPreviewCamera(camera);
-
       if (abrirPopupDepois) {
         setTimeout(() => abrirPopupSetorCerca(setorId), 180);
       }
@@ -6031,7 +6119,7 @@ data.sort(
           <div class="actions-inline" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
             <button class="btn-mini" style="background:#10b981;margin-left:0;" ${offlineVisual ? 'disabled' : ''} onclick="atualizarStatusSetorCerca('${setor.id}','ativo')">Armar</button>
             <button class="btn-mini" style="background:#64748b;margin-left:0;" ${offlineVisual ? 'disabled' : ''} onclick="atualizarStatusSetorCerca('${setor.id}','desarmado')">Desarmar</button>
-            <button class="btn-mini" style="background:#8b5cf6;margin-left:0;grid-column:1 / span 2;" ${offlineVisual ? 'disabled' : ''} onclick="abrirCameraMaisProximaDoSetor('${setor.id}', true)">Abrir câmera do setor</button>
+            <button class="btn-mini" style="background:#8b5cf6;margin-left:0;grid-column:1 / span 2;" onclick="abrirCameraMaisProximaDoSetor('${setor.id}', true)">Abrir câmera do setor</button>
           </div>
         </div>`;
     }
@@ -6546,9 +6634,48 @@ const setores = (MOCK_DB.setores_cerca || [])
   }
 }
 
-    function acionarSetorCerca(setorId, novoStatus) {
-      return atualizarStatusSetorCerca(setorId, novoStatus);
-    }
+   function acionarSetorCerca(setorId, novoStatus) {
+  const setor = (MOCK_DB.setores_cerca || []).find(item =>
+    String(item.id || '') === String(setorId || '')
+  );
+
+  if (!setor) {
+    alert('Setor não encontrado.');
+    return false;
+  }
+
+  const statusAtual = String(
+    setor.status_atual ||
+    setor.status ||
+    ''
+  ).trim().toLowerCase();
+
+  const leitura = setor.leitura_json || {};
+
+  const falhaComunicacao =
+    statusAtual === 'falha' ||
+    setor.offline_local === true ||
+    setor.falha_comunicacao === true ||
+    setor.alarme_offline_local === true ||
+    leitura.offline_local === true ||
+    leitura.falha_comunicacao === true;
+
+  const comando = String(novoStatus || '')
+    .trim()
+    .toLowerCase();
+
+  if (
+    falhaComunicacao &&
+    ['ativo', 'desarmado'].includes(comando)
+  ) {
+    alert(
+      'Comando bloqueado: o setor está com falha de comunicação com a placa.'
+    );
+    return false;
+  }
+
+  return atualizarStatusSetorCerca(setorId, novoStatus);
+}
 
     
    async function preencherSelectCercaAdmin() {
@@ -7010,206 +7137,643 @@ function renderizarSetoresCercaAdmin() {
     }
 
 
-  async function aplicarAlarmesLocaisOperador(condoId = null) {
-  if (!['operador','portaria'].includes(String(currentRole || '').toLowerCase())) return;
+ async function aplicarAlarmesLocaisOperador(condoId = null) {
+  const papelAtual = String(currentRole || '').toLowerCase();
+
+  if (!['operador', 'portaria'].includes(papelAtual)) return;
 
   try {
-    const query = condoId ? `?condominio_id=${encodeURIComponent(condoId)}` : '';
-    const resp = await fetch(`${String(API_LOCAL_3001).replace(/\/$/, '')}/local/setores-cerca/alarmes${query}`, {
-      headers: { Accept: 'application/json' }
-    });
+    const query = condoId
+      ? `?condominio_id=${encodeURIComponent(condoId)}`
+      : '';
 
-    if (!resp.ok) throw new Error(`Agente local respondeu HTTP ${resp.status}`);
+    const resp = await fetch(
+      `${getApiLocal3001()}/local/setores-cerca/alarmes${query}`,
+      {
+        method: 'GET',
+        cache: 'no-store',
+        headers: {
+          Accept: 'application/json'
+        }
+      }
+    );
+
+    if (!resp.ok) {
+      throw new Error(`Agente local respondeu HTTP ${resp.status}`);
+    }
 
     const json = await resp.json().catch(() => null);
-    const alarmes = Array.isArray(json?.data) ? json.data : [];
+
+    /*
+     * Aceita vários formatos possíveis do agente:
+     *
+     * { data: [...] }
+     * { alarmes: [...] }
+     * { setores: [...] }
+     * [...]
+     */
+    const alarmes = Array.isArray(json?.data)
+      ? json.data
+      : Array.isArray(json?.alarmes)
+        ? json.alarmes
+        : Array.isArray(json?.setores)
+          ? json.setores
+          : Array.isArray(json)
+            ? json
+            : [];
 
     if (!Array.isArray(MOCK_DB.setores_cerca)) return;
-    if (!Array.isArray(MOCK_DB.alarmes_cerca)) MOCK_DB.alarmes_cerca = [];
 
-    // A comunicação com o agente/placa foi restabelecida.
-    // Guarda quais setores estavam em estado transitório antes de normalizar.
-    // Na primeira leitura após a reconexão, eventos antigos/repetidos não podem
-    // provocar o piscar vermelho; somente um alarme explicitamente ATIVO agora.
-    const setoresEmReconexao = new Set();
-    MOCK_DB.setores_cerca.forEach(setor => {
-      if (condoId && String(setor.condominio_id || '') !== String(condoId)) return;
-      const estadoAnterior = String(setor.status_atual || setor.status || '').toLowerCase();
-      if (['alarme', 'falha'].includes(estadoAnterior)) {
-        setoresEmReconexao.add(String(setor.id || setor.cloud_id || setor.local_id || ''));
+    if (!Array.isArray(MOCK_DB.alarmes_cerca)) {
+      MOCK_DB.alarmes_cerca = [];
+    }
+
+    const normalizarTextoSeguro = valor => {
+      if (typeof normalizarTexto === 'function') {
+        return normalizarTexto(valor || '');
       }
-    });
 
-    // Remove somente estados transitórios antigos de ALARME/FALHA.
-    // DESARMADO continua cinza; um alarme realmente atual será aplicado logo abaixo.
-    MOCK_DB.setores_cerca = MOCK_DB.setores_cerca.map(setor => {
-      if (condoId && String(setor.condominio_id || '') !== String(condoId)) return setor;
-      const estadoAnterior = String(setor.status_atual || setor.status || '').toLowerCase();
-      if (!['alarme', 'falha'].includes(estadoAnterior)) return setor;
-      return {
-        ...setor,
-        status: 'ativo',
-        status_atual: 'ativo',
-        alarme_por_entrada_local: false,
-        alarme_offline_local: false,
-        erro_alarme_local: null
-      };
-    });
-
-    const normalizarStatusLocal = (valor) => {
-      const s = String(valor || '').toLowerCase().trim();
-      if (s.includes('desarm')) return 'desarmado';
-      if (s.includes('alarme') || s.includes('violacao') || s.includes('disparo')) return 'alarme';
-      if (s.includes('falha')) return 'falha';
-      if (s.includes('ativo') || s.includes('arme') || s.includes('armado')) return 'ativo';
-      return s || 'ativo';
+      return String(valor ?? '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim()
+        .toLowerCase();
     };
 
-    const texto = valor => (typeof normalizarTexto === 'function'
-      ? normalizarTexto(valor || '')
-      : String(valor || '').trim().toLowerCase());
+    const normalizarStatusLocal = valor => {
+      const status = normalizarTextoSeguro(valor);
 
-    const acharSetor = (alarme) => {
-      const idAlarme = String(alarme.setor_id || alarme.id || '').trim();
-      const nomeAlarme = texto(alarme.nome || alarme.setor_nome || '');
-      const entradaAlarme = String(alarme.entrada_alarme || '').trim();
-      const saidaAlarme = String(alarme.saida_rele || '').trim();
+      if (
+        status.includes('alarme') ||
+        status.includes('violacao') ||
+        status.includes('violado') ||
+        status.includes('disparo') ||
+        status.includes('acionado') ||
+        status.includes('intrusao')
+      ) {
+        return 'alarme';
+      }
 
-      let idx = MOCK_DB.setores_cerca.findIndex(setor =>
-        idAlarme &&
-        (
+      if (
+        status.includes('falha') ||
+        status.includes('offline') ||
+        status.includes('sem comunicacao') ||
+        status.includes('desconectado')
+      ) {
+        return 'falha';
+      }
+
+      if (
+        status.includes('desarmado') ||
+        status.includes('desarme') ||
+        status.includes('desligado')
+      ) {
+        return 'desarmado';
+      }
+
+      if (
+        status.includes('ativo') ||
+        status.includes('armado') ||
+        status.includes('arme') ||
+        status.includes('normal') ||
+        status.includes('restaurado')
+      ) {
+        return 'ativo';
+      }
+
+      return '';
+    };
+
+    /*
+     * Converte somente valores realmente booleanos de entrada.
+     *
+     * Não considera "ativo" como entrada disparada porque "ativo"
+     * também significa que o setor está armado.
+     */
+    const valorEntradaAtiva = valor => {
+      if (valor === true || valor === 1) return true;
+      if (valor === false || valor === 0 || valor == null) return false;
+
+      const textoValor = normalizarTextoSeguro(valor);
+
+      return [
+        'true',
+        '1',
+        'sim',
+        'yes',
+        'on',
+        'high',
+        'acionada',
+        'acionado',
+        'disparada',
+        'disparado',
+        'violada',
+        'violado',
+        'alarme',
+        'alarm'
+      ].includes(textoValor);
+    };
+
+    const valorEntradaInativa = valor => {
+      if (valor === false || valor === 0) return true;
+      if (valor === true || valor === 1 || valor == null) return false;
+
+      const textoValor = normalizarTextoSeguro(valor);
+
+      return [
+        'false',
+        '0',
+        'nao',
+        'não',
+        'no',
+        'off',
+        'low',
+        'normal',
+        'inativa',
+        'inativo',
+        'fechada',
+        'fechado',
+        'restaurada',
+        'restaurado'
+      ].includes(textoValor);
+    };
+
+    const obterEstadoEntrada = alarme => {
+      /*
+       * Campos que podem representar o ESTADO da entrada.
+       * entrada_alarme não entra aqui porque normalmente é o número
+       * da entrada, por exemplo: entrada 1 ou entrada 2.
+       */
+      const valoresEntrada = [
+        alarme.entrada_ativa,
+        alarme.input_active,
+        alarme.inputActive,
+        alarme.estado_entrada,
+        alarme.input_state,
+        alarme.inputState,
+        alarme.valor_entrada,
+        alarme.input_value,
+        alarme.inputValue,
+        alarme.disparo_ativo,
+        alarme.alarme_ativo,
+        alarme.em_alarme,
+        alarme.violacao_ativa,
+        alarme.sensor_ativo,
+        alarme.current_alarm,
+        alarme.currentAlarm
+      ];
+
+      if (valoresEntrada.some(valorEntradaAtiva)) {
+        return true;
+      }
+
+      if (valoresEntrada.some(valorEntradaInativa)) {
+        return false;
+      }
+
+      return null;
+    };
+
+    const pertenceAoCondominio = setor => {
+      if (!condoId) return true;
+
+      return String(setor?.condominio_id || '') === String(condoId);
+    };
+
+    const acharSetor = alarme => {
+      const idAlarme = String(
+        alarme.setor_id ||
+        alarme.setorId ||
+        alarme.cloud_id ||
+        alarme.local_id ||
+        ''
+      ).trim();
+
+      const nomeAlarme = normalizarTextoSeguro(
+        alarme.setor_nome ||
+        alarme.nome_setor ||
+        alarme.nome ||
+        ''
+      );
+
+      const entradaAlarme = String(
+        alarme.entrada_alarme ??
+        alarme.entrada ??
+        alarme.input ??
+        alarme.input_number ??
+        alarme.canal_entrada ??
+        ''
+      ).trim();
+
+      const saidaAlarme = String(
+        alarme.saida_rele ??
+        alarme.saida ??
+        alarme.rele ??
+        alarme.output ??
+        alarme.output_number ??
+        ''
+      ).trim();
+
+      const moduloAlarme = String(
+        alarme.modulo_id ||
+        alarme.modulo_cerca_id ||
+        alarme.device_id ||
+        ''
+      ).trim();
+
+      /*
+       * 1. Procura pelo ID.
+       */
+      let idx = MOCK_DB.setores_cerca.findIndex(setor => {
+        if (!pertenceAoCondominio(setor)) return false;
+        if (!idAlarme) return false;
+
+        return (
           String(setor.id || '') === idAlarme ||
           String(setor.cloud_id || '') === idAlarme ||
           String(setor.local_id || '') === idAlarme
-        )
-      );
+        );
+      });
+
       if (idx >= 0) return idx;
 
-      idx = MOCK_DB.setores_cerca.findIndex(setor =>
-        nomeAlarme && texto(setor.nome || '') === nomeAlarme
-      );
+      /*
+       * 2. Procura pelo módulo + entrada.
+       */
+      idx = MOCK_DB.setores_cerca.findIndex(setor => {
+        if (!pertenceAoCondominio(setor)) return false;
+        if (!entradaAlarme) return false;
+
+        const entradaSetor = String(
+          setor.entrada_alarme ??
+          setor.entrada ??
+          setor.input ??
+          ''
+        ).trim();
+
+        if (entradaSetor !== entradaAlarme) return false;
+
+        if (moduloAlarme) {
+          const moduloSetor = String(
+            setor.modulo_id ||
+            setor.modulo_cerca_id ||
+            ''
+          ).trim();
+
+          if (moduloSetor && moduloSetor !== moduloAlarme) {
+            return false;
+          }
+        }
+
+        return true;
+      });
+
       if (idx >= 0) return idx;
 
-      idx = MOCK_DB.setores_cerca.findIndex(setor =>
-        entradaAlarme &&
-        String(setor.entrada_alarme || '').trim() === entradaAlarme &&
-        (!saidaAlarme || String(setor.saida_rele || '').trim() === saidaAlarme)
-      );
+      /*
+       * 3. Procura por entrada + saída.
+       */
+      idx = MOCK_DB.setores_cerca.findIndex(setor => {
+        if (!pertenceAoCondominio(setor)) return false;
+        if (!entradaAlarme) return false;
+
+        const entradaSetor = String(
+          setor.entrada_alarme ??
+          setor.entrada ??
+          setor.input ??
+          ''
+        ).trim();
+
+        const saidaSetor = String(
+          setor.saida_rele ??
+          setor.saida ??
+          setor.rele ??
+          setor.output ??
+          ''
+        ).trim();
+
+        return (
+          entradaSetor === entradaAlarme &&
+          (!saidaAlarme || !saidaSetor || saidaSetor === saidaAlarme)
+        );
+      });
+
+      if (idx >= 0) return idx;
+
+      /*
+       * 4. Procura pelo nome.
+       */
+      idx = MOCK_DB.setores_cerca.findIndex(setor => {
+        if (!pertenceAoCondominio(setor)) return false;
+        if (!nomeAlarme) return false;
+
+        return normalizarTextoSeguro(setor.nome || '') === nomeAlarme;
+      });
 
       return idx;
     };
 
+    /*
+     * Processa primeiro os dados mais antigos e deixa o estado
+     * mais recente prevalecer para cada setor.
+     */
     alarmes
       .slice()
-      .sort((a, b) => new Date(a.updated_at || 0).getTime() - new Date(b.updated_at || 0).getTime())
+      .sort((a, b) => {
+        const dataA = new Date(
+          a.updated_at ||
+          a.created_at ||
+          a.timestamp ||
+          a.data_hora ||
+          0
+        ).getTime();
+
+        const dataB = new Date(
+          b.updated_at ||
+          b.created_at ||
+          b.timestamp ||
+          b.data_hora ||
+          0
+        ).getTime();
+
+        return dataA - dataB;
+      })
       .forEach(alarme => {
         const idx = acharSetor(alarme);
-        if (idx < 0) return;
 
-        const setor = MOCK_DB.setores_cerca[idx];
-
-        const statusLocal = normalizarStatusLocal(
-          alarme.status_atual ||
-          alarme.status ||
-          alarme.tipo ||
-          'ativo'
-        );
-
-        // Alarmes/violações antigos retornados pelo agente são histórico, não estado atual.
-        // Só mudam o setor para vermelho quando forem atuais ou vierem marcados como ativos agora.
-        const dataSinal = alarme.updated_at || alarme.created_at || alarme.timestamp || alarme.data_hora || null;
-        const tempoSinal = dataSinal ? new Date(dataSinal).getTime() : NaN;
-        const sinalRecente = Number.isFinite(tempoSinal) && (Date.now() - tempoSinal) >= 0 && (Date.now() - tempoSinal) <= 15000;
-        const sinalAtualExplicito = (
-          alarme.ativo === true ||
-          alarme.active === true ||
-          alarme.em_alarme === true ||
-          alarme.disparo_ativo === true ||
-          alarme.entrada_ativa === true ||
-          alarme.current === true ||
-          alarme.estado_atual === true
-        );
-
-        const chaveSetor = String(setor.id || setor.cloud_id || setor.local_id || '');
-
-        // Durante a reconexão, não aceite um alarme apenas por ter timestamp recente.
-        // O agente pode repetir o último evento armazenado. Para ficar vermelho nessa
-        // primeira leitura, a resposta precisa declarar explicitamente que a entrada
-        // está ativa AGORA. Isso elimina o vermelho momentâneo antes de voltar ao verde.
-        if (statusLocal === 'alarme' && setoresEmReconexao.has(chaveSetor) && !sinalAtualExplicito) {
+        if (idx < 0) {
+          console.warn(
+            '[CERCA] Alarme recebido, mas nenhum setor foi encontrado:',
+            alarme
+          );
           return;
         }
 
-        if (statusLocal === 'alarme' && !sinalRecente && !sinalAtualExplicito) {
-          return;
+        const setorAnterior = MOCK_DB.setores_cerca[idx];
+
+        const statusBruto =
+          alarme.status_atual ??
+          alarme.status ??
+          alarme.estado ??
+          alarme.tipo ??
+          alarme.evento ??
+          alarme.descricao ??
+          '';
+
+        let statusLocal = normalizarStatusLocal(statusBruto);
+
+        const estadoEntrada = obterEstadoEntrada(alarme);
+
+        /*
+         * REGRA PRINCIPAL:
+         * entrada física ativa sempre coloca o setor em ALARME.
+         */
+        if (estadoEntrada === true) {
+          statusLocal = 'alarme';
         }
 
-        MOCK_DB.setores_cerca[idx] = {
-          ...setor,
-          status: statusLocal,
-          status_atual: statusLocal,
-          updated_at: alarme.updated_at || new Date().toISOString(),
-          erro_alarme_local: alarme.erro || null,
-          alarme_offline_local: !!alarme.offline_local,
-          alarme_por_entrada_local: ['alarme','falha'].includes(statusLocal),
-          motivo_desarme: statusLocal === 'desarmado'
-            ? (alarme.motivo || alarme.motivo_desarme || setor.motivo_desarme || 'Desarme recebido do agente local')
-            : '',
-          desarmado_por: statusLocal === 'desarmado'
-            ? (alarme.responsavel_nome || alarme.desarmado_por || setor.desarmado_por || 'Agente local')
-            : '',
-          desarmado_em: statusLocal === 'desarmado'
-            ? (alarme.updated_at || new Date().toISOString())
-            : null
-        };
-        if (['alarme','falha'].includes(statusLocal)) {
-          const setorAtualizado = MOCK_DB.setores_cerca[idx];
-          const criadoEm = alarme.updated_at || new Date().toISOString();
-          const chaveEventoLocal = `local-${setorAtualizado.id}-${statusLocal}-${criadoEm}`;
-          const eventoJaExiste = MOCK_DB.alarmes_cerca.some(item =>
-            String(item.chave_sincronizacao || '') === chaveEventoLocal ||
-            (
-              String(item.setor_id || '') === String(setorAtualizado.id) &&
-              String(item.status_setor || '').toLowerCase() === statusLocal &&
-              String(item.created_at || '') === String(criadoEm)
-            )
+        /*
+         * Caso o agente não envie um campo booleano, mas envie um
+         * evento de violação/disparo, também considera alarme.
+         */
+        const textoEvento = normalizarTextoSeguro([
+          alarme.tipo,
+          alarme.evento,
+          alarme.motivo,
+          alarme.descricao,
+          alarme.message
+        ].filter(Boolean).join(' '));
+
+        if (
+          textoEvento.includes('alarme') ||
+          textoEvento.includes('violacao') ||
+          textoEvento.includes('disparo') ||
+          textoEvento.includes('intrusao')
+        ) {
+          statusLocal = 'alarme';
+        }
+
+        /*
+         * Entrada explicitamente restaurada.
+         * Mantém desarmado se o setor estiver desarmado.
+         */
+        if (estadoEntrada === false && statusLocal === 'alarme') {
+          const estadoArmamento = normalizarStatusLocal(
+            alarme.estado_armamento ||
+            alarme.status_armamento ||
+            alarme.status_setor ||
+            setorAnterior.status_atual ||
+            setorAnterior.status
           );
 
-          if (!eventoJaExiste) {
-            const centro = getSetorCentro(setorAtualizado) || {};
-            MOCK_DB.alarmes_cerca.unshift({
-              id: `local-${setorAtualizado.id}-${Date.now()}-${statusLocal}`,
-              chave_sincronizacao: chaveEventoLocal,
-              condominio_id: setorAtualizado.condominio_id,
-              modulo_id: setorAtualizado.modulo_id || setorAtualizado.modulo_cerca_id,
-              setor_id: setorAtualizado.id,
-              setor_nome: setorAtualizado.nome,
-              tipo: statusLocal === 'alarme' ? 'violacao' : 'falha',
-              status_setor: statusLocal,
-              prioridade: statusLocal === 'alarme' ? 'alta' : 'media',
-              responsavel_nome: alarme.responsavel_nome || 'Agente local',
-              motivo: alarme.motivo || alarme.erro || 'entrada_alarme_local',
-              descricao: statusLocal === 'alarme'
-                ? 'Alarme ou disparo registrado no setor.'
-                : 'Falha registrada no setor.',
-              latitude: Number.isFinite(Number(centro.lat)) ? Number(centro.lat) : setorAtualizado.latitude,
-              longitude: Number.isFinite(Number(centro.lng)) ? Number(centro.lng) : setorAtualizado.longitude,
-              created_at: criadoEm
-            });
-          }
+          statusLocal = estadoArmamento === 'desarmado'
+            ? 'desarmado'
+            : 'ativo';
         }
+
+        /*
+         * Se não conseguiu identificar nenhum estado no retorno,
+         * mantém o estado que já estava no setor.
+         */
+        if (!statusLocal) {
+          statusLocal = normalizarStatusLocal(
+            setorAnterior.status_atual ||
+            setorAnterior.status ||
+            'ativo'
+          ) || 'ativo';
+        }
+
+        const criadoEm =
+          alarme.updated_at ||
+          alarme.created_at ||
+          alarme.timestamp ||
+          alarme.data_hora ||
+          new Date().toISOString();
+
+        const setorAtualizado = {
+          ...setorAnterior,
+
+          status: statusLocal,
+          status_atual: statusLocal,
+          updated_at: criadoEm,
+
+          erro_alarme_local: alarme.erro || null,
+
+          alarme_offline_local:
+            statusLocal === 'falha' ||
+            alarme.offline_local === true,
+
+          alarme_por_entrada_local:
+            statusLocal === 'alarme',
+
+          entrada_ativa_local:
+            estadoEntrada === true,
+
+          motivo_desarme:
+            statusLocal === 'desarmado'
+              ? (
+                  alarme.motivo ||
+                  alarme.motivo_desarme ||
+                  setorAnterior.motivo_desarme ||
+                  'Desarme recebido do agente local'
+                )
+              : '',
+
+          desarmado_por:
+            statusLocal === 'desarmado'
+              ? (
+                  alarme.responsavel_nome ||
+                  alarme.desarmado_por ||
+                  setorAnterior.desarmado_por ||
+                  'Agente local'
+                )
+              : '',
+
+          desarmado_em:
+            statusLocal === 'desarmado'
+              ? criadoEm
+              : null
+        };
+
+        MOCK_DB.setores_cerca[idx] = setorAtualizado;
+
+        console.log('[CERCA] Estado aplicado ao setor:', {
+          setor: setorAtualizado.nome,
+          setor_id: setorAtualizado.id,
+          entrada: setorAtualizado.entrada_alarme,
+          estadoEntrada,
+          statusBruto,
+          statusAplicado: statusLocal
+        });
+
+        /*
+         * Cria evento somente para alarme ou falha.
+         */
+        if (!['alarme', 'falha'].includes(statusLocal)) return;
+
+        const dataEventoNormalizada = String(criadoEm);
+        const chaveEventoLocal = [
+          'local',
+          String(setorAtualizado.id || idx),
+          statusLocal,
+          dataEventoNormalizada
+        ].join('-');
+
+        const eventoJaExiste = MOCK_DB.alarmes_cerca.some(item => {
+          if (
+            String(item.chave_sincronizacao || '') === chaveEventoLocal
+          ) {
+            return true;
+          }
+
+          return (
+            String(item.setor_id || '') ===
+              String(setorAtualizado.id || '') &&
+            String(item.status_setor || '').toLowerCase() ===
+              statusLocal &&
+            String(item.created_at || '') ===
+              dataEventoNormalizada
+          );
+        });
+
+        if (eventoJaExiste) return;
+
+        const centro = typeof getSetorCentro === 'function'
+          ? getSetorCentro(setorAtualizado) || {}
+          : {};
+
+        MOCK_DB.alarmes_cerca.unshift({
+          id: `local-${setorAtualizado.id || idx}-${Date.now()}-${statusLocal}`,
+          chave_sincronizacao: chaveEventoLocal,
+
+          condominio_id: setorAtualizado.condominio_id,
+
+          modulo_id:
+            setorAtualizado.modulo_id ||
+            setorAtualizado.modulo_cerca_id,
+
+          setor_id: setorAtualizado.id,
+          setor_nome: setorAtualizado.nome,
+
+          entrada_alarme:
+            setorAtualizado.entrada_alarme ??
+            alarme.entrada_alarme ??
+            alarme.entrada ??
+            alarme.input,
+
+          tipo: statusLocal === 'alarme'
+            ? 'violacao'
+            : 'falha',
+
+          status_setor: statusLocal,
+
+          prioridade: statusLocal === 'alarme'
+            ? 'alta'
+            : 'media',
+
+          responsavel_nome:
+            alarme.responsavel_nome ||
+            'Agente local',
+
+          motivo:
+            alarme.motivo ||
+            alarme.erro ||
+            (
+              statusLocal === 'alarme'
+                ? 'entrada_alarme_local'
+                : 'falha_local'
+            ),
+
+          descricao:
+            statusLocal === 'alarme'
+              ? `Entrada de alarme ativa no setor ${setorAtualizado.nome || setorAtualizado.id}.`
+              : `Falha registrada no setor ${setorAtualizado.nome || setorAtualizado.id}.`,
+
+          latitude:
+            Number.isFinite(Number(centro.lat))
+              ? Number(centro.lat)
+              : setorAtualizado.latitude,
+
+          longitude:
+            Number.isFinite(Number(centro.lng))
+              ? Number(centro.lng)
+              : setorAtualizado.longitude,
+
+          created_at: criadoEm
+        });
       });
+
     persistMockDb();
+
     latestFenceEvents = (MOCK_DB.alarmes_cerca || [])
-      .filter(item => !currentCondoId || String(item.condominio_id) === String(currentCondoId))
-      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      .filter(item => {
+        if (!currentCondoId) return true;
+
+        return String(item.condominio_id || '') ===
+          String(currentCondoId);
+      })
+      .sort(
+        (a, b) =>
+          new Date(b.created_at || 0).getTime() -
+          new Date(a.created_at || 0).getTime()
+      )
       .slice(0, 50);
+
     renderizarSetoresCercaOperador();
     renderizarMapaCerca();
-    if (typeof renderizarRelatorioEventosCerca === 'function') renderizarRelatorioEventosCerca();
 
+    if (typeof renderizarRelatorioEventosCerca === 'function') {
+      renderizarRelatorioEventosCerca();
+    }
+
+    if (typeof renderizarEmpresasMonitoradasGerente === 'function') {
+      renderizarEmpresasMonitoradasGerente();
+    }
   } catch (error) {
-    console.warn('Alarmes locais do agente indisponiveis.', error?.message || error);
+    console.warn(
+      'Alarmes locais do agente indisponíveis.',
+      error?.message || error
+    );
   }
 }
     async function carregarSetoresCercaServidor(condominioId = null) {
@@ -10361,7 +10925,7 @@ modal.style.display = 'flex';
 
   try {
     const resposta = await fetch(
-      'http://127.0.0.1:3001/local/cameras/mjpeg/iniciar',
+      `${getApiLocal3001()}/local/cameras/mjpeg/iniciar`,
       {
         method: 'POST',
 
@@ -10418,7 +10982,7 @@ modal.style.display = 'flex';
       dados.data.sessao_id;
 
     cameraPreviewStreamUrl =
-      `http://127.0.0.1:3001${dados.data.stream_url}`;
+      `${getApiLocal3001()}${dados.data.stream_url}`;
 
     const imagem = document.getElementById(
       'camera-preview-image'
@@ -10566,7 +11130,7 @@ async function iniciarStreamPreviewCamera(camera) {
     }`;
 
   const resposta = await fetch(
-    'http://127.0.0.1:3001/local/cameras/mjpeg/iniciar',
+    `${getApiLocal3001()}/local/cameras/mjpeg/iniciar`,
     {
       method: 'POST',
 
@@ -10637,7 +11201,7 @@ async function iniciarStreamPreviewCamera(camera) {
   cameraPreviewStreamUrl =
     streamUrl.startsWith('http')
       ? streamUrl
-      : `http://127.0.0.1:3001${streamUrl}`;
+      : `${getApiLocal3001()}${streamUrl}`;
 
   return cameraPreviewStreamUrl;
 }
@@ -10666,7 +11230,7 @@ async function fecharStreamPreviewCamera(
   if (sessaoId) {
     try {
       await fetch(
-        'http://127.0.0.1:3001/local/cameras/mjpeg/parar',
+        `${getApiLocal3001()}/local/cameras/mjpeg/parar`,
         {
           method: 'POST',
 
@@ -13772,7 +14336,7 @@ function obterCamerasOperador() {
               }
 
               const resposta = await fetch(
-                'http://127.0.0.1:3001/local/cameras/snapshot',
+                "${getApiLocal3001()}/local/cameras/snapshot",
                 {
                   method: 'POST',
 
@@ -14048,7 +14612,7 @@ function obterCamerasOperador() {
         sessoesMural.forEach(sessaoId => {
           if (!sessaoId) return;
 
-          fetch('http://127.0.0.1:3001/local/cameras/mjpeg/parar', {
+          fetch(`${getApiLocal3001()}/local/cameras/mjpeg/parar`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({sessao_id: sessaoId}),
@@ -14078,7 +14642,7 @@ function obterCamerasOperador() {
         const pathCamera = camera.stream_path_mural || `/cam/realmonitor?channel=${canal}&subtype=1`;
 
         try {
-          const resposta = await fetch('http://127.0.0.1:3001/local/cameras/mjpeg/iniciar', {
+          const resposta = await fetch(`${getApiLocal3001()}/local/cameras/mjpeg/iniciar`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
@@ -14105,7 +14669,7 @@ function obterCamerasOperador() {
 
           const streamUrl = String(dados.data.stream_url).startsWith('http')
             ? dados.data.stream_url
-            : `http://127.0.0.1:3001${dados.data.stream_url}`;
+            : `${getApiLocal3001()}${dados.data.stream_url}`;
 
           imagem.onload = () => {
             imagem.style.display = 'block';
@@ -19749,7 +20313,7 @@ document.addEventListener('DOMContentLoaded', () => {
       atualizadoresCloud.clear();
 
       sessoes.forEach(sessaoId => {
-        fetch('http://127.0.0.1:3001/local/cameras/mjpeg/parar', {
+        fetch(`${getApiLocal3001()}/local/cameras/mjpeg/parar`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ sessao_id: sessaoId }),
@@ -19929,7 +20493,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
           try {
             const respostaTeste = await fetch(
-              'http://127.0.0.1:3001/local/cameras/testar',
+              `${getApiLocal3001()}/local/cameras/testar`,
               {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -19957,7 +20521,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         const resposta = await fetch(
-          'http://127.0.0.1:3001/local/cameras/mjpeg/iniciar',
+          `${getApiLocal3001()}/local/cameras/mjpeg/iniciar`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -19984,7 +20548,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const url = String(dados.data.stream_url).startsWith('http')
           ? dados.data.stream_url
-          : `http://127.0.0.1:3001${dados.data.stream_url}`;
+          : `${getApiLocal3001()}${dados.data.stream_url}`;
 
         img.onload = () => {
           img.style.display = 'block';
@@ -20129,12 +20693,4 @@ document.addEventListener('DOMContentLoaded', () => {
 </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
 
