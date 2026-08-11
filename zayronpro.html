@@ -977,17 +977,6 @@
           <button class="btn btn-warning" onclick="salvarPortariaCondo()">Salvar Portaria</button>
         </div>
 
-        <div id="admin-card-agente-local" class="card">
-          <div class="section-header">5. Agente Local / Servidor</div>
-          <select id="sel_condo_agente" onchange="preencherAgenteLocalCondo(true)"></select>
-          <input type="text" id="url_agente_local" placeholder="http://IP-DO-SERVIDOR:3001" />
-          <div class="row">
-            <button class="btn btn-success" onclick="salvarAgenteLocalCondo()">Salvar Endereço</button>
-            <button class="btn btn-warning" onclick="testarAgenteLocalCondo()">Testar Conexão</button>
-          </div>
-          <div id="status_agente_local" class="muted">Sem endereço definido: será usado 127.0.0.1:3001.</div>
-        </div>
-
         <div id="admin-card-ronda-pontos" class="card">
           <div class="section-header">5. Cadastro de Pontos da Ronda</div>
           <select id="sel_condo_ponto"></select>
@@ -1212,7 +1201,7 @@
         <div id="admin-card-device-unified" class="card">
           <div class="section-header">9. Cadastro de Câmeras / CFTV</div>
                     <p class="device-unified-intro">Cadastro de câmeras, NVRs, Axis, ONVIF, RTSP, robôs e drones como fontes de imagem e telemetria. Cerca elétrica continua no cadastro próprio de módulo e setor. Comunicação, áudio e missões ficam no módulo Rondas/Comunicação.</p>
-          <select id="sel_condo_dispositivo" onchange="sincronizarSelectsDispositivo(); preencherSelectSetorCamera(); renderizarListasDispositivosAdmin()"></select>
+          <select id="sel_condo_dispositivo" onchange="sincronizarSelectsDispositivo(); renderizarListasDispositivosAdmin()"></select>
           <select id="sel_condo_camera" style="display:none"></select>
           <select id="sel_condo_nvr" style="display:none"></select>
           <select id="sel_condo_access" style="display:none"></select>
@@ -1244,9 +1233,7 @@
                 <option value="nvr">NVR</option>
                 <option value="virtual">Virtual</option>
               </select>
-              <select id="device_camera_setor_cadastro">
-                <option value="">Sem vínculo com a cerca</option>
-              </select>
+              <input type="text" id="device_camera_setor_cadastro" placeholder="Setor / Local" />
             </div>
             <div class="row">
               <input type="text" id="device_camera_identificador_cadastro" placeholder="Identificador" />
@@ -2566,79 +2553,7 @@ function renderizarVisitantesPortaria() {
     ? location.origin
     : 'http://127.0.0.1:3000';
 const API_LOCAL_3000 = 'http://127.0.0.1:3000';
-const API_LOCAL_3001_PADRAO = 'http://127.0.0.1:3001';
-const AGENTE_LOCAL_STORAGE_KEY = 'zayron_agente_local_por_condominio_v1';
-
-function normalizarUrlAgenteLocal(valor) {
-  let url = String(valor || '').trim();
-  if (!url) return '';
-  if (!/^https?:\/\//i.test(url)) url = `http://${url}`;
-  return url.replace(/\/+$/, '');
-}
-
-function lerAgentesLocaisSalvos() {
-  try {
-    const dados = JSON.parse(localStorage.getItem(AGENTE_LOCAL_STORAGE_KEY) || '{}');
-    return dados && typeof dados === 'object' && !Array.isArray(dados) ? dados : {};
-  } catch (e) { return {}; }
-}
-
-function getCondominioIdAgenteLocal() {
-  return String(currentCondoId || currentUser?.condominio_id || currentSession?.usuario?.condominio_id || '').trim();
-}
-
-function getApiLocal3001(condominioId = null) {
-  const id = String(condominioId || getCondominioIdAgenteLocal() || '').trim();
-  const salvos = lerAgentesLocaisSalvos();
-  return normalizarUrlAgenteLocal(id ? salvos[id] : salvos.__padrao__) || API_LOCAL_3001_PADRAO;
-}
-
-function salvarUrlAgenteLocal(condominioId, valor) {
-  const id = String(condominioId || '').trim() || '__padrao__';
-  const salvos = lerAgentesLocaisSalvos();
-  const url = normalizarUrlAgenteLocal(valor);
-  if (url) salvos[id] = url;
-  else delete salvos[id];
-  localStorage.setItem(AGENTE_LOCAL_STORAGE_KEY, JSON.stringify(salvos));
-  return url || API_LOCAL_3001_PADRAO;
-}
-
-function preencherAgenteLocalCondo(forcarAtualizacao = false) {
-  const seletor = document.getElementById('sel_condo_agente');
-  const campo = document.getElementById('url_agente_local');
-  const status = document.getElementById('status_agente_local');
-  if (!campo) return;
-  if (!forcarAtualizacao && document.activeElement === campo) return;
-  const id = String(seletor?.value || getCondominioIdAgenteLocal() || '').trim();
-  const salvos = lerAgentesLocaisSalvos();
-  campo.value = id && salvos[id] ? salvos[id] : '';
-  if (status) status.textContent = campo.value ? `Configurado: ${campo.value}` : `Padrão: ${API_LOCAL_3001_PADRAO}`;
-}
-
-function salvarAgenteLocalCondo() {
-  const id = String(document.getElementById('sel_condo_agente')?.value || '').trim();
-  if (!id) return alert('Selecione o condomínio.');
-  const url = salvarUrlAgenteLocal(id, document.getElementById('url_agente_local')?.value || '');
-  preencherAgenteLocalCondo(true);
-  alert(`Endereço do agente salvo: ${url}`);
-}
-
-async function testarAgenteLocalCondo() {
-  const id = String(document.getElementById('sel_condo_agente')?.value || getCondominioIdAgenteLocal() || '').trim();
-  const campo = document.getElementById('url_agente_local');
-  const status = document.getElementById('status_agente_local');
-  const base = normalizarUrlAgenteLocal(campo?.value) || getApiLocal3001(id);
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5000);
-  if (status) status.textContent = `Testando ${base}/health...`;
-  try {
-    const resposta = await fetch(`${base}/health`, { signal: controller.signal, cache: 'no-store' });
-    if (!resposta.ok) throw new Error(`HTTP ${resposta.status}`);
-    if (status) status.textContent = `Conectado com sucesso: ${base}`;
-  } catch (erro) {
-    if (status) status.textContent = `Sem conexão com ${base}. Verifique agente, IP, porta e firewall.`;
-  } finally { clearTimeout(timeout); }
-}
+const API_LOCAL_3001 = 'http://127.0.0.1:3001';
 const API_NUVEM = 'https://zayron-api-1011701557501.southamerica-east1.run.app';
 const SESSION_SCHEMA_VERSION = 'zayron-local-token-v4';
 
@@ -2901,7 +2816,7 @@ function getApiBase() {
     }
     function getApiLocalBases() {
       // Agente local exclusivo para comando fisico de rele/cerca.
-      return [getApiLocal3001()];
+      return [API_LOCAL_3001];
     }
 
     function getApiLocalLoginBases() {
@@ -4757,14 +4672,6 @@ setTimeout(() => {
           .filter(Boolean);
 
         const optionHtml = condosCache.map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.nome || '-')}</option>`).join('');
-        const selAgente = document.getElementById('sel_condo_agente');
-        if (selAgente) {
-          const agenteAtual = selAgente.value;
-          selAgente.innerHTML = `<option value="">Selecione</option>${optionHtml}`;
-          if (agenteAtual && condosCache.some(c => String(c.id) === String(agenteAtual))) selAgente.value = agenteAtual;
-          else if (currentCondoId && condosCache.some(c => String(c.id) === String(currentCondoId))) selAgente.value = currentCondoId;
-          else if (condosCache.length === 1) selAgente.value = condosCache[0].id;
-        }
         selects.forEach(sel => {
           const current = sel.value;
           sel.innerHTML = `<option value="">Selecione</option>${optionHtml}`;
@@ -4807,7 +4714,6 @@ setTimeout(() => {
 
         
         sincronizarPortariaCondominio();
-        preencherAgenteLocalCondo();
 
       } catch (error) {
         console.warn('Falha ao carregar condominios pela API; usando condominios conhecidos/local.', error);
@@ -4824,11 +4730,6 @@ setTimeout(() => {
           'sel_condo_access','sel_condo_dispositivo','sel_condo_cerca_modulo','sel_condo_cerca_setor','sel_condo_relatorio_cerca'
         ].map(id => document.getElementById(id)).filter(Boolean);
         const optionFallback = condosCache.map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.nome || c.nome_condominio || '-')}</option>`).join('');
-        const selAgenteFallback = document.getElementById('sel_condo_agente');
-        if (selAgenteFallback) {
-          selAgenteFallback.innerHTML = `<option value="">Selecione</option>${optionFallback}`;
-          if (currentCondoId) selAgenteFallback.value = currentCondoId;
-        }
         selectsFallback.forEach(sel => {
           const atual = sel.value;
           sel.innerHTML = `<option value="">Selecione</option>${optionFallback}`;
@@ -4850,7 +4751,6 @@ setTimeout(() => {
           `).join('') : '<div class="muted">Nenhum condomínio cadastrado.</div>';
         }
         sincronizarPortariaCondominio();
-        preencherAgenteLocalCondo();
       }
 
 
@@ -5547,9 +5447,11 @@ data.sort(
         .filter(cam => !currentCondoId || String(cam.condominio_id) === String(currentCondoId));
       camerasSalvas.forEach((cam) => {
         if (cam.latitude == null || cam.longitude == null) return;
-        const cameraOnline = String(cam.status || '').toLowerCase() === 'online';
-        const cor = cameraOnline ? '#3b82f6' : '#ef4444';
-        const labelInc = `<br><b>Status:</b> ${cameraOnline ? 'ONLINE' : 'OFFLINE'}`;
+        const monitoraIncendio = !!cam.monitorar_fumaca || !!cam.monitorar_fogo;
+        const cor = monitoraIncendio ? '#ef4444' : '#3b82f6';
+        const labelInc = monitoraIncendio
+          ? `<br><b>Incêndio:</b> ${cam.monitorar_fumaca ? 'Fumaça ' : ''}${cam.monitorar_fogo ? 'Fogo/Chama' : ''}`
+          : '';
         const mk = L.marker([Number(cam.latitude), Number(cam.longitude)], { icon: iconeCamada('camera', cor) })
           .bindPopup(`<b>${escapeHtml(cam.nome || 'Câmera')}</b><br>Setor: ${escapeHtml(cam.setor || '-')}<br>IP: ${escapeHtml(cam.ip || '-')}<br>Coords: ${Number(cam.latitude).toFixed(6)}, ${Number(cam.longitude).toFixed(6)}${labelInc}`);
         camerasIALayer.addLayer(mk);
@@ -6049,42 +5951,10 @@ data.sort(
     }
 
     function abrirCameraMaisProximaDoSetor(setorId, abrirPopupDepois = false) {
-      const setor = (MOCK_DB.setores_cerca || []).find(
-        item => String(item.id) === String(setorId)
-      );
+      const setor = (MOCK_DB.setores_cerca || []).find(item => item.id === setorId);
       if (!setor) return alert('Setor não encontrado.');
-
-      const vinculo = (MOCK_DB.vinculos_cerca_camera || []).find(
-        item => String(item.setor_id) === String(setorId)
-      );
-      const cameraVinculada = vinculo
-        ? (MOCK_DB.cameras_cadastro || []).find(
-            item => String(item.id) === String(vinculo.camera_id)
-          )
-        : (MOCK_DB.cameras_cadastro || []).find(
-            item => String(item.setor_cerca_id || '') === String(setorId)
-          );
-      const camera = cameraVinculada || encontrarCameraMaisProximaDoSetor(setor);
-
-      if (!camera) return alert('Nenhuma câmera está vinculada a este setor.');
-
-      const papelAtual = String(
-        typeof currentRole !== 'undefined' ? currentRole : ''
-      ).trim().toLowerCase();
-
-      if (
-        papelAtual === 'gerente' &&
-        typeof window.abrirCameraIndividualGerenteV41 === 'function'
-      ) {
-        const condominioId = String(camera.condominio_id || setor.condominio_id || '');
-        const cameraId = String(camera.id || camera.camera_id || '');
-        if (!condominioId || !cameraId) {
-          return alert('Não foi possível identificar a empresa ou a câmera deste setor.');
-        }
-        window.abrirCameraIndividualGerenteV41(condominioId, cameraId);
-        return;
-      }
-
+      const camera = encontrarCameraMaisProximaDoSetor(setor);
+      if (!camera) return alert('Nenhuma câmera com coordenadas foi encontrada próxima a este setor.');
       abrirPreviewCamera(camera);
       if (abrirPopupDepois) {
         setTimeout(() => abrirPopupSetorCerca(setorId), 180);
@@ -6119,7 +5989,7 @@ data.sort(
           <div class="actions-inline" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
             <button class="btn-mini" style="background:#10b981;margin-left:0;" ${offlineVisual ? 'disabled' : ''} onclick="atualizarStatusSetorCerca('${setor.id}','ativo')">Armar</button>
             <button class="btn-mini" style="background:#64748b;margin-left:0;" ${offlineVisual ? 'disabled' : ''} onclick="atualizarStatusSetorCerca('${setor.id}','desarmado')">Desarmar</button>
-            <button class="btn-mini" style="background:#8b5cf6;margin-left:0;grid-column:1 / span 2;" onclick="abrirCameraMaisProximaDoSetor('${setor.id}', true)">Abrir câmera do setor</button>
+            <button class="btn-mini" style="background:#8b5cf6;margin-left:0;grid-column:1 / span 2;" ${offlineVisual ? 'disabled' : ''} onclick="abrirCameraMaisProximaDoSetor('${setor.id}', true)">Abrir câmera do setor</button>
           </div>
         </div>`;
     }
@@ -6634,48 +6504,9 @@ const setores = (MOCK_DB.setores_cerca || [])
   }
 }
 
-   function acionarSetorCerca(setorId, novoStatus) {
-  const setor = (MOCK_DB.setores_cerca || []).find(item =>
-    String(item.id || '') === String(setorId || '')
-  );
-
-  if (!setor) {
-    alert('Setor não encontrado.');
-    return false;
-  }
-
-  const statusAtual = String(
-    setor.status_atual ||
-    setor.status ||
-    ''
-  ).trim().toLowerCase();
-
-  const leitura = setor.leitura_json || {};
-
-  const falhaComunicacao =
-    statusAtual === 'falha' ||
-    setor.offline_local === true ||
-    setor.falha_comunicacao === true ||
-    setor.alarme_offline_local === true ||
-    leitura.offline_local === true ||
-    leitura.falha_comunicacao === true;
-
-  const comando = String(novoStatus || '')
-    .trim()
-    .toLowerCase();
-
-  if (
-    falhaComunicacao &&
-    ['ativo', 'desarmado'].includes(comando)
-  ) {
-    alert(
-      'Comando bloqueado: o setor está com falha de comunicação com a placa.'
-    );
-    return false;
-  }
-
-  return atualizarStatusSetorCerca(setorId, novoStatus);
-}
+    function acionarSetorCerca(setorId, novoStatus) {
+      return atualizarStatusSetorCerca(setorId, novoStatus);
+    }
 
     
    async function preencherSelectCercaAdmin() {
@@ -7137,643 +6968,206 @@ function renderizarSetoresCercaAdmin() {
     }
 
 
- async function aplicarAlarmesLocaisOperador(condoId = null) {
-  const papelAtual = String(currentRole || '').toLowerCase();
-
-  if (!['operador', 'portaria'].includes(papelAtual)) return;
+  async function aplicarAlarmesLocaisOperador(condoId = null) {
+  if (!['operador','portaria'].includes(String(currentRole || '').toLowerCase())) return;
 
   try {
-    const query = condoId
-      ? `?condominio_id=${encodeURIComponent(condoId)}`
-      : '';
+    const query = condoId ? `?condominio_id=${encodeURIComponent(condoId)}` : '';
+    const resp = await fetch(`${String(API_LOCAL_3001).replace(/\/$/, '')}/local/setores-cerca/alarmes${query}`, {
+      headers: { Accept: 'application/json' }
+    });
 
-    const resp = await fetch(
-      `${getApiLocal3001()}/local/setores-cerca/alarmes${query}`,
-      {
-        method: 'GET',
-        cache: 'no-store',
-        headers: {
-          Accept: 'application/json'
-        }
-      }
-    );
-
-    if (!resp.ok) {
-      throw new Error(`Agente local respondeu HTTP ${resp.status}`);
-    }
+    if (!resp.ok) throw new Error(`Agente local respondeu HTTP ${resp.status}`);
 
     const json = await resp.json().catch(() => null);
-
-    /*
-     * Aceita vários formatos possíveis do agente:
-     *
-     * { data: [...] }
-     * { alarmes: [...] }
-     * { setores: [...] }
-     * [...]
-     */
-    const alarmes = Array.isArray(json?.data)
-      ? json.data
-      : Array.isArray(json?.alarmes)
-        ? json.alarmes
-        : Array.isArray(json?.setores)
-          ? json.setores
-          : Array.isArray(json)
-            ? json
-            : [];
+    const alarmes = Array.isArray(json?.data) ? json.data : [];
 
     if (!Array.isArray(MOCK_DB.setores_cerca)) return;
+    if (!Array.isArray(MOCK_DB.alarmes_cerca)) MOCK_DB.alarmes_cerca = [];
 
-    if (!Array.isArray(MOCK_DB.alarmes_cerca)) {
-      MOCK_DB.alarmes_cerca = [];
-    }
-
-    const normalizarTextoSeguro = valor => {
-      if (typeof normalizarTexto === 'function') {
-        return normalizarTexto(valor || '');
+    // A comunicação com o agente/placa foi restabelecida.
+    // Guarda quais setores estavam em estado transitório antes de normalizar.
+    // Na primeira leitura após a reconexão, eventos antigos/repetidos não podem
+    // provocar o piscar vermelho; somente um alarme explicitamente ATIVO agora.
+    const setoresEmReconexao = new Set();
+    MOCK_DB.setores_cerca.forEach(setor => {
+      if (condoId && String(setor.condominio_id || '') !== String(condoId)) return;
+      const estadoAnterior = String(setor.status_atual || setor.status || '').toLowerCase();
+      if (['alarme', 'falha'].includes(estadoAnterior)) {
+        setoresEmReconexao.add(String(setor.id || setor.cloud_id || setor.local_id || ''));
       }
+    });
 
-      return String(valor ?? '')
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .trim()
-        .toLowerCase();
+    // Remove somente estados transitórios antigos de ALARME/FALHA.
+    // DESARMADO continua cinza; um alarme realmente atual será aplicado logo abaixo.
+    MOCK_DB.setores_cerca = MOCK_DB.setores_cerca.map(setor => {
+      if (condoId && String(setor.condominio_id || '') !== String(condoId)) return setor;
+      const estadoAnterior = String(setor.status_atual || setor.status || '').toLowerCase();
+      if (!['alarme', 'falha'].includes(estadoAnterior)) return setor;
+      return {
+        ...setor,
+        status: 'ativo',
+        status_atual: 'ativo',
+        alarme_por_entrada_local: false,
+        alarme_offline_local: false,
+        erro_alarme_local: null
+      };
+    });
+
+    const normalizarStatusLocal = (valor) => {
+      const s = String(valor || '').toLowerCase().trim();
+      if (s.includes('desarm')) return 'desarmado';
+      if (s.includes('alarme') || s.includes('violacao') || s.includes('disparo')) return 'alarme';
+      if (s.includes('falha')) return 'falha';
+      if (s.includes('ativo') || s.includes('arme') || s.includes('armado')) return 'ativo';
+      return s || 'ativo';
     };
 
-    const normalizarStatusLocal = valor => {
-      const status = normalizarTextoSeguro(valor);
+    const texto = valor => (typeof normalizarTexto === 'function'
+      ? normalizarTexto(valor || '')
+      : String(valor || '').trim().toLowerCase());
 
-      if (
-        status.includes('alarme') ||
-        status.includes('violacao') ||
-        status.includes('violado') ||
-        status.includes('disparo') ||
-        status.includes('acionado') ||
-        status.includes('intrusao')
-      ) {
-        return 'alarme';
-      }
+    const acharSetor = (alarme) => {
+      const idAlarme = String(alarme.setor_id || alarme.id || '').trim();
+      const nomeAlarme = texto(alarme.nome || alarme.setor_nome || '');
+      const entradaAlarme = String(alarme.entrada_alarme || '').trim();
+      const saidaAlarme = String(alarme.saida_rele || '').trim();
 
-      if (
-        status.includes('falha') ||
-        status.includes('offline') ||
-        status.includes('sem comunicacao') ||
-        status.includes('desconectado')
-      ) {
-        return 'falha';
-      }
-
-      if (
-        status.includes('desarmado') ||
-        status.includes('desarme') ||
-        status.includes('desligado')
-      ) {
-        return 'desarmado';
-      }
-
-      if (
-        status.includes('ativo') ||
-        status.includes('armado') ||
-        status.includes('arme') ||
-        status.includes('normal') ||
-        status.includes('restaurado')
-      ) {
-        return 'ativo';
-      }
-
-      return '';
-    };
-
-    /*
-     * Converte somente valores realmente booleanos de entrada.
-     *
-     * Não considera "ativo" como entrada disparada porque "ativo"
-     * também significa que o setor está armado.
-     */
-    const valorEntradaAtiva = valor => {
-      if (valor === true || valor === 1) return true;
-      if (valor === false || valor === 0 || valor == null) return false;
-
-      const textoValor = normalizarTextoSeguro(valor);
-
-      return [
-        'true',
-        '1',
-        'sim',
-        'yes',
-        'on',
-        'high',
-        'acionada',
-        'acionado',
-        'disparada',
-        'disparado',
-        'violada',
-        'violado',
-        'alarme',
-        'alarm'
-      ].includes(textoValor);
-    };
-
-    const valorEntradaInativa = valor => {
-      if (valor === false || valor === 0) return true;
-      if (valor === true || valor === 1 || valor == null) return false;
-
-      const textoValor = normalizarTextoSeguro(valor);
-
-      return [
-        'false',
-        '0',
-        'nao',
-        'não',
-        'no',
-        'off',
-        'low',
-        'normal',
-        'inativa',
-        'inativo',
-        'fechada',
-        'fechado',
-        'restaurada',
-        'restaurado'
-      ].includes(textoValor);
-    };
-
-    const obterEstadoEntrada = alarme => {
-      /*
-       * Campos que podem representar o ESTADO da entrada.
-       * entrada_alarme não entra aqui porque normalmente é o número
-       * da entrada, por exemplo: entrada 1 ou entrada 2.
-       */
-      const valoresEntrada = [
-        alarme.entrada_ativa,
-        alarme.input_active,
-        alarme.inputActive,
-        alarme.estado_entrada,
-        alarme.input_state,
-        alarme.inputState,
-        alarme.valor_entrada,
-        alarme.input_value,
-        alarme.inputValue,
-        alarme.disparo_ativo,
-        alarme.alarme_ativo,
-        alarme.em_alarme,
-        alarme.violacao_ativa,
-        alarme.sensor_ativo,
-        alarme.current_alarm,
-        alarme.currentAlarm
-      ];
-
-      if (valoresEntrada.some(valorEntradaAtiva)) {
-        return true;
-      }
-
-      if (valoresEntrada.some(valorEntradaInativa)) {
-        return false;
-      }
-
-      return null;
-    };
-
-    const pertenceAoCondominio = setor => {
-      if (!condoId) return true;
-
-      return String(setor?.condominio_id || '') === String(condoId);
-    };
-
-    const acharSetor = alarme => {
-      const idAlarme = String(
-        alarme.setor_id ||
-        alarme.setorId ||
-        alarme.cloud_id ||
-        alarme.local_id ||
-        ''
-      ).trim();
-
-      const nomeAlarme = normalizarTextoSeguro(
-        alarme.setor_nome ||
-        alarme.nome_setor ||
-        alarme.nome ||
-        ''
-      );
-
-      const entradaAlarme = String(
-        alarme.entrada_alarme ??
-        alarme.entrada ??
-        alarme.input ??
-        alarme.input_number ??
-        alarme.canal_entrada ??
-        ''
-      ).trim();
-
-      const saidaAlarme = String(
-        alarme.saida_rele ??
-        alarme.saida ??
-        alarme.rele ??
-        alarme.output ??
-        alarme.output_number ??
-        ''
-      ).trim();
-
-      const moduloAlarme = String(
-        alarme.modulo_id ||
-        alarme.modulo_cerca_id ||
-        alarme.device_id ||
-        ''
-      ).trim();
-
-      /*
-       * 1. Procura pelo ID.
-       */
-      let idx = MOCK_DB.setores_cerca.findIndex(setor => {
-        if (!pertenceAoCondominio(setor)) return false;
-        if (!idAlarme) return false;
-
-        return (
+      let idx = MOCK_DB.setores_cerca.findIndex(setor =>
+        idAlarme &&
+        (
           String(setor.id || '') === idAlarme ||
           String(setor.cloud_id || '') === idAlarme ||
           String(setor.local_id || '') === idAlarme
-        );
-      });
-
+        )
+      );
       if (idx >= 0) return idx;
 
-      /*
-       * 2. Procura pelo módulo + entrada.
-       */
-      idx = MOCK_DB.setores_cerca.findIndex(setor => {
-        if (!pertenceAoCondominio(setor)) return false;
-        if (!entradaAlarme) return false;
-
-        const entradaSetor = String(
-          setor.entrada_alarme ??
-          setor.entrada ??
-          setor.input ??
-          ''
-        ).trim();
-
-        if (entradaSetor !== entradaAlarme) return false;
-
-        if (moduloAlarme) {
-          const moduloSetor = String(
-            setor.modulo_id ||
-            setor.modulo_cerca_id ||
-            ''
-          ).trim();
-
-          if (moduloSetor && moduloSetor !== moduloAlarme) {
-            return false;
-          }
-        }
-
-        return true;
-      });
-
+      idx = MOCK_DB.setores_cerca.findIndex(setor =>
+        nomeAlarme && texto(setor.nome || '') === nomeAlarme
+      );
       if (idx >= 0) return idx;
 
-      /*
-       * 3. Procura por entrada + saída.
-       */
-      idx = MOCK_DB.setores_cerca.findIndex(setor => {
-        if (!pertenceAoCondominio(setor)) return false;
-        if (!entradaAlarme) return false;
-
-        const entradaSetor = String(
-          setor.entrada_alarme ??
-          setor.entrada ??
-          setor.input ??
-          ''
-        ).trim();
-
-        const saidaSetor = String(
-          setor.saida_rele ??
-          setor.saida ??
-          setor.rele ??
-          setor.output ??
-          ''
-        ).trim();
-
-        return (
-          entradaSetor === entradaAlarme &&
-          (!saidaAlarme || !saidaSetor || saidaSetor === saidaAlarme)
-        );
-      });
-
-      if (idx >= 0) return idx;
-
-      /*
-       * 4. Procura pelo nome.
-       */
-      idx = MOCK_DB.setores_cerca.findIndex(setor => {
-        if (!pertenceAoCondominio(setor)) return false;
-        if (!nomeAlarme) return false;
-
-        return normalizarTextoSeguro(setor.nome || '') === nomeAlarme;
-      });
+      idx = MOCK_DB.setores_cerca.findIndex(setor =>
+        entradaAlarme &&
+        String(setor.entrada_alarme || '').trim() === entradaAlarme &&
+        (!saidaAlarme || String(setor.saida_rele || '').trim() === saidaAlarme)
+      );
 
       return idx;
     };
 
-    /*
-     * Processa primeiro os dados mais antigos e deixa o estado
-     * mais recente prevalecer para cada setor.
-     */
     alarmes
       .slice()
-      .sort((a, b) => {
-        const dataA = new Date(
-          a.updated_at ||
-          a.created_at ||
-          a.timestamp ||
-          a.data_hora ||
-          0
-        ).getTime();
-
-        const dataB = new Date(
-          b.updated_at ||
-          b.created_at ||
-          b.timestamp ||
-          b.data_hora ||
-          0
-        ).getTime();
-
-        return dataA - dataB;
-      })
+      .sort((a, b) => new Date(a.updated_at || 0).getTime() - new Date(b.updated_at || 0).getTime())
       .forEach(alarme => {
         const idx = acharSetor(alarme);
+        if (idx < 0) return;
 
-        if (idx < 0) {
-          console.warn(
-            '[CERCA] Alarme recebido, mas nenhum setor foi encontrado:',
-            alarme
-          );
+        const setor = MOCK_DB.setores_cerca[idx];
+
+        const statusLocal = normalizarStatusLocal(
+          alarme.status_atual ||
+          alarme.status ||
+          alarme.tipo ||
+          'ativo'
+        );
+
+        // Alarmes/violações antigos retornados pelo agente são histórico, não estado atual.
+        // Só mudam o setor para vermelho quando forem atuais ou vierem marcados como ativos agora.
+        const dataSinal = alarme.updated_at || alarme.created_at || alarme.timestamp || alarme.data_hora || null;
+        const tempoSinal = dataSinal ? new Date(dataSinal).getTime() : NaN;
+        const sinalRecente = Number.isFinite(tempoSinal) && (Date.now() - tempoSinal) >= 0 && (Date.now() - tempoSinal) <= 15000;
+        const sinalAtualExplicito = (
+          alarme.ativo === true ||
+          alarme.active === true ||
+          alarme.em_alarme === true ||
+          alarme.disparo_ativo === true ||
+          alarme.entrada_ativa === true ||
+          alarme.current === true ||
+          alarme.estado_atual === true
+        );
+
+        const chaveSetor = String(setor.id || setor.cloud_id || setor.local_id || '');
+
+        // Durante a reconexão, não aceite um alarme apenas por ter timestamp recente.
+        // O agente pode repetir o último evento armazenado. Para ficar vermelho nessa
+        // primeira leitura, a resposta precisa declarar explicitamente que a entrada
+        // está ativa AGORA. Isso elimina o vermelho momentâneo antes de voltar ao verde.
+        if (statusLocal === 'alarme' && setoresEmReconexao.has(chaveSetor) && !sinalAtualExplicito) {
           return;
         }
 
-        const setorAnterior = MOCK_DB.setores_cerca[idx];
-
-        const statusBruto =
-          alarme.status_atual ??
-          alarme.status ??
-          alarme.estado ??
-          alarme.tipo ??
-          alarme.evento ??
-          alarme.descricao ??
-          '';
-
-        let statusLocal = normalizarStatusLocal(statusBruto);
-
-        const estadoEntrada = obterEstadoEntrada(alarme);
-
-        /*
-         * REGRA PRINCIPAL:
-         * entrada física ativa sempre coloca o setor em ALARME.
-         */
-        if (estadoEntrada === true) {
-          statusLocal = 'alarme';
+        if (statusLocal === 'alarme' && !sinalRecente && !sinalAtualExplicito) {
+          return;
         }
 
-        /*
-         * Caso o agente não envie um campo booleano, mas envie um
-         * evento de violação/disparo, também considera alarme.
-         */
-        const textoEvento = normalizarTextoSeguro([
-          alarme.tipo,
-          alarme.evento,
-          alarme.motivo,
-          alarme.descricao,
-          alarme.message
-        ].filter(Boolean).join(' '));
-
-        if (
-          textoEvento.includes('alarme') ||
-          textoEvento.includes('violacao') ||
-          textoEvento.includes('disparo') ||
-          textoEvento.includes('intrusao')
-        ) {
-          statusLocal = 'alarme';
-        }
-
-        /*
-         * Entrada explicitamente restaurada.
-         * Mantém desarmado se o setor estiver desarmado.
-         */
-        if (estadoEntrada === false && statusLocal === 'alarme') {
-          const estadoArmamento = normalizarStatusLocal(
-            alarme.estado_armamento ||
-            alarme.status_armamento ||
-            alarme.status_setor ||
-            setorAnterior.status_atual ||
-            setorAnterior.status
-          );
-
-          statusLocal = estadoArmamento === 'desarmado'
-            ? 'desarmado'
-            : 'ativo';
-        }
-
-        /*
-         * Se não conseguiu identificar nenhum estado no retorno,
-         * mantém o estado que já estava no setor.
-         */
-        if (!statusLocal) {
-          statusLocal = normalizarStatusLocal(
-            setorAnterior.status_atual ||
-            setorAnterior.status ||
-            'ativo'
-          ) || 'ativo';
-        }
-
-        const criadoEm =
-          alarme.updated_at ||
-          alarme.created_at ||
-          alarme.timestamp ||
-          alarme.data_hora ||
-          new Date().toISOString();
-
-        const setorAtualizado = {
-          ...setorAnterior,
-
+        MOCK_DB.setores_cerca[idx] = {
+          ...setor,
           status: statusLocal,
           status_atual: statusLocal,
-          updated_at: criadoEm,
-
+          updated_at: alarme.updated_at || new Date().toISOString(),
           erro_alarme_local: alarme.erro || null,
-
-          alarme_offline_local:
-            statusLocal === 'falha' ||
-            alarme.offline_local === true,
-
-          alarme_por_entrada_local:
-            statusLocal === 'alarme',
-
-          entrada_ativa_local:
-            estadoEntrada === true,
-
-          motivo_desarme:
-            statusLocal === 'desarmado'
-              ? (
-                  alarme.motivo ||
-                  alarme.motivo_desarme ||
-                  setorAnterior.motivo_desarme ||
-                  'Desarme recebido do agente local'
-                )
-              : '',
-
-          desarmado_por:
-            statusLocal === 'desarmado'
-              ? (
-                  alarme.responsavel_nome ||
-                  alarme.desarmado_por ||
-                  setorAnterior.desarmado_por ||
-                  'Agente local'
-                )
-              : '',
-
-          desarmado_em:
-            statusLocal === 'desarmado'
-              ? criadoEm
-              : null
+          alarme_offline_local: !!alarme.offline_local,
+          alarme_por_entrada_local: ['alarme','falha'].includes(statusLocal),
+          motivo_desarme: statusLocal === 'desarmado'
+            ? (alarme.motivo || alarme.motivo_desarme || setor.motivo_desarme || 'Desarme recebido do agente local')
+            : '',
+          desarmado_por: statusLocal === 'desarmado'
+            ? (alarme.responsavel_nome || alarme.desarmado_por || setor.desarmado_por || 'Agente local')
+            : '',
+          desarmado_em: statusLocal === 'desarmado'
+            ? (alarme.updated_at || new Date().toISOString())
+            : null
         };
-
-        MOCK_DB.setores_cerca[idx] = setorAtualizado;
-
-        console.log('[CERCA] Estado aplicado ao setor:', {
-          setor: setorAtualizado.nome,
-          setor_id: setorAtualizado.id,
-          entrada: setorAtualizado.entrada_alarme,
-          estadoEntrada,
-          statusBruto,
-          statusAplicado: statusLocal
-        });
-
-        /*
-         * Cria evento somente para alarme ou falha.
-         */
-        if (!['alarme', 'falha'].includes(statusLocal)) return;
-
-        const dataEventoNormalizada = String(criadoEm);
-        const chaveEventoLocal = [
-          'local',
-          String(setorAtualizado.id || idx),
-          statusLocal,
-          dataEventoNormalizada
-        ].join('-');
-
-        const eventoJaExiste = MOCK_DB.alarmes_cerca.some(item => {
-          if (
-            String(item.chave_sincronizacao || '') === chaveEventoLocal
-          ) {
-            return true;
-          }
-
-          return (
-            String(item.setor_id || '') ===
-              String(setorAtualizado.id || '') &&
-            String(item.status_setor || '').toLowerCase() ===
-              statusLocal &&
-            String(item.created_at || '') ===
-              dataEventoNormalizada
-          );
-        });
-
-        if (eventoJaExiste) return;
-
-        const centro = typeof getSetorCentro === 'function'
-          ? getSetorCentro(setorAtualizado) || {}
-          : {};
-
-        MOCK_DB.alarmes_cerca.unshift({
-          id: `local-${setorAtualizado.id || idx}-${Date.now()}-${statusLocal}`,
-          chave_sincronizacao: chaveEventoLocal,
-
-          condominio_id: setorAtualizado.condominio_id,
-
-          modulo_id:
-            setorAtualizado.modulo_id ||
-            setorAtualizado.modulo_cerca_id,
-
-          setor_id: setorAtualizado.id,
-          setor_nome: setorAtualizado.nome,
-
-          entrada_alarme:
-            setorAtualizado.entrada_alarme ??
-            alarme.entrada_alarme ??
-            alarme.entrada ??
-            alarme.input,
-
-          tipo: statusLocal === 'alarme'
-            ? 'violacao'
-            : 'falha',
-
-          status_setor: statusLocal,
-
-          prioridade: statusLocal === 'alarme'
-            ? 'alta'
-            : 'media',
-
-          responsavel_nome:
-            alarme.responsavel_nome ||
-            'Agente local',
-
-          motivo:
-            alarme.motivo ||
-            alarme.erro ||
+        if (['alarme','falha'].includes(statusLocal)) {
+          const setorAtualizado = MOCK_DB.setores_cerca[idx];
+          const criadoEm = alarme.updated_at || new Date().toISOString();
+          const chaveEventoLocal = `local-${setorAtualizado.id}-${statusLocal}-${criadoEm}`;
+          const eventoJaExiste = MOCK_DB.alarmes_cerca.some(item =>
+            String(item.chave_sincronizacao || '') === chaveEventoLocal ||
             (
-              statusLocal === 'alarme'
-                ? 'entrada_alarme_local'
-                : 'falha_local'
-            ),
+              String(item.setor_id || '') === String(setorAtualizado.id) &&
+              String(item.status_setor || '').toLowerCase() === statusLocal &&
+              String(item.created_at || '') === String(criadoEm)
+            )
+          );
 
-          descricao:
-            statusLocal === 'alarme'
-              ? `Entrada de alarme ativa no setor ${setorAtualizado.nome || setorAtualizado.id}.`
-              : `Falha registrada no setor ${setorAtualizado.nome || setorAtualizado.id}.`,
-
-          latitude:
-            Number.isFinite(Number(centro.lat))
-              ? Number(centro.lat)
-              : setorAtualizado.latitude,
-
-          longitude:
-            Number.isFinite(Number(centro.lng))
-              ? Number(centro.lng)
-              : setorAtualizado.longitude,
-
-          created_at: criadoEm
-        });
+          if (!eventoJaExiste) {
+            const centro = getSetorCentro(setorAtualizado) || {};
+            MOCK_DB.alarmes_cerca.unshift({
+              id: `local-${setorAtualizado.id}-${Date.now()}-${statusLocal}`,
+              chave_sincronizacao: chaveEventoLocal,
+              condominio_id: setorAtualizado.condominio_id,
+              modulo_id: setorAtualizado.modulo_id || setorAtualizado.modulo_cerca_id,
+              setor_id: setorAtualizado.id,
+              setor_nome: setorAtualizado.nome,
+              tipo: statusLocal === 'alarme' ? 'violacao' : 'falha',
+              status_setor: statusLocal,
+              prioridade: statusLocal === 'alarme' ? 'alta' : 'media',
+              responsavel_nome: alarme.responsavel_nome || 'Agente local',
+              motivo: alarme.motivo || alarme.erro || 'entrada_alarme_local',
+              descricao: statusLocal === 'alarme'
+                ? 'Alarme ou disparo registrado no setor.'
+                : 'Falha registrada no setor.',
+              latitude: Number.isFinite(Number(centro.lat)) ? Number(centro.lat) : setorAtualizado.latitude,
+              longitude: Number.isFinite(Number(centro.lng)) ? Number(centro.lng) : setorAtualizado.longitude,
+              created_at: criadoEm
+            });
+          }
+        }
       });
-
     persistMockDb();
-
     latestFenceEvents = (MOCK_DB.alarmes_cerca || [])
-      .filter(item => {
-        if (!currentCondoId) return true;
-
-        return String(item.condominio_id || '') ===
-          String(currentCondoId);
-      })
-      .sort(
-        (a, b) =>
-          new Date(b.created_at || 0).getTime() -
-          new Date(a.created_at || 0).getTime()
-      )
+      .filter(item => !currentCondoId || String(item.condominio_id) === String(currentCondoId))
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
       .slice(0, 50);
-
     renderizarSetoresCercaOperador();
     renderizarMapaCerca();
+    if (typeof renderizarRelatorioEventosCerca === 'function') renderizarRelatorioEventosCerca();
 
-    if (typeof renderizarRelatorioEventosCerca === 'function') {
-      renderizarRelatorioEventosCerca();
-    }
-
-    if (typeof renderizarEmpresasMonitoradasGerente === 'function') {
-      renderizarEmpresasMonitoradasGerente();
-    }
   } catch (error) {
-    console.warn(
-      'Alarmes locais do agente indisponíveis.',
-      error?.message || error
-    );
+    console.warn('Alarmes locais do agente indisponiveis.', error?.message || error);
   }
 }
     async function carregarSetoresCercaServidor(condominioId = null) {
@@ -10925,7 +10319,7 @@ modal.style.display = 'flex';
 
   try {
     const resposta = await fetch(
-      `${getApiLocal3001()}/local/cameras/mjpeg/iniciar`,
+      'http://127.0.0.1:3001/local/cameras/mjpeg/iniciar',
       {
         method: 'POST',
 
@@ -10982,7 +10376,7 @@ modal.style.display = 'flex';
       dados.data.sessao_id;
 
     cameraPreviewStreamUrl =
-      `${getApiLocal3001()}${dados.data.stream_url}`;
+      `http://127.0.0.1:3001${dados.data.stream_url}`;
 
     const imagem = document.getElementById(
       'camera-preview-image'
@@ -11130,7 +10524,7 @@ async function iniciarStreamPreviewCamera(camera) {
     }`;
 
   const resposta = await fetch(
-    `${getApiLocal3001()}/local/cameras/mjpeg/iniciar`,
+    'http://127.0.0.1:3001/local/cameras/mjpeg/iniciar',
     {
       method: 'POST',
 
@@ -11201,7 +10595,7 @@ async function iniciarStreamPreviewCamera(camera) {
   cameraPreviewStreamUrl =
     streamUrl.startsWith('http')
       ? streamUrl
-      : `${getApiLocal3001()}${streamUrl}`;
+      : `http://127.0.0.1:3001${streamUrl}`;
 
   return cameraPreviewStreamUrl;
 }
@@ -11230,7 +10624,7 @@ async function fecharStreamPreviewCamera(
   if (sessaoId) {
     try {
       await fetch(
-        `${getApiLocal3001()}/local/cameras/mjpeg/parar`,
+        'http://127.0.0.1:3001/local/cameras/mjpeg/parar',
         {
           method: 'POST',
 
@@ -11652,13 +11046,11 @@ function editarCameraCadastro(cameraId) {
     'ip'
   );
 
-  preencherSelectSetorCamera(
-    camera.setor_cerca_id || ''
-  );
-
   definirValor(
     'device_camera_setor_cadastro',
-    camera.setor_cerca_id || ''
+    camera.setor_cerca_id ||
+    camera.setor ||
+    ''
   );
 
   definirValor(
@@ -11827,49 +11219,6 @@ function limparEdicaoCamera() {
     btnCancelar.style.display = 'none';
   }
 }
-    function preencherSelectSetorCamera(preferirId = null) {
-      const select = document.getElementById('device_camera_setor_cadastro');
-      if (!select) return;
-
-      const condoId =
-        getCurrentFormCondoId('sel_condo_dispositivo') ||
-        currentCondoId;
-
-      const setores = (MOCK_DB.setores_cerca || [])
-        .filter(item =>
-          !condoId ||
-          String(item.condominio_id) === String(condoId)
-        )
-        .sort((a, b) =>
-          String(a.nome || '').localeCompare(
-            String(b.nome || ''),
-            'pt-BR'
-          )
-        );
-
-      const valorAtual =
-        preferirId ?? select.value ?? '';
-
-      select.innerHTML =
-        '<option value="">Sem vínculo com a cerca</option>' +
-        setores.map(setor => `
-          <option value="${escapeHtml(String(setor.id || ''))}">
-            ${escapeHtml(setor.nome || 'Setor sem nome')}
-          </option>
-        `).join('');
-
-      if (
-        valorAtual &&
-        setores.some(setor =>
-          String(setor.id) === String(valorAtual)
-        )
-      ) {
-        select.value = String(valorAtual);
-      } else {
-        select.value = '';
-      }
-    }
-
     async function salvarDispositivoCadastro() {
   try {
     const tipo =
@@ -11991,16 +11340,6 @@ const cameraEditId =
           document.getElementById(
             'device_camera_setor_cadastro'
           )?.value || null,
-
-        setor:
-          (() => {
-            const select = document.getElementById(
-              'device_camera_setor_cadastro'
-            );
-            return select?.value
-              ? select.options[select.selectedIndex]?.text?.trim() || null
-              : null;
-          })(),
 
         nome,
 
@@ -14336,7 +13675,7 @@ function obterCamerasOperador() {
               }
 
               const resposta = await fetch(
-                "${getApiLocal3001()}/local/cameras/snapshot",
+                'http://127.0.0.1:3001/local/cameras/snapshot',
                 {
                   method: 'POST',
 
@@ -14504,51 +13843,97 @@ function obterCamerasOperador() {
 
     function abrirJanelaOperador(modo) {
       const cams = obterCamerasOperador();
-      const popup = window.open('', '_blank', 'width=1400,height=900,resizable=yes,scrollbars=yes');
-
+      const popup = window.open('', `_blank`, 'width=1400,height=900,resizable=yes,scrollbars=yes');
       if (!popup) {
         alert('O navegador bloqueou a abertura da nova tela. Libere pop-ups para usar múltiplos monitores.');
         return;
       }
 
-      const cards = cams.map((cam, index) => {
-        const status = { cls: 'camera-status-mock', text: 'CONECTANDO' };
+   const cards = cams.map(cam => {
+  const status = obterStatusCamera(cam);
 
-        return `
-          <div class="tile" data-camera-index="${index}">
-            <div class="frame">
-              <div class="camera-loading">CONECTANDO...</div>
-              <img
-                class="camera-live-image"
-                alt="${escapeHtml(cam.nome || 'Câmera')}"
-              >
-              <div class="camera-overlay">
-                <span class="dot"></span>
-                <span class="camera-live-label">AGUARDANDO STREAM</span>
-              </div>
-            </div>
+  const cameraId = JSON.stringify(
+    String(cam.id || '')
+  );
 
-            <div class="meta">
-              <div class="title">${escapeHtml(cam.nome || 'Câmera')}</div>
-              <div class="sub">${escapeHtml(cam.ip || '-')}${cam.porta ? ':' + escapeHtml(String(cam.porta)) : ''}</div>
-              <div><b>${escapeHtml(cam.setor || '-')}</b> · <span class="camera-card-status ${status.cls}">${status.text}</span></div>
-              <div>Tipo: ${escapeHtml((cam.tipo || '-').toUpperCase())} · Stream: ${escapeHtml((cam.stream_tipo || 'RTSP').toUpperCase())}</div>
-              <div>${formatCoords(cam.latitude, cam.longitude)}</div>
-            </div>
-          </div>`;
-      }).join('');
+  return `
+    <div class="tile">
+      <button
+        type="button"
+        class="frame camera-open-button"
+        onclick="
+          if (
+            window.opener &&
+            !window.opener.closed &&
+            typeof window.opener.abrirPreviewCameraSalva === 'function'
+          ) {
+            window.opener.abrirPreviewCameraSalva(${cameraId});
+            window.opener.focus();
+            window.close();
+          } else {
+            alert('Não foi possível acessar a tela principal do Zayron.');
+          }
+        "
+      >
+        <div>
+          <div class="live">
+            <span class="dot"></span>
+            CLIQUE PARA ABRIR
+          </div>
+
+          <div class="title">
+            ${escapeHtml(cam.nome || 'Câmera')}
+          </div>
+
+          <div class="sub">
+            ${escapeHtml(cam.ip || '-')}
+            ${
+              cam.porta
+                ? ':' + escapeHtml(String(cam.porta))
+                : ''
+            }
+          </div>
+        </div>
+      </button>
+
+      <div class="meta">
+        <div>
+          <b>${escapeHtml(cam.setor || '-')}</b>
+          ·
+          <span class="${status.cls}">
+            ${status.text}
+          </span>
+        </div>
+
+        <div>
+          Tipo:
+          ${escapeHtml(
+            (cam.tipo || '-').toUpperCase()
+          )}
+          · Stream:
+          ${escapeHtml(
+            (cam.stream_tipo || 'RTSP').toUpperCase()
+          )}
+        </div>
+
+        <div>
+          ${formatCoords(
+            cam.latitude,
+            cam.longitude
+          )}
+        </div>
+      </div>
+    </div>
+  `;
+}).join('');
 
       const mapInfo = `
         <div class="mapWrap">
           <div class="mapTitle">Mapa operacional</div>
-          <div class="mapBox">
-            Use a tela principal do Zayron para acompanhar o mapa em tempo real.<br>
-            Esta janela permanece dedicada à visualização das câmeras.
-          </div>
+          <div class="mapBox">Use a tela principal do Zayron para acompanhar o mapa em tempo real.<br>Esta janela foi preparada para segundo monitor e futura conexão com o mapa dedicado do servidor local.</div>
         </div>`;
 
       let body = '';
-
       if (modo === 'mapa') {
         body = mapInfo;
       } else if (modo === 'duplo') {
@@ -14557,162 +13942,97 @@ function obterCamerasOperador() {
         body = `<div class="grid">${cards || '<div class="empty">Nenhuma câmera cadastrada.</div>'}</div>`;
       }
 
-      popup.document.write(`<!DOCTYPE html>
-<html lang="pt-br">
-<head>
-  <meta charset="UTF-8">
-  <title>Zayron Operação</title>
-  <style>
-    *{box-sizing:border-box}
-    body{margin:0;background:#020617;color:#f8fafc;font-family:Segoe UI,sans-serif;padding:16px}
-    .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:12px;flex-wrap:wrap}
-    .head h1{margin:0;font-size:22px}
-    .head .muted{color:#94a3b8;font-size:13px}
-    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px}
-    .tile{background:#0f172a;border:1px solid #334155;border-radius:14px;overflow:hidden}
-    .frame{position:relative;aspect-ratio:16/9;min-height:180px;background:#020617;display:flex;align-items:center;justify-content:center;overflow:hidden;border-bottom:1px solid rgba(148,163,184,.18)}
-    .camera-live-image{display:none;width:100%;height:100%;object-fit:contain;background:#000}
-    .camera-loading{color:#93c5fd;font-size:12px;font-weight:700;letter-spacing:.5px}
-    .camera-overlay{position:absolute;left:10px;top:10px;background:rgba(2,6,23,.78);border:1px solid rgba(148,163,184,.28);border-radius:999px;padding:6px 9px;font-size:11px;display:flex;align-items:center;gap:6px}
-    .dot{width:8px;height:8px;border-radius:999px;background:#f59e0b;display:inline-block;box-shadow:0 0 0 4px rgba(245,158,11,.12)}
-    .tile.online .dot{background:#10b981;box-shadow:0 0 0 4px rgba(16,185,129,.12)}
-    .tile.offline .dot{background:#ef4444;box-shadow:0 0 0 4px rgba(239,68,68,.12)}
-    .meta{padding:12px;display:grid;gap:6px;font-size:13px}
-    .title{font-size:18px;font-weight:700}.sub{color:#94a3b8;font-size:12px}
-    .camera-status-online{color:#10b981;font-weight:bold}.camera-status-offline{color:#ef4444;font-weight:bold}.camera-status-mock{color:#f59e0b;font-weight:bold}
-    .mapWrap{background:#0f172a;border:1px solid #334155;border-radius:14px;padding:12px;min-height:220px}
-    .mapTitle{font-size:18px;font-weight:700;margin-bottom:10px}
-    .mapBox{height:calc(100% - 30px);min-height:180px;border-radius:12px;background:linear-gradient(135deg,rgba(15,23,42,.96),rgba(30,41,59,.96));display:flex;align-items:center;justify-content:center;text-align:center;color:#cbd5e1;padding:16px}
-    .layout-duplo{display:grid;grid-template-columns:1.1fr 1.4fr;gap:12px}
-    .empty{color:#94a3b8;padding:20px;background:#0f172a;border:1px solid #334155;border-radius:14px}
-    @media(max-width:900px){.layout-duplo{grid-template-columns:1fr}.grid{grid-template-columns:1fr}}
-  </style>
-</head>
-<body>
-  <div class="head">
-    <div>
-      <h1>Zayron Operação</h1>
-      <div class="muted">Modo: ${modo === 'mapa' ? 'Mapa dedicado' : modo === 'duplo' ? 'Mapa + câmeras' : 'Mural de câmeras'}</div>
-    </div>
-    <button onclick="window.close()" style="background:#ef4444;color:#fff;border:0;border-radius:10px;padding:10px 14px;cursor:pointer">Fechar</button>
-  </div>
-  ${body}
-</body>
-</html>`);
+      popup.document.write(`<!DOCTYPE html><html lang="pt-br"><head><meta charset="UTF-8"><title>Zayron Operação</title><style>
+        body{margin:0;background:#020617;color:#f8fafc;font-family:Segoe UI,sans-serif;padding:16px}
+        .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:12px;flex-wrap:wrap}
+        .head h1{margin:0;font-size:22px}
+        .head .muted{color:#94a3b8;font-size:13px}
+        .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
+        .tile{background:#0f172a;border:1px solid #334155;border-radius:14px;overflow:hidden}
+        .frame{min-height:120px;background:linear-gradient(135deg,#0f172a,#1e293b);display:flex;align-items:center;justify-content:center;text-align:center;padding:12px;border-bottom:1px solid rgba(148,163,184,.18)}
+        .title{font-size:18px;font-weight:700;margin-top:8px}.sub{color:#94a3b8;font-size:12px;margin-top:4px}
+        .live{font-size:12px}.dot{width:8px;height:8px;border-radius:999px;background:#10b981;display:inline-block;margin-right:6px;box-shadow:0 0 0 4px rgba(16,185,129,.12)}
+        .meta{padding:12px;display:grid;gap:6px;font-size:13px}
+        .camera-status-online{color:#10b981;font-weight:bold}.camera-status-offline{color:#ef4444;font-weight:bold}.camera-status-mock{color:#f59e0b;font-weight:bold}
+        .mapWrap{background:#0f172a;border:1px solid #334155;border-radius:14px;padding:12px;min-height:220px}.mapTitle{font-size:18px;font-weight:700;margin-bottom:10px}.mapBox{height:calc(100% - 30px);min-height:180px;border-radius:12px;background:linear-gradient(135deg,rgba(15,23,42,.96),rgba(30,41,59,.96));display:flex;align-items:center;justify-content:center;text-align:center;color:#cbd5e1;padding:16px}
+        .layout-duplo{display:grid;grid-template-columns:1.1fr 1.4fr;gap:12px}.empty{color:#94a3b8;padding:20px;background:#0f172a;border:1px solid #334155;border-radius:14px}
+      
 
+    .event-center-drawer {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: min(300px, 88vw);
+      height: 100vh;
+      background: rgba(2, 6, 23, 0.98);
+      border-left: 2px solid var(--accent);
+      box-shadow: -20px 0 50px rgba(0,0,0,.45);
+      z-index: 15000;
+      transform: translateX(110%);
+      transition: transform .25s ease;
+      display: flex;
+      flex-direction: column;
+    }
+    .event-center-drawer.open { transform: translateX(0); }
+    .event-center-header {
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+      padding:16px; border-bottom:1px solid var(--border); background:rgba(15,23,42,.96);
+    }
+    .event-center-body { padding:14px; overflow:auto; display:grid; gap:14px; }
+    .event-group { background: rgba(15, 23, 42, 0.82); border:1px solid var(--border); border-radius:10px; padding:12px; }
+    .event-group .section-header { margin-bottom:8px; }
+    .event-item { border:1px solid var(--border); border-radius:8px; padding:10px; margin-bottom:8px; background:#0f172a; }
+    .event-item:last-child { margin-bottom:0; }
+    .event-item.critica { border-color: rgba(239,68,68,.55); background: rgba(127,29,29,.18); }
+    .event-item.alta { border-color: rgba(245,158,11,.55); background: rgba(120,53,15,.18); }
+    .event-item small { display:block; color:#cbd5e1; margin-top:4px; }
+    .event-popup {
+      position: fixed;
+      left: 50%;
+      bottom: 24px;
+      transform: translate(-50%, 140%);
+      width: min(560px, calc(100vw - 28px));
+      background: linear-gradient(135deg, rgba(127,29,29,.96), rgba(15,23,42,.98));
+      border: 1px solid rgba(239,68,68,.65);
+      border-radius: 14px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.5);
+      z-index: 16000;
+      transition: transform .28s ease;
+      overflow: hidden;
+    }
+    .event-popup.open { transform: translate(-50%, 0); }
+    .event-popup-header { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:14px 16px; background: rgba(239,68,68,.14); }
+    .event-popup-body { padding:14px 16px 16px; }
+    .event-summary-bar { display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; }
+    .event-summary-pill { background:#0f172a; border:1px solid var(--border); border-radius:8px; padding:8px; text-align:center; }
+    .event-summary-pill b { display:block; font-size:16px; margin-bottom:3px; }
+
+
+    .capture-box { border:1px dashed var(--border); border-radius:10px; padding:10px; background:rgba(2,6,23,.28); }
+    .capture-preview { display:flex; align-items:center; gap:10px; margin-top:8px; }
+    .capture-thumb { width:54px; height:54px; border-radius:10px; object-fit:cover; border:1px solid var(--border); background:#0f172a; }
+    .search-inline { display:flex; gap:8px; align-items:center; }
+    .search-inline input { flex:1; }
+    .badge-soft { display:inline-block; padding:2px 8px; border-radius:999px; background:rgba(59,130,246,.16); color:#bfdbfe; font-size:11px; border:1px solid rgba(59,130,246,.28); }
+    .btn-ghost { background:transparent; border:1px solid var(--border); color:#cbd5e1; }
+    .advanced-box { margin-top:10px; padding-top:10px; border-top:1px dashed var(--border); }
+
+    .fence-sector-card { background: rgba(15,23,42,.72); border:1px solid var(--border); border-radius:10px; padding:10px; }
+    .fence-sector-line { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:8px; }
+    .fence-status-pill { display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border-radius:999px; font-size:10px; border:1px solid var(--border); }
+    .fence-status-ativo { color:#d1fae5; border-color:rgba(16,185,129,.4); background:rgba(16,185,129,.14); }
+    .fence-status-desarmado { color:#e2e8f0; border-color:rgba(148,163,184,.35); background:rgba(148,163,184,.12); }
+    .fence-status-alarme { color:#fecaca; border-color:rgba(239,68,68,.45); background:rgba(239,68,68,.14); }
+    .fence-status-falha { color:#fde68a; border-color:rgba(245,158,11,.45); background:rgba(245,158,11,.14); }
+    .popup-list { display:grid; gap:12px; }
+    .popup-card { background:#0f172a; border:1px solid #334155; border-radius:14px; padding:14px; }
+    .popup-card h3 { margin:0 0 8px; font-size:16px; }
+    .popup-card small { display:block; color:#94a3b8; margin-top:4px; }
+    .fence-map-legend { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+
+  </style></head><body><div class="head"><div><h1>Zayron Operação</h1><div class="muted">Modo: ${modo === 'mapa' ? 'Mapa dedicado' : modo === 'duplo' ? 'Mapa + câmeras' : 'Mural de câmeras'}</div></div><button onclick="window.close()" style="background:#ef4444;color:#fff;border:0;border-radius:10px;padding:10px 14px;cursor:pointer">Fechar</button></div>${body}
+</body></html>`);
       popup.document.close();
-
-      if (modo === 'mapa' || !cams.length) {
-        return;
-      }
-
-      const sessoesMural = new Map();
-
-      const encerrarSessoesMural = () => {
-        sessoesMural.forEach(sessaoId => {
-          if (!sessaoId) return;
-
-          fetch(`${getApiLocal3001()}/local/cameras/mjpeg/parar`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({sessao_id: sessaoId}),
-            keepalive: true
-          }).catch(() => {});
-        });
-
-        sessoesMural.clear();
-      };
-
-      popup.addEventListener('beforeunload', encerrarSessoesMural, {once:true});
-
-      cams.forEach(async (camera, index) => {
-        const tile = popup.document.querySelector(`[data-camera-index="${index}"]`);
-        const imagem = tile?.querySelector('.camera-live-image');
-        const loading = tile?.querySelector('.camera-loading');
-        const label = tile?.querySelector('.camera-live-label');
-        const statusEl = tile?.querySelector('.camera-card-status');
-
-        if (!tile || !imagem) return;
-
-        let fabricante = String(camera.fabricante || camera.marca || 'intelbras').trim().toLowerCase();
-        if (!fabricante || fabricante === 'generic') fabricante = 'intelbras';
-
-        const canal = Math.max(1, Number(camera.canal || camera.channel || 1));
-        const stream = 'secundario';
-        const pathCamera = camera.stream_path_mural || `/cam/realmonitor?channel=${canal}&subtype=1`;
-
-        try {
-          const resposta = await fetch(`${getApiLocal3001()}/local/cameras/mjpeg/iniciar`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-              fabricante,
-              ip: String(camera.ip || '').trim(),
-              porta: Number(camera.porta) === 504 ? 554 : Number(camera.porta || 554),
-              usuario: camera.usuario || camera.user || camera.login || '',
-              senha: camera.senha || camera.password || '',
-              canal,
-              stream,
-              path: pathCamera,
-              fps: 8,
-              qualidade_mjpeg: 8
-            })
-          });
-
-          const dados = await resposta.json().catch(() => ({}));
-
-          if (!resposta.ok || !dados.success || !dados.data?.sessao_id || !dados.data?.stream_url) {
-            throw new Error(dados.details || dados.message || `Erro HTTP ${resposta.status}`);
-          }
-
-          sessoesMural.set(index, dados.data.sessao_id);
-
-          const streamUrl = String(dados.data.stream_url).startsWith('http')
-            ? dados.data.stream_url
-            : `${getApiLocal3001()}${dados.data.stream_url}`;
-
-          imagem.onload = () => {
-            imagem.style.display = 'block';
-            if (loading) loading.style.display = 'none';
-            tile.classList.remove('offline');
-            tile.classList.add('online');
-            if (label) label.textContent = 'AO VIVO';
-            if (statusEl) {
-              statusEl.textContent = 'ONLINE';
-              statusEl.className = 'camera-card-status camera-status-online';
-            }
-          };
-
-          imagem.onerror = () => {
-            tile.classList.remove('online');
-            tile.classList.add('offline');
-            if (loading) {
-              loading.style.display = 'block';
-              loading.textContent = 'TRANSMISSÃO INTERROMPIDA';
-            }
-            if (label) label.textContent = 'OFFLINE';
-            if (statusEl) {
-              statusEl.textContent = 'OFFLINE';
-              statusEl.className = 'camera-card-status camera-status-offline';
-            }
-          };
-
-          imagem.src = streamUrl;
-        } catch (error) {
-          console.error(`Erro no mural da câmera ${camera.nome || camera.id}:`, error);
-          tile.classList.remove('online');
-          tile.classList.add('offline');
-          if (loading) {
-            loading.style.display = 'block';
-            loading.textContent = error?.message || 'NÃO FOI POSSÍVEL ABRIR';
-          }
-          if (label) label.textContent = 'OFFLINE';
-          if (statusEl) {
-            statusEl.textContent = 'OFFLINE';
-            statusEl.className = 'camera-card-status camera-status-offline';
-          }
-        }
-      });
     }
 
     function iniciarRealtime() {
@@ -15584,7 +14904,7 @@ function renderServerSelect(){ const sel = gid('op_srv_video_lista') || gid('srv
   window.zayronAdicionarTodasNaEstacao = function(){ ensureDb(); let estId = selectedEstacaoId(); if (!estId) { const estacao = (MOCK_DB.estacoes_operacao||[]).find(e => e.condominio_id === getOperatorCondo()); if (!estacao) return alert('Cadastre uma estação primeiro na gestão de telas.'); estId = estacao.id; if (gid('tela_estacao_id')) gid('tela_estacao_id').value = estId; } const condoId = getOperatorCondo(); const cams = (MOCK_DB.cameras_cadastro||[]).filter(c => c.condominio_id === condoId); if (!cams.length) return alert('Nenhuma câmera cadastrada no sistema. Use o módulo Admin para conectar o servidor e adicionar todas as câmeras.'); let added = 0; cams.forEach(cam => { const ex = (MOCK_DB.estacoes_fontes_video||[]).find(x => x.estacao_id === estId && x.camera_id === cam.id); if (!ex) { MOCK_DB.estacoes_fontes_video.push({ id:'efv-'+Date.now()+'-'+added, estacao_id:estId, camera_id:cam.id, ativo:true, created_at:new Date().toISOString() }); added += 1; } else ex.ativo = true; }); let tela = (MOCK_DB.telas_operacao||[]).find(t => t.estacao_id === estId && (t.modo === 'cameras' || t.modo === 'duplo')); if (!tela) { tela = { id:'tel-auto-'+Date.now(), condominio_id:condoId, estacao_id:estId, numero:1, titulo:'Tela principal do operador', modo:'cameras', layout:'4x4', qtd_cameras:Math.min(25, cams.length || 4), filtro_setor:'', created_at:new Date().toISOString() }; MOCK_DB.telas_operacao.push(tela); } else { tela.qtd_cameras = Math.min(25, cams.length || tela.qtd_cameras || 4); tela.filtro_setor = ''; } autoLinkFence(); persist(); window.renderizarEstacoesOperacao && renderizarEstacoesOperacao(); window.renderizarTelasOperacao && renderizarTelasOperacao(); window.renderizarOperacaoCameras && renderizarOperacaoCameras(); window.zayronRenderOperatorPanel && zayronRenderOperatorPanel(); alert(`Todas as câmeras foram carregadas para a estação selecionada. Novos vínculos adicionados: ${added}.`); };
   window.zayronAtualizarStreamsOperador = function(){ const condoId = getOperatorCondo(); (MOCK_DB.cameras_cadastro||[]).filter(c => c.condominio_id === condoId).forEach(c => { c.status = 'online'; c.ultima_atualizacao_stream = new Date().toISOString(); }); persist(); window.renderizarOperacaoCameras && renderizarOperacaoCameras(); window.zayronRenderOperatorPanel && zayronRenderOperatorPanel(); };
   window.zayronToggleCameraEstacao = function(cameraId, checked){ ensureDb(); const estId = selectedEstacaoId(); if (!estId) return alert('Selecione uma estação para marcar as câmeras.'); let reg = (MOCK_DB.estacoes_fontes_video||[]).find(x => x.estacao_id === estId && x.camera_id === cameraId); if (!reg && checked) { reg = { id:'efv-'+Date.now(), estacao_id:estId, camera_id:cameraId, ativo:true, created_at:new Date().toISOString() }; MOCK_DB.estacoes_fontes_video.push(reg); } else if (reg) reg.ativo = !!checked; persist(); window.zayronRenderOperatorPanel && zayronRenderOperatorPanel(); window.renderizarOperacaoCameras && renderizarOperacaoCameras(); };
-  window.zayronAbrirCameraPorSetor = function(setorId){ const link = (MOCK_DB.vinculos_cerca_camera||[]).find(v => String(v.setor_id) === String(setorId)); const camDireta = (MOCK_DB.cameras_cadastro||[]).find(c => String(c.setor_cerca_id || '') === String(setorId)); const cam = link ? getCameraById(link.camera_id) : camDireta; if (!cam) return alert('Nenhuma câmera vinculada para este setor.'); if (typeof abrirPreviewCameraSalva === 'function') { abrirPreviewCameraSalva(cam.id); return; } if (typeof abrirPreviewCamera === 'function') { abrirPreviewCamera(cam); return; } alert('A função de preview da câmera não está disponível.'); };
+  window.zayronAbrirCameraPorSetor = function(setorId){ const link = (MOCK_DB.vinculos_cerca_camera||[]).find(v => v.setor_id === setorId); if (!link) return alert('Nenhuma câmera vinculada para este setor.'); const cam = getCameraById(link.camera_id); if (!cam) return alert('Câmera vinculada não encontrada.'); alert(`Abrindo câmera do setor: ${cam.nome}\nIP: ${cam.ip}${cam.porta?':'+cam.porta:''}\nStream: ${(cam.stream_tipo||'RTSP').toUpperCase()}`); };
   window.zayronRenderOperatorPanel = function(){ ensureDb(); const condoId = getOperatorCondo(); const estId = selectedEstacaoId(); const cameras = (MOCK_DB.cameras_cadastro||[]).filter(c => c.condominio_id === condoId); const servidoresOnline = getServers(condoId).filter(s => s.status === 'online').length; const ativos = estId ? getEstacaoFontes(estId).map(x => x.camera_id) : []; const setores = (window.getSetoresCerca ? getSetoresCerca(condoId) : (MOCK_DB.setores_cerca||[]).filter(s=>s.condominio_id===condoId)); const vinculos = (MOCK_DB.vinculos_cerca_camera||[]).filter(v => v.condominio_id === condoId); if (gid('op-kpi-servidor')) gid('op-kpi-servidor').textContent = String(servidoresOnline); if (gid('op-kpi-disponiveis')) gid('op-kpi-disponiveis').textContent = String(cameras.length); if (gid('op-kpi-estacao')) gid('op-kpi-estacao').textContent = String(ativos.length); if (gid('op-kpi-cerca')) gid('op-kpi-cerca').textContent = String(vinculos.length); const list = gid('operator-source-list'); if (list) list.innerHTML = cameras.length ? cameras.map(cam => { const checked = ativos.includes(cam.id) ? 'checked' : ''; return `<div class="item-lista"><div><b>${esc(cam.nome||'-')}</b><small>${esc(cam.setor||'-')} · ${(cam.stream_tipo||'rtsp').toUpperCase()} · ${esc(cam.ip||'-')}${cam.porta?':'+esc(cam.porta):''}</small></div><label class="operator-checkbox-line"><input type="checkbox" ${checked} onchange="zayronToggleCameraEstacao('${esc(cam.id)}', this.checked)"><span>na estação</span></label></div>`; }).join('') : '<div class="muted">Nenhuma câmera disponível. Vá no Admin e conecte o servidor primeiro.</div>'; const fence = gid('operator-fence-links'); if (fence) fence.innerHTML = setores.length ? setores.map(setor => { const vinc = vinculos.find(v => v.setor_id === setor.id); const cam = vinc ? getCameraById(vinc.camera_id) : null; return `<div class="fence-link-line"><div><b>${esc(setor.nome||'-')}</b><small style="display:block;color:#94a3b8;">${cam ? 'Câmera: '+esc(cam.nome) : 'Sem câmera vinculada'}</small></div><button class="btn-mini" onclick="zayronAbrirCameraPorSetor('${esc(setor.id)}')">Abrir câmera</button></div>`; }).join('') : '<div class="muted">Nenhum setor de cerca cadastrado.</div>'; };
   window.filtrarCamerasParaTela = function(tela){ ensureDb(); let cams = (window.obterCamerasOperador ? obterCamerasOperador() : (MOCK_DB.cameras_cadastro||[])).slice(); const ids = tela && tela.estacao_id ? getEstacaoFontes(tela.estacao_id).map(x => x.camera_id) : []; if (ids.length) cams = cams.filter(cam => ids.includes(cam.id)); const filtro = String((tela && tela.filtro_setor) || '').trim().toLowerCase(); if (filtro) cams = cams.filter(cam => [cam.setor, cam.nome, cam.identificador, cam.tipo].some(v => String(v || '').toLowerCase().includes(filtro))); const qtd = Math.max(1, Number((tela && tela.qtd_cameras) || 4)); return cams.slice(0, qtd); };
   function afterRender(){ setTimeout(function(){ ensureDb(); ensureAdminPanel(); ensureOperatorPanel(); renderServerAdmin(); window.zayronRenderOperatorPanel && zayronRenderOperatorPanel(); }, 30); }
@@ -16435,48 +15755,130 @@ function getEmpresasVinculadasDoGerente() {
   const gerente = getGerenteAtualComVinculos() || {};
   const u = currentUser || {};
 
-  const idsRaw =
-    gerente.clientes_vinculados ||
-    gerente.condominios_vinculados ||
-    gerente.condominios_ids ||
-    gerente.empresas_vinculadas ||
-    gerente.empresas_ids ||
-    gerente.condominio_ids ||
-    u.clientes_vinculados ||
-    u.condominios_vinculados ||
-    u.condominios_ids ||
-    u.empresas_vinculadas ||
-    u.empresas_ids ||
-    u.condominio_ids ||
-    [];
+  // Procura os vínculos do GERENTE, ignorando arrays vazios.
+  const fontesGerente = [
+    gerente.clientes_vinculados,
+    gerente.condominios_vinculados,
+    gerente.condominios_ids,
+    gerente.empresas_vinculadas,
+    gerente.empresas_ids,
+    gerente.condominio_ids
+  ];
 
-  let ids = Array.isArray(idsRaw)
-    ? idsRaw.map(item => String(item?.id || item?.condominio_id || item))
-    : String(idsRaw || '').split(',').map(s => s.trim()).filter(Boolean);
+  let ids = [];
 
- 
-  if (!ids.length && currentCondoId) {
-    ids = [String(currentCondoId)];
+  for (const valor of fontesGerente) {
+    if (Array.isArray(valor) && valor.length) {
+      ids = valor
+        .flatMap(item => {
+          if (item && typeof item === 'object') {
+            return item.id || item.condominio_id || [];
+          }
+          return item;
+        })
+        .map(item => String(item).trim())
+        .filter(Boolean);
+
+      if (ids.length) break;
+    }
+
+    if (
+      !Array.isArray(valor) &&
+      valor !== undefined &&
+      valor !== null &&
+      String(valor).trim()
+    ) {
+      ids = String(valor)
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+
+      if (ids.length) break;
+    }
   }
 
-  const todas = aplicarCoordenadasSalvasCondominios(MOCK_DB.condominios || [])
-    .filter(c => !String(c.nome || '').toUpperCase().includes('DEMO'))
+  // Só usa os vínculos do usuário atual se o gerente não tiver
+  // nenhum vínculo encontrado.
+  if (!ids.length) {
+    const fontesUsuario = [
+      u.clientes_vinculados,
+      u.condominios_vinculados,
+      u.condominios_ids,
+      u.empresas_vinculadas,
+      u.empresas_ids,
+      u.condominio_ids
+    ];
+
+    for (const valor of fontesUsuario) {
+      if (Array.isArray(valor) && valor.length) {
+        ids = valor
+          .flatMap(item => {
+            if (item && typeof item === 'object') {
+              return item.id || item.condominio_id || [];
+            }
+            return item;
+          })
+          .map(item => String(item).trim())
+          .filter(Boolean);
+
+        if (ids.length) break;
+      }
+
+      if (
+        !Array.isArray(valor) &&
+        valor !== undefined &&
+        valor !== null &&
+        String(valor).trim()
+      ) {
+        ids = String(valor)
+          .split(',')
+          .map(s => s.trim())
+          .filter(Boolean);
+
+        if (ids.length) break;
+      }
+    }
+  }
+
+  const idsUnicos = [...new Set(ids)];
+
+  // NÃO força currentCondoId aqui.
+  // Se o gerente tiver várias empresas vinculadas,
+  // todas elas precisam aparecer.
+  const todas = aplicarCoordenadasSalvasCondominios(
+    MOCK_DB.condominios || []
+  )
+    .filter(c =>
+      !String(c.nome || '')
+        .toUpperCase()
+        .includes('DEMO')
+    )
     .map(c => {
       const coord = getCoordenadasCondominio(c);
+
       return {
         ...c,
         id: c.id,
-        nome: c.nome || c.nome_condominio || c.razao_social || 'Empresa sem nome',
+        nome:
+          c.nome ||
+          c.nome_condominio ||
+          c.razao_social ||
+          'Empresa sem nome',
         latitude: coord ? coord.lat : null,
         longitude: coord ? coord.lng : null,
-        vinculada: ids.includes(String(c.id))
+        vinculada: idsUnicos.includes(String(c.id))
       };
     });
 
   return todas.filter(c => c.vinculada);
 }
+
+
 function renderizarEmpresasMonitoradasGerente() {
-  const box = document.getElementById('lista-empresas-monitoradas-gerente');
+  const box = document.getElementById(
+    'lista-empresas-monitoradas-gerente'
+  );
+
   if (!box) return;
 
   if (currentRole !== 'gerente') {
@@ -16484,20 +15886,11 @@ function renderizarEmpresasMonitoradasGerente() {
     return;
   }
 
-  let empresas = getEmpresasVinculadasDoGerente();
-
-if (!empresas.length && currentCondoId) {
-  const empresaAberta = (MOCK_DB.condominios || []).find(c =>
-    String(c.id) === String(currentCondoId)
-  );
-
-  if (empresaAberta) {
-    empresas = [empresaAberta];
-  }
-}
+  const empresas = getEmpresasVinculadasDoGerente();
 
   if (!empresas.length) {
-    box.innerHTML = '<div class="muted">Nenhuma empresa real vinculada a este gerente.</div>';
+    box.innerHTML =
+      '<div class="muted">Nenhuma empresa real vinculada a este gerente.</div>';
     return;
   }
 
@@ -16505,48 +15898,157 @@ if (!empresas.length && currentCondoId) {
     const coord = getCoordenadasCondominio(c);
     const semCoord = !coord;
     const safeId = String(c.id).replace(/'/g, "\\'");
-    const setoresEmpresa = (MOCK_DB.setores_cerca || []).filter(
-      setor => String(setor.condominio_id) === String(c.id)
+
+    const setoresEmpresa = (
+      MOCK_DB.setores_cerca || []
+    ).filter(
+      setor =>
+        String(setor.condominio_id) === String(c.id)
     );
+
     const setoresDesarmados = setoresEmpresa.filter(
-      setor => String(setor.status || '').toLowerCase().includes('desarm')
+      setor =>
+        String(setor.status || '')
+          .toLowerCase()
+          .includes('desarm')
     );
+
     const ultimoDesarmado = setoresDesarmados
       .slice()
-      .sort((a,b) => new Date(b.desarmado_em || b.updated_at || 0) - new Date(a.desarmado_em || a.updated_at || 0))[0];
-    const detalhesDesarme = ultimoDesarmado && typeof getDetalhesDesarmeSetor === 'function'
-      ? getDetalhesDesarmeSetor(ultimoDesarmado)
-      : null;
-    const empresaEmAtencao = setoresDesarmados.length > 0;
+      .sort(
+        (a, b) =>
+          new Date(
+            b.desarmado_em ||
+            b.updated_at ||
+            0
+          ) -
+          new Date(
+            a.desarmado_em ||
+            a.updated_at ||
+            0
+          )
+      )[0];
+
+    const detalhesDesarme =
+      ultimoDesarmado &&
+      typeof getDetalhesDesarmeSetor === 'function'
+        ? getDetalhesDesarmeSetor(ultimoDesarmado)
+        : null;
+
+    const empresaEmAtencao =
+      setoresDesarmados.length > 0;
 
     return `
-      <div class="item-lista ${empresaEmAtencao ? 'company-fence-warning' : ''}">
+      <div class="item-lista ${
+        empresaEmAtencao
+          ? 'company-fence-warning'
+          : ''
+      }">
+
         <div>
-          <b style="color:${empresaEmAtencao ? '#fecaca' : '#d1fae5'}">${empresaEmAtencao ? '●' : '●'} ${escapeHtml(c.nome || 'Empresa sem nome')}</b>
-          <small class="${empresaEmAtencao ? 'company-fence-warning-text' : ''}">
-            ${empresaEmAtencao
-              ? `ATENÇÃO: ${setoresDesarmados.length} setor(es) da cerca desarmado(s)`
-              : 'Cerca monitorada normalmente'}
+
+          <b style="color:${
+            empresaEmAtencao
+              ? '#fecaca'
+              : '#d1fae5'
+          }">
+            ● ${escapeHtml(
+              c.nome || 'Empresa sem nome'
+            )}
+          </b>
+
+          <small class="${
+            empresaEmAtencao
+              ? 'company-fence-warning-text'
+              : ''
+          }">
+            ${
+              empresaEmAtencao
+                ? `ATENÇÃO: ${setoresDesarmados.length} setor(es) da cerca desarmado(s)`
+                : 'Cerca monitorada normalmente'
+            }
           </small>
-          ${detalhesDesarme ? `
-            <small>Setor: ${escapeHtml(ultimoDesarmado.nome || '-')}</small>
-            <small>Motivo: ${escapeHtml(detalhesDesarme.motivo)}</small>
-            <small>Responsável: ${escapeHtml(detalhesDesarme.responsavel)}${detalhesDesarme.horario ? ` · ${escapeHtml(formatDateTime(detalhesDesarme.horario))}` : ''}</small>
-          ` : ''}
-          <small>ID: ${escapeHtml(c.id || '-')}</small>
-          ${semCoord
-            ? '<small style="color:var(--warning)">Sem coordenada da portaria salva.</small>'
-            : `<small>Lat: ${escapeHtml(coord.lat.toFixed(6))} · Lng: ${escapeHtml(coord.lng.toFixed(6))}</small>`
+
+          ${
+            detalhesDesarme
+              ? `
+                <small>
+                  Setor:
+                  ${escapeHtml(
+                    ultimoDesarmado.nome || '-'
+                  )}
+                </small>
+
+                <small>
+                  Motivo:
+                  ${escapeHtml(
+                    detalhesDesarme.motivo
+                  )}
+                </small>
+
+                <small>
+                  Responsável:
+                  ${escapeHtml(
+                    detalhesDesarme.responsavel
+                  )}
+                  ${
+                    detalhesDesarme.horario
+                      ? ` · ${escapeHtml(
+                          formatDateTime(
+                            detalhesDesarme.horario
+                          )
+                        )}`
+                      : ''
+                  }
+                </small>
+              `
+              : ''
           }
+
+          <small>
+            ID:
+            ${escapeHtml(c.id || '-')}
+          </small>
+
+          ${
+            semCoord
+              ? `
+                <small style="color:var(--warning)">
+                  Sem coordenada da portaria salva.
+                </small>
+              `
+              : `
+                <small>
+                  Lat:
+                  ${escapeHtml(
+                    coord.lat.toFixed(6)
+                  )}
+                  · Lng:
+                  ${escapeHtml(
+                    coord.lng.toFixed(6)
+                  )}
+                </small>
+              `
+          }
+
         </div>
+
         <div class="actions-inline">
-          <button class="btn-mini" onclick="abrirEmpresaGerente('${safeId}')">
+
+          <button
+            class="btn-mini"
+            onclick="abrirEmpresaGerente('${safeId}')">
             Abrir
           </button>
-          <button class="btn-del" onclick="desvincularEmpresaGerente('${safeId}')">
+
+          <button
+            class="btn-del"
+            onclick="desvincularEmpresaGerente('${safeId}')">
             Desvincular
           </button>
+
         </div>
+
       </div>
     `;
   }).join('');
@@ -18650,115 +18152,14 @@ document.addEventListener('DOMContentLoaded', () => {
   const CHAVE_V41 = 'zayronTransmissoesGerente';
   const janelasV41 = new Map();
 
- function lerTransmissoesV41(condominioId) {
-  const idEmpresa = String(
-    condominioId || ''
-  );
-
-  const cadastradas = (
-    MOCK_DB.cameras_cadastro || []
-  ).filter(camera => {
-    const cameraCondo = String(
-      camera.condominio_id ||
-      camera.condominioId ||
-      camera.empresa_id ||
-      camera.empresaId ||
-      camera.cliente_id ||
-      camera.clienteId ||
-      ''
+  function lerTransmissoesV41(condominioId) {
+    let itens = [];
+    try { itens = JSON.parse(localStorage.getItem(CHAVE_V41) || '[]'); } catch (_) {}
+    return itens.filter(item =>
+      item.ativo !== false &&
+      String(item.condominio_id || '') === String(condominioId || '')
     );
-
-    return cameraCondo === idEmpresa;
-  });
-
-  return cadastradas.map(camera => ({
-    id: `camera-gerente-${camera.id}`,
-
-    camera_id:
-      camera.id,
-
-    condominio_id:
-      idEmpresa,
-
-    camera_nome:
-      camera.nome ||
-      camera.nome_camera ||
-      'Câmera',
-
-    setor:
-      camera.setor ||
-      camera.local_instalacao ||
-      camera.descricao ||
-      '-',
-
-    operador:
-      'Gerente',
-
-    ativo:
-      true,
-
-    stream_tipo:
-      String(
-        camera.stream_tipo ||
-        camera.stream ||
-        'rtsp'
-      ).toLowerCase(),
-
-    stream_url:
-      camera.stream_url ||
-      camera.hls_url ||
-      camera.http_url ||
-      '',
-
-    snapshot_url:
-      camera.snapshot_url ||
-      '',
-
-    fabricante:
-      camera.fabricante ||
-      camera.marca ||
-      'intelbras',
-
-    ip:
-      camera.ip ||
-      '',
-
-    porta:
-      Number(
-        camera.porta || 554
-      ),
-
-    usuario:
-      camera.usuario ||
-      camera.user ||
-      camera.login ||
-      '',
-
-    senha:
-      camera.senha ||
-      camera.password ||
-      '',
-
-    canal:
-      Number(
-        camera.canal ||
-        camera.channel ||
-        1
-      ),
-
-    stream_path:
-      camera.stream_path ||
-      camera.path ||
-      camera.rtsp_path ||
-      '',
-
-    iniciada_em:
-      new Date().toISOString(),
-
-    camera_original:
-      camera
-  }));
-}
+  }
 
   function nomeEmpresaV41(condominioId) {
     return typeof getNomeEmpresaPorIdGerente === 'function'
@@ -20078,619 +19479,14 @@ function iniciarAtualizacaoAutomaticaCerca() {
 
 }
 </script>
-
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-  setTimeout(() => {
-    if (typeof preencherSelectSetorCamera === 'function') {
-      preencherSelectSetorCamera();
-    }
-  }, 1200);
-});
-</script>
-
-<script>
-/* ===== PATCH V43 - mural ao vivo para operador e gerente ===== */
-(function(){
-  if (window.__ZAYRON_PATCH_V43__) return;
-  window.__ZAYRON_PATCH_V43__ = true;
-
-  const janelasGerenteV43 = new Map();
-
-  function camerasEmpresaV43(condominioId) {
-    const idEmpresa = String(condominioId || '');
-    const todas = ((window.MOCK_DB && MOCK_DB.cameras_cadastro) || []).slice();
-
-    const obterEmpresaCamera = camera => String(
-      camera?.condominio_id ||
-      camera?.condominioId ||
-      camera?.empresa_id ||
-      camera?.empresaId ||
-      camera?.cliente_id ||
-      camera?.clienteId ||
-      ''
-    );
-
-    let cameras = todas.filter(camera =>
-      obterEmpresaCamera(camera) === idEmpresa
-    );
-
-    /*
-      carregarCameras(condominioId) substitui o cache local pelas câmeras
-      da empresa atualmente aberta. Algumas respostas antigas da API chegam
-      sem condominio_id. Nesse caso, o cache inteiro já pertence à empresa
-      aberta e pode ser usado com segurança.
-    */
-    if (
-      !cameras.length &&
-      idEmpresa &&
-      String(window.currentCondoId || '') === idEmpresa
-    ) {
-      cameras = todas;
-    }
-
-    return cameras.sort((a,b) =>
-      String(a.nome || '').localeCompare(String(b.nome || ''))
-    );
-  }
-
-  function dadosStreamV43(camera) {
-    let fabricante = String(camera.fabricante || camera.marca || 'intelbras').trim().toLowerCase();
-    if (!fabricante || fabricante === 'generic') fabricante = 'intelbras';
-    const canal = Math.max(1, Number(camera.canal || camera.channel || 1));
-    const stream = 'secundario';
-    return {
-      fabricante,
-      ip: String(camera.ip || '').trim(),
-      porta: Number(camera.porta) === 504 ? 554 : Number(camera.porta || 554),
-      usuario: camera.usuario || camera.user || camera.login || '',
-      senha: camera.senha || camera.password || '',
-      canal,
-      stream,
-      path: camera.stream_path_mural || `/cam/realmonitor?channel=${canal}&subtype=1`,
-      fps: 8,
-      qualidade_mjpeg: 8
-    };
-  }
-
-  function htmlGerenteV43(titulo, cameras) {
-    const cards = cameras.map((camera,index) => `
-      <article class="camera" data-camera-index="${index}">
-        <div class="frame">
-          <div class="loading">CONECTANDO AO AGENTE LOCAL...</div>
-          <img class="live" alt="${escapeHtml(camera.nome || 'Câmera')}">
-          <div class="badge"><span class="dot"></span><span class="label">CONECTANDO</span></div>
-          <button type="button" class="fechar-ampliada">Fechar (Esc)</button>
-        </div>
-        <div class="info">
-          <b>${escapeHtml(camera.nome || 'Câmera')}</b>
-          <small>${escapeHtml(camera.ip || '-')}${camera.porta ? ':' + escapeHtml(String(camera.porta)) : ''}</small>
-          <small>Setor: ${escapeHtml(camera.setor || '-')} · RTSP</small>
-          <div class="status">CONECTANDO</div>
-        </div>
-      </article>`).join('');
-
-    return `<!doctype html><html lang="pt-br"><head><meta charset="utf-8"><title>${escapeHtml(titulo)}</title>
-      <style>
-        *{box-sizing:border-box}body{margin:0;background:#020617;color:#e2e8f0;font-family:Segoe UI,Arial,sans-serif;padding:16px}
-        header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}h1{font-size:22px;margin:0}
-        button{background:#ef4444;color:#fff;border:0;border-radius:9px;padding:10px 14px;cursor:pointer;font-weight:700}
-        .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px}
-        .camera{background:#0f172a;border:1px solid #334155;border-radius:12px;overflow:hidden}.frame{position:relative;aspect-ratio:16/9;background:#000;display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer}
-        .frame::after{content:'CLIQUE PARA TELA CHEIA';position:absolute;right:10px;bottom:10px;background:rgba(2,6,23,.78);border:1px solid #334155;border-radius:999px;padding:5px 8px;font-size:10px;color:#bfdbfe;opacity:0;transition:opacity .18s}
-        .frame:hover::after{opacity:1}.camera:fullscreen{background:#000;display:flex;align-items:center;justify-content:center}.camera:fullscreen .frame{width:100vw;height:100vh;aspect-ratio:auto}.camera:fullscreen .info{display:none}.camera:fullscreen img.live{object-fit:contain}
-        img.live{display:none;width:100%;height:100%;object-fit:contain;background:#000}.loading{color:#93c5fd;font-size:12px;font-weight:700;text-align:center;padding:14px}
-        .badge{position:absolute;left:10px;top:10px;background:rgba(2,6,23,.8);border:1px solid #334155;border-radius:999px;padding:6px 9px;font-size:11px;display:flex;align-items:center;gap:6px}
-        .dot{width:8px;height:8px;border-radius:50%;background:#f59e0b}.camera.online .dot{background:#10b981}.camera.offline .dot{background:#ef4444}
-        .info{padding:12px;display:grid;gap:5px}.info b{font-size:17px}.info small{color:#94a3b8}.status{font-size:12px;color:#f59e0b;font-weight:700}.camera.online .status{color:#10b981}.camera.offline .status{color:#ef4444}
-        .vazio{padding:40px;text-align:center;color:#94a3b8;background:#0f172a;border:1px solid #334155;border-radius:12px}
-        .camera-full-overlay{display:none!important}
-        .camera.ampliada{position:fixed!important;inset:0!important;z-index:99999!important;border:0!important;border-radius:0!important;background:#000!important;display:flex!important;align-items:center!important;justify-content:center!important}
-        .camera.ampliada .frame{position:absolute!important;inset:0!important;width:100vw!important;height:100vh!important;aspect-ratio:auto!important;border-radius:0!important}
-        .camera.ampliada img.live{display:block!important;width:100vw!important;height:100vh!important;object-fit:contain!important;background:#000!important}
-        .camera.ampliada .info{display:none!important}.camera.ampliada .badge{z-index:2}
-        .fechar-ampliada{display:none;position:fixed;right:18px;top:18px;z-index:100002;background:#ef4444;color:#fff;border:0;border-radius:10px;padding:11px 16px;font-weight:800;cursor:pointer}
-        .camera.ampliada .fechar-ampliada{display:block}
-      </style></head><body><header><h1>${escapeHtml(titulo)}</h1><button onclick="window.close()">Fechar</button></header><main class="grid">${cards || '<div class="vazio">Nenhuma câmera cadastrada para esta empresa.</div>'}</main><div id="camera-full-overlay" class="camera-full-overlay"><div id="camera-full-name" class="camera-full-name"></div><button id="camera-full-close" class="camera-full-close">Fechar (Esc)</button></div></body></html>`;
-  }
-
-  function atualizarStatusCameraMapaV43(camera, statusNovo) {
-    const id = String(camera?.id || '');
-    const todas = ((window.MOCK_DB && MOCK_DB.cameras_cadastro) || []);
-    const alvo = todas.find(item => String(item.id || '') === id);
-    const status = statusNovo === 'online' ? 'online' : 'offline';
-
-    camera.status = status;
-    camera.ultima_checagem = new Date().toISOString();
-
-    if (alvo) {
-      alvo.status = status;
-      alvo.ultima_checagem = camera.ultima_checagem;
-    }
-
-    if (typeof renderizarCamerasIANoMapa === 'function') {
-      renderizarCamerasIANoMapa();
-    }
-  }
-
-  async function iniciarCamerasGerenteV43(janela, cameras) {
-    const sessoes = new Map();
-    const verificadores = new Map();
-    const atualizadoresCloud = new Map();
-    const estadosInstancias = new Map();
-
-    const obterSessaoCloudV43 = () => {
-      let sessao = {};
-
-      try {
-        if (
-          typeof currentSession !== 'undefined' &&
-          currentSession &&
-          typeof currentSession === 'object'
-        ) {
-          sessao = currentSession;
-        }
-      } catch (_) {}
-
-      if (
-        !sessao ||
-        !Object.keys(sessao).length ||
-        !(sessao.cloud_access_token || sessao.access_token || sessao.token)
-      ) {
-        try {
-          const salva = localStorage.getItem('zayron_api_session');
-          if (salva) {
-            const lida = JSON.parse(salva);
-            if (lida && typeof lida === 'object') {
-              sessao = { ...lida, ...sessao };
-            }
-          }
-        } catch (_) {}
-      }
-
-      const token = String(
-        sessao.cloud_access_token ||
-        sessao.access_token ||
-        sessao.token ||
-        localStorage.getItem('cloud_access_token') ||
-        localStorage.getItem('access_token') ||
-        localStorage.getItem('token') ||
-        ''
-      ).trim();
-
-      const api = String(
-        typeof API_NUVEM !== 'undefined' && API_NUVEM
-          ? API_NUVEM
-          : 'https://zayron-api-1011701557501.southamerica-east1.run.app'
-      ).trim().replace(/\/+$/, '');
-
-      return { token, api };
-    };
-
-    const chaveFisica = camera => [
-      String(camera?.ip || '').trim(),
-      String(Number(camera?.porta || 554)),
-      String(camera?.canal || camera?.channel || 1)
-    ].join('|');
-
-    const atualizarStatusFisico = (camera, indice, online) => {
-      const chave = chaveFisica(camera);
-      estadosInstancias.set(`${chave}#${indice}`, Boolean(online));
-      const algumOnline = Array.from(estadosInstancias.entries())
-        .some(([k, v]) => k.startsWith(`${chave}#`) && v);
-
-      atualizarStatusCameraMapaV43(
-        camera,
-        algumOnline ? 'online' : 'offline'
-      );
-    };
-
-    let cardAmpliado = null;
-
-    const fecharTelaCheia = async () => {
-      if (cardAmpliado) cardAmpliado.classList.remove('ampliada');
-      cardAmpliado = null;
-
-      try {
-        if (
-          janela.document.fullscreenElement &&
-          janela.document.exitFullscreen
-        ) {
-          await janela.document.exitFullscreen();
-        }
-      } catch (_) {}
-    };
-
-    janela.document.addEventListener('keydown', event => {
-      if (event.key === 'Escape') fecharTelaCheia();
-    });
-
-    const parar = () => {
-      verificadores.forEach(timer => clearInterval(timer));
-      verificadores.clear();
-
-      atualizadoresCloud.forEach(timer => clearTimeout(timer));
-      atualizadoresCloud.clear();
-
-      sessoes.forEach(sessaoId => {
-        fetch(`${getApiLocal3001()}/local/cameras/mjpeg/parar`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sessao_id: sessaoId }),
-          keepalive: true
-        }).catch(() => {});
-      });
-
-      sessoes.clear();
-    };
-
-    janela.addEventListener('beforeunload', parar, { once: true });
-
-    cameras.forEach(async (camera, index) => {
-      const card = janela.document.querySelector(
-        `[data-camera-index="${index}"]`
-      );
-      const img = card?.querySelector('img.live');
-      const loading = card?.querySelector('.loading');
-      const label = card?.querySelector('.label');
-      const status = card?.querySelector('.status');
-      const frame = card?.querySelector('.frame');
-
-      if (!card || !img) return;
-
-      const aplicarStatus = online => {
-        card.classList.toggle('online', online);
-        card.classList.toggle('offline', !online);
-
-        if (label) label.textContent = online ? 'AO VIVO' : 'OFFLINE';
-        if (status) status.textContent = online ? 'ONLINE' : 'OFFLINE';
-
-        if (!online && loading) {
-          loading.style.display = 'block';
-          loading.textContent = 'TRANSMISSÃO INTERROMPIDA';
-        }
-
-        atualizarStatusFisico(camera, index, online);
-      };
-
-      if (frame) {
-        const botaoFechar = frame.querySelector('.fechar-ampliada');
-
-        botaoFechar?.addEventListener('click', event => {
-          event.preventDefault();
-          event.stopPropagation();
-          fecharTelaCheia();
-        });
-
-        frame.addEventListener('click', async event => {
-          if (event.target.closest('.fechar-ampliada')) return;
-          if (card.classList.contains('ampliada')) return;
-
-          if (cardAmpliado && cardAmpliado !== card) {
-            cardAmpliado.classList.remove('ampliada');
-          }
-
-          cardAmpliado = card;
-          card.classList.add('ampliada');
-
-          try {
-            const raiz = janela.document.documentElement;
-
-            if (
-              !janela.document.fullscreenElement &&
-              raiz.requestFullscreen
-            ) {
-              await raiz.requestFullscreen();
-            }
-          } catch (_) {}
-        });
-      }
-
-      const iniciarPelaNuvem = () => {
-        const cameraId = String(
-          camera?.id ||
-          camera?.camera_id ||
-          camera?.identificador ||
-          ''
-        ).trim();
-
-        const { token, api } = obterSessaoCloudV43();
-
-        if (!cameraId || !token) {
-          aplicarStatus(false);
-
-          if (loading) {
-            loading.textContent =
-              !cameraId
-                ? 'CÂMERA SEM ID PARA A NUVEM'
-                : 'SESSÃO DA NUVEM SEM TOKEN';
-          }
-
-          return;
-        }
-
-        let carregandoFrame = false;
-        let timerCloud = null;
-        let falhasSeguidas = 0;
-
-        const agendarProximoFrame = atraso => {
-          if (janela.closed) return;
-          if (timerCloud) clearTimeout(timerCloud);
-
-          timerCloud = setTimeout(
-            atualizarFrameCloud,
-            Math.max(250, Number(atraso) || 900)
-          );
-
-          atualizadoresCloud.set(index, timerCloud);
-        };
-
-        const atualizarFrameCloud = () => {
-          if (janela.closed || carregandoFrame) return;
-
-          carregandoFrame = true;
-
-          const url =
-            `${api}/cloud/cameras/${encodeURIComponent(cameraId)}/frame` +
-            `?token=${encodeURIComponent(token)}` +
-            `&_=${Date.now()}`;
-
-          /*
-           * O próximo JPEG é carregado em memória. A imagem que já está
-           * visível não é tocada durante a requisição, evitando piscadas,
-           * quadros pretos e engasgos a cada atualização da nuvem.
-           */
-          const proximoFrame = new janela.Image();
-          proximoFrame.decoding = 'async';
-
-          proximoFrame.onload = () => {
-            try {
-              img.src = proximoFrame.src;
-              img.style.display = 'block';
-
-              if (loading) loading.style.display = 'none';
-
-              falhasSeguidas = 0;
-              aplicarStatus(true);
-            } finally {
-              carregandoFrame = false;
-              agendarProximoFrame(700);
-            }
-          };
-
-          proximoFrame.onerror = () => {
-            falhasSeguidas += 1;
-            carregandoFrame = false;
-
-            /* Mantém o último quadro bom na tela durante falhas transitórias. */
-            if (!img.src) {
-              aplicarStatus(false);
-              if (loading) {
-                loading.style.display = 'block';
-                loading.textContent = 'AGUARDANDO FRAME DA NUVEM';
-              }
-            }
-
-            agendarProximoFrame(Math.min(3000, 700 + falhasSeguidas * 350));
-          };
-
-          proximoFrame.src = url;
-        };
-
-        atualizarFrameCloud();
-      };
-
-      const iniciarLocal = async () => {
-        let verificando = false;
-
-        const verificarOnline = async () => {
-          if (verificando || janela.closed) return;
-
-          verificando = true;
-
-          const controle = new AbortController();
-          const timeout = setTimeout(() => controle.abort(), 7000);
-
-          try {
-            const respostaTeste = await fetch(
-              `${getApiLocal3001()}/local/cameras/testar`,
-              {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(dadosStreamV43(camera)),
-                signal: controle.signal
-              }
-            );
-
-            const dadosTeste =
-              await respostaTeste.json().catch(() => ({}));
-
-            aplicarStatus(
-              Boolean(
-                respostaTeste.ok &&
-                dadosTeste.success &&
-                dadosTeste.data?.online !== false
-              )
-            );
-          } catch (_) {
-            aplicarStatus(false);
-          } finally {
-            clearTimeout(timeout);
-            verificando = false;
-          }
-        };
-
-        const resposta = await fetch(
-          `${getApiLocal3001()}/local/cameras/mjpeg/iniciar`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(dadosStreamV43(camera))
-          }
-        );
-
-        const dados = await resposta.json().catch(() => ({}));
-
-        if (
-          !resposta.ok ||
-          !dados.success ||
-          !dados.data?.sessao_id ||
-          !dados.data?.stream_url
-        ) {
-          throw new Error(
-            dados.details ||
-            dados.message ||
-            `Erro HTTP ${resposta.status}`
-          );
-        }
-
-        sessoes.set(index, dados.data.sessao_id);
-
-        const url = String(dados.data.stream_url).startsWith('http')
-          ? dados.data.stream_url
-          : `${getApiLocal3001()}${dados.data.stream_url}`;
-
-        img.onload = () => {
-          img.style.display = 'block';
-
-          if (loading) {
-            loading.style.display = 'none';
-          }
-
-          aplicarStatus(true);
-        };
-
-        img.onerror = () => aplicarStatus(false);
-        img.src = url;
-
-        await verificarOnline();
-
-        verificadores.set(
-          index,
-          setInterval(verificarOnline, 10000)
-        );
-      };
-
-      /*
-       * Mantém o funcionamento local exatamente como já estava.
-       * Se esta máquina não alcançar o agente em 127.0.0.1,
-       * usa automaticamente os frames publicados na nuvem.
-       */
-      try {
-        await iniciarLocal();
-      } catch (erroLocal) {
-        console.warn(
-          `Agente local indisponível para a câmera ${camera?.id || index}. ` +
-          'Usando transmissão pela nuvem.',
-          erroLocal
-        );
-
-        iniciarPelaNuvem();
-      }
-    });
-  }
-
-  window.abrirCamerasEmpresaGerenteV41 = async function(condominioId) {
-    const nome = typeof getNomeEmpresaPorIdGerente === 'function'
-      ? getNomeEmpresaPorIdGerente(condominioId)
-      : 'Empresa';
-
-    const chave = `empresa-${condominioId}`;
-    let janela = janelasGerenteV43.get(chave);
-
-    if (janela && !janela.closed) {
-      janela.focus();
-      return;
-    }
-
-    // Abre imediatamente para o navegador não bloquear o pop-up enquanto a API carrega.
-    janela = window.open(
-      '',
-      `zayron-cameras-${condominioId}`,
-      'width=1400,height=900,resizable=yes,scrollbars=yes'
-    );
-
-    if (!janela) {
-      alert('Permita pop-ups para abrir as câmeras.');
-      return;
-    }
-
-    janela.document.write(`<!doctype html><html lang="pt-br"><head><meta charset="utf-8"><title>Câmeras ao vivo - ${escapeHtml(nome)}</title><style>*{box-sizing:border-box}body{margin:0;background:#020617;color:#e2e8f0;font-family:Segoe UI,Arial,sans-serif;padding:16px}.carregando{min-height:220px;display:flex;align-items:center;justify-content:center;color:#93c5fd;background:#0f172a;border:1px solid #334155;border-radius:12px;font-weight:700}</style></head><body><div class="carregando">CARREGANDO CÂMERAS DA EMPRESA...</div></body></html>`);
-    janela.document.close();
-    janelasGerenteV43.set(chave, janela);
-
-    let cameras = [];
-
-    try {
-      // O gerente precisa buscar as câmeras da empresa antes de montar o mural.
-      if (typeof carregarCameras === 'function') {
-        const carregadas = await carregarCameras(condominioId);
-
-        if (Array.isArray(carregadas) && carregadas.length) {
-          cameras = carregadas.map(raw => ({
-            ...raw,
-            tipo: raw.tipo || raw.tipo_camera || 'cftv',
-            setor: raw.setor || raw.local_instalacao || raw.descricao || '',
-            latitude: raw.latitude ?? raw.lat ?? null,
-            longitude: raw.longitude ?? raw.lng ?? null
-          }));
-        }
-      }
-
-      // Fallback para o cache local, inclusive APIs antigas sem condominio_id.
-      if (!cameras.length) {
-        window.currentCondoId = condominioId;
-        cameras = camerasEmpresaV43(condominioId);
-      }
-    } catch (error) {
-      console.error('Erro carregando câmeras do gerente:', error);
-      window.currentCondoId = condominioId;
-      cameras = camerasEmpresaV43(condominioId);
-    }
-
-    if (janela.closed) return;
-
-    janela.document.open();
-    janela.document.write(
-      htmlGerenteV43(`Câmeras ao vivo - ${nome}`, cameras)
-    );
-    janela.document.close();
-
-    if (cameras.length) {
-      iniciarCamerasGerenteV43(janela, cameras);
-    }
-  };
-
-  window.abrirCameraIndividualGerenteV41 = function(condominioId,cameraId) {
-    const camera = camerasEmpresaV43(condominioId).find(item => String(item.id) === String(cameraId));
-    if (!camera) return alert('Câmera não encontrada para esta empresa.');
-    const nome = typeof getNomeEmpresaPorIdGerente === 'function' ? getNomeEmpresaPorIdGerente(condominioId) : 'Empresa';
-    const janela = window.open('', `zayron-camera-${cameraId}`, 'width=1100,height=820,resizable=yes');
-    if (!janela) return alert('Permita pop-ups para abrir a câmera.');
-    janela.document.write(htmlGerenteV43(`${camera.nome || 'Câmera'} - ${nome}`, [camera]));
-    janela.document.close();
-    iniciarCamerasGerenteV43(janela,[camera]);
-  };
-
-  function atualizarBotoesV43() {
-    if (typeof currentRole === 'undefined' || currentRole !== 'gerente') return;
-    const box = document.getElementById('lista-empresas-monitoradas-gerente');
-    if (!box || typeof getEmpresasVinculadasDoGerente !== 'function') return;
-    const empresas = getEmpresasVinculadasDoGerente();
-    box.querySelectorAll('.item-lista').forEach((item,index) => {
-      const empresa = empresas[index]; if (!empresa) return;
-      let botao = item.querySelector('.btn-cameras-gerente-v41');
-      if (!botao) { botao=document.createElement('button'); botao.className='btn-mini btn-cameras-gerente-v41'; item.querySelector('.actions-inline')?.prepend(botao); }
-      const total = camerasEmpresaV43(empresa.id).length;
-      botao.textContent = total ? `Abrir câmeras (${total})` : 'Abrir câmeras';
-      botao.onclick = () => window.abrirCamerasEmpresaGerenteV41(empresa.id);
-    });
-  }
-
-  document.addEventListener('DOMContentLoaded',()=>setTimeout(atualizarBotoesV43,1200));
-  setInterval(atualizarBotoesV43,1000);
-})();
-</script>
 </body>
 </html>
+
+
+
+
+
+
+
+
 
