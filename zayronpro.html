@@ -6089,8 +6089,9 @@ data.sort(
             <div><b>Câmera próxima:</b> ${camera ? `${escapeHtml(camera.nome || 'Câmera')} · ${escapeHtml(String(camera.distancia_setor_m || 0))} m` : 'Nenhuma câmera vinculada por coordenada'}</div>
           </div>
           <div class="actions-inline" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
-            <button class="btn-mini" style="background:#10b981;margin-left:0;" ${offlineVisual ? 'disabled' : ''} onclick="atualizarStatusSetorCerca('${setor.id}','ativo')">Armar</button>
-            <button class="btn-mini" style="background:#64748b;margin-left:0;" ${offlineVisual ? 'disabled' : ''} onclick="atualizarStatusSetorCerca('${setor.id}','desarmado')">Desarmar</button>
+           <button class="btn-mini" style="background:#10b981;margin-left:0;" ${offlineVisual ? 'disabled' : ''} onclick="acionarSetorCerca('${setor.id}','ativo')">Armar</button>
+
+<button class="btn-mini" style="background:#64748b;margin-left:0;" ${offlineVisual ? 'disabled' : ''} onclick="acionarSetorCerca('${setor.id}','desarmado')">Desarmar</button>
             <button class="btn-mini" style="background:#8b5cf6;margin-left:0;grid-column:1 / span 2;" ${offlineVisual ? 'disabled' : ''} onclick="abrirCameraMaisProximaDoSetor('${setor.id}', true)">Abrir câmera do setor</button>
           </div>
         </div>`;
