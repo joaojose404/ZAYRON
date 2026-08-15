@@ -6625,9 +6625,50 @@ const setores = (MOCK_DB.setores_cerca || [])
   }
 }
 
-    function acionarSetorCerca(setorId, novoStatus) {
-      return atualizarStatusSetorCerca(setorId, novoStatus);
+   async function acionarSetorCerca(setorId, novoStatus) {
+
+  const status = String(novoStatus || '')
+    .trim()
+    .toLowerCase();
+
+  const role = String(currentRole || '')
+    .trim()
+    .toLowerCase();
+
+  if (
+    role === 'operador' &&
+    (
+      status === 'ativo' ||
+      status === 'desarmado'
+    )
+  ) {
+
+    if (typeof abrirContingenciaOperador === 'function') {
+      return abrirContingenciaOperador(
+        setorId,
+        status
+      );
     }
+
+    if (typeof solicitarContingencia === 'function') {
+      return solicitarContingencia(
+        setorId,
+        status
+      );
+    }
+
+    alert(
+      'Módulo de autorização offline do operador não foi carregado.'
+    );
+
+    return;
+  }
+
+  return atualizarStatusSetorCerca(
+    setorId,
+    novoStatus
+  );
+}
 
     
    async function preencherSelectCercaAdmin() {
