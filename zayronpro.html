@@ -1401,9 +1401,10 @@
           <input type="text" id="op_user_nome" placeholder="Nome do usuário" />
           <input type="text" id="op_user_login" placeholder="Login" />
           <input type="password" id="op_user_pass" placeholder="Senha" />
-          <select id="op_user_tipo">
-            <option value="operador" selected>Operador</option>
-                     </select>
+         <select id="op_user_tipo">
+  <option value="operador" selected>Operador</option>
+  <option value="gerente">Gerente</option>
+</select>
           <button class="btn btn-pink" onclick="salvarUserOperador()">Cadastrar Usuário</button>
           <div class="muted">O usuário será criado vinculado ao mesmo condomínio deste operador.</div>
         </div>
@@ -3517,9 +3518,10 @@ let rondasOcultasTela = new Set(
     ],
 
     gerente: [
-      'painel-gerente-executivo',
-      'map'
-    ]
+  'painel-gerente-executivo',
+  'operator-user-tools',
+  'map'
+]
   };
 }
 
@@ -3948,7 +3950,10 @@ let rondasOcultasTela = new Set(
     setHidden(adminTools, true);
     setHidden(portariaToolbar, true);
     setHidden(reportWindow, true);
-    setHidden(operatorUserTools, true);
+  setHidden(operatorUserTools, false);
+if (painelGerente && operatorUserTools) {
+  painelGerente.appendChild(operatorUserTools);
+}
     setHidden(eventHubCard, false);
     setHidden(painelRondaCard, true);
     setHidden(visitantesCard, true);
@@ -5105,12 +5110,21 @@ setTimeout(() => {
 }
 
     async function salvarUserOperador() {
-      if (currentRole === 'admin') return;
+      if (!['operador', 'gerente'].includes(String(currentRole || '').toLowerCase())) {
+  return;
+}
 
       const nome = document.getElementById('op_user_nome').value.trim().toUpperCase();
       const login = document.getElementById('op_user_login').value.trim().toLowerCase();
       const senha = document.getElementById('op_user_pass').value.trim();
       const tipo = (document.getElementById('op_user_tipo')?.value || 'operador').toLowerCase();
+if (
+  currentRole === 'operador' &&
+  tipo === 'gerente'
+) {
+  alert('Operador não possui permissão para criar gerente.');
+  return;
+}
 
       if (!currentCondoId) {
         alert('Este operador não possui condomínio vinculado.');
