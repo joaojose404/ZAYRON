@@ -2661,45 +2661,133 @@ function getApiBase() {
         telefone: user.telefone || ''
       };
     }
+function isOperadorLocalOfflineRole(role) {
+  return ['operador', 'portaria', 'encomendas'].includes(
+    String(role || '').toLowerCase()
+  );
+}
+function hashSenhaOffline(login, senha) {
+  const texto =
+    `${String(login || '').toLowerCase()}::` +
+    `${String(senha || '')}::` +
+    `zayron-offline-v1`;
 
-    function isOperadorLocalOfflineRole(role) {
-      return ['admin', 'operador', 'portaria', 'encomendas'].includes(String(role || '').toLowerCase());
-    }
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
 
-    function hashSenhaOffline(login, senha) {
-      const texto = `${String(login || '').toLowerCase()}::${String(senha || '')}::zayron-offline-v1`;
-      let h1 = 0xdeadbeef;
-      let h2 = 0x41c6ce57;
-      for (let i = 0; i < texto.length; i += 1) {
-        const ch = texto.charCodeAt(i);
-        h1 = Math.imul(h1 ^ ch, 2654435761);
-        h2 = Math.imul(h2 ^ ch, 1597334677);
-      }
-      h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
-      h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
-      return `${(h2 >>> 0).toString(16).padStart(8, '0')}${(h1 >>> 0).toString(16).padStart(8, '0')}`;
-    }
+  for (let i = 0; i < texto.length; i += 1) {
+    const ch = texto.charCodeAt(i);
 
-    function salvarUsuarioOfflineCache(user, senha) {
-      const role = normalizeRole(user || {});
-      if (!user?.login || !senha || !isOperadorLocalOfflineRole(role)) return;
-      if (!Array.isArray(MOCK_DB.usuarios)) MOCK_DB.usuarios = [];
-      const loginKey = String(user.login || '').toLowerCase();
-      const idx = MOCK_DB.usuarios.findIndex(item => String(item.login || '').toLowerCase() === loginKey);
-      const localUser = {
-        ...user,
-        tipo: role,
-        tipo_usuario: role,
-        ativo: user.ativo !== false,
-        senha_offline_hash: hashSenhaOffline(user.login, senha),
-        offline_enabled: true,
-        offline_cached_at: new Date().toISOString()
-      };
-      if (idx >= 0) MOCK_DB.usuarios[idx] = { ...MOCK_DB.usuarios[idx], ...localUser };
-      else MOCK_DB.usuarios.push(localUser);
-      persistMockDb();
-    }
+    h1 =
+      Math.imul(
+        h1 ^ ch,
+        2654435761
+      );
 
+    h2 =
+      Math.imul(
+        h2 ^ ch,
+        1597334677
+      );
+  }
+
+  h1 =
+    Math.imul(
+      h1 ^ (h1 >>> 16),
+      2246822507
+    ) ^
+    Math.imul(
+      h2 ^ (h2 >>> 13),
+      3266489909
+    );
+
+  h2 =
+    Math.imul(
+      h2 ^ (h2 >>> 16),
+      2246822507
+    ) ^
+    Math.imul(
+      h1 ^ (h1 >>> 13),
+      3266489909
+    );
+
+  return (
+    (h2 >>> 0)
+      .toString(16)
+      .padStart(8, '0') +
+    (h1 >>> 0)
+      .toString(16)
+      .padStart(8, '0')
+  );
+}
+
+
+function salvarUsuarioOfflineCache(user, senha) {
+  const role =
+    normalizeRole(user || {});
+
+  // MASTER / ADMIN NÃO É SALVO PARA LOGIN OFFLINE
+  if (
+    !user?.login ||
+    !senha ||
+    !isOperadorLocalOfflineRole(role)
+  ) {
+    return;
+  }
+
+  if (!Array.isArray(MOCK_DB.usuarios)) {
+    MOCK_DB.usuarios = [];
+  }
+
+  const loginKey =
+    String(user.login || '')
+      .toLowerCase();
+
+  const idx =
+    MOCK_DB.usuarios.findIndex(
+      item =>
+        String(item.login || '')
+          .toLowerCase() ===
+        loginKey
+    );
+
+  const localUser = {
+    ...user,
+
+    tipo: role,
+    tipo_usuario: role,
+
+    ativo:
+      user.ativo !== false,
+
+    senha_offline_hash:
+      hashSenhaOffline(
+        user.login,
+        senha
+      ),
+
+    offline_enabled: true,
+
+    offline_cached_at:
+      new Date().toISOString()
+  };
+
+  if (idx >= 0) {
+
+    MOCK_DB.usuarios[idx] = {
+      ...MOCK_DB.usuarios[idx],
+      ...localUser
+    };
+
+  } else {
+
+    MOCK_DB.usuarios.push(
+      localUser
+    );
+  }
+
+  persistMockDb();
+}
     function tentarLoginOperadorOffline(login, senha) {
       if (!Array.isArray(MOCK_DB.usuarios)) return false;
       const user = MOCK_DB.usuarios.find(item => String(item.login || '').toLowerCase() === String(login || '').toLowerCase());
@@ -2707,9 +2795,9 @@ function getApiBase() {
       const role = normalizeRole(user);
       if (!isOperadorLocalOfflineRole(role)) return false;
       const esperado = user.senha_offline_hash || (user.senha ? hashSenhaOffline(user.login, user.senha) : '');
-      const senhaValida = esperado
-        ? esperado === hashSenhaOffline(login, senha)
-        : String(senha || '') === '1234';
+     const senhaValida =
+  !!esperado &&
+  esperado === hashSenhaOffline(login, senha);
       if (!senhaValida) return false;
       if (!esperado) {
         user.senha_offline_hash = hashSenhaOffline(login, senha);
@@ -6218,38 +6306,52 @@ const setores = (MOCK_DB.setores_cerca || [])
       || null;
   };
 
-  const acionarReleLocalOperador = async () => {
-    const moduloOffline = localizarModuloLocalSetor();
-    if (!moduloOffline) throw new Error('Módulo local não encontrado para este setor');
+ const acionarReleLocalOperador = async () => {
+  const moduloOffline = localizarModuloLocalSetor();
+  if (!moduloOffline) throw new Error('Módulo local não encontrado para este setor');
 
-    let acionamentoLocalOk = false;
-    let ultimoErroLocal = null;
+  let acionamentoLocalOk = false;
+  let ultimoErroLocal = null;
 
-    for (const baseLocal of getApiLocalBases()) {
-      try {
-        const respostaLocal = await fetch(`${String(baseLocal).replace(/\/$/, '')}/local/setores-cerca/acionar`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-          body: JSON.stringify({
-            status: statusNorm,
-            setor: {
-              id: setor.id,
-              nome: setor.nome,
-              saida_rele: setor.saida_rele,
-              entrada_alarme: setor.entrada_alarme
-            },
-            modulo: {
-              id: moduloOffline.id,
-              nome: moduloOffline.nome,
-              ip: moduloOffline.ip || moduloOffline.host,
-              host: moduloOffline.host || moduloOffline.ip,
-              porta: moduloOffline.porta || 502,
-              protocolo: moduloOffline.protocolo || 'modbus_tcp',
-              slave_id: moduloOffline.slave_id || moduloOffline.unit_id || 1
-            }
-          })
-        });
+  for (const baseLocal of getApiLocalBases()) {
+    try {
+      const respostaLocal = await fetch(`${String(baseLocal).replace(/\/$/, '')}/local/setores-cerca/acionar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
 
+        body: JSON.stringify({
+          status: statusNorm,
+
+          desafio_contingencia:
+            window.__ZAYRON_AUTORIZACAO_CONTINGENCIA_ATUAL__?.desafio || '',
+
+          codigo_contingencia:
+            window.__ZAYRON_AUTORIZACAO_CONTINGENCIA_ATUAL__?.codigo || '',
+
+          operador_nome:
+            currentUser?.nome ||
+            currentUser?.login ||
+            currentUser?.username ||
+            'Operador',
+
+          setor: {
+            id: setor.id,
+            nome: setor.nome,
+            saida_rele: setor.saida_rele,
+            entrada_alarme: setor.entrada_alarme
+          },
+
+          modulo: {
+            id: moduloOffline.id,
+            nome: moduloOffline.nome,
+            ip: moduloOffline.ip || moduloOffline.host,
+            host: moduloOffline.host || moduloOffline.ip,
+            porta: moduloOffline.porta || 502,
+            protocolo: moduloOffline.protocolo || 'modbus_tcp',
+            slave_id: moduloOffline.slave_id || moduloOffline.unit_id || 1
+          }
+        })
+      });
         const dadosLocal = await respostaLocal.json().catch(() => ({}));
 
         if (!respostaLocal.ok || dadosLocal?.success === false) {
@@ -6271,6 +6373,11 @@ const setores = (MOCK_DB.setores_cerca || [])
   if (operadorAcionaLocal) {
     try {
       await acionarReleLocalOperador();
+  window.__ZAYRON_CONTINGENCIA_ULTIMO_RESULTADO__ = {
+      ok: true,
+      status: statusNorm,
+      setor_id: setor.id
+    };
     } catch (localError) {
       setor.status = statusAnterior;
       setor.status_atual = statusAnterior;
@@ -17421,32 +17528,101 @@ document.addEventListener('DOMContentLoaded', () => {
     return String(valor || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   }
 
-  function liberarAudioV34() {
-    try {
-      if (!audioV34) audioV34 = new (window.AudioContext || window.webkitAudioContext)();
-      if (audioV34.state === 'suspended') audioV34.resume();
-    } catch (_) {}
-  }
+ function liberarAudioV34() {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
 
-  function tocarSireneV34() {
-    liberarAudioV34();
-    if (!audioV34 || audioV34.state !== 'running') return;
+    if (!AudioCtx) {
+      console.error('AudioContext não suportado neste navegador.');
+      return false;
+    }
+
+    if (!audioV34) {
+      audioV34 = new AudioCtx();
+    }
+
+    if (audioV34.state === 'suspended') {
+      audioV34.resume();
+    }
+
+    if (audioV34.state === 'running') {
+      return true;
+    }
+
+    return false;
+
+  } catch (err) {
+    console.error('Falha ao liberar áudio V34:', err);
+    return false;
+  }
+}
+
+
+async function tocarSireneV34() {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+
+    if (!AudioCtx) {
+      console.error('AudioContext não suportado.');
+      return;
+    }
+
+    if (!audioV34) {
+      audioV34 = new AudioCtx();
+    }
+
+    if (audioV34.state === 'suspended') {
+      await audioV34.resume();
+    }
+
+    if (audioV34.state !== 'running') {
+      console.error(
+        'Áudio bloqueado pelo navegador. Estado:',
+        audioV34.state
+      );
+      return;
+    }
+
     const inicio = audioV34.currentTime;
-    [0,.25,.5,.9,1.15,1.4].forEach((offset, indice) => {
+
+    [0, 0.25, 0.5, 0.9, 1.15, 1.4].forEach((offset, indice) => {
+
       const osc = audioV34.createOscillator();
       const gain = audioV34.createGain();
+
       osc.type = indice < 3 ? 'square' : 'sawtooth';
-      osc.frequency.setValueAtTime(indice % 2 ? 720 : 980, inicio + offset);
-      gain.gain.setValueAtTime(.0001, inicio + offset);
-      gain.gain.exponentialRampToValueAtTime(.16, inicio + offset + .025);
-      gain.gain.exponentialRampToValueAtTime(.0001, inicio + offset + .2);
+
+      osc.frequency.setValueAtTime(
+        indice % 2 ? 720 : 980,
+        inicio + offset
+      );
+
+      gain.gain.setValueAtTime(
+        0.0001,
+        inicio + offset
+      );
+
+      gain.gain.exponentialRampToValueAtTime(
+        0.20,
+        inicio + offset + 0.025
+      );
+
+      gain.gain.exponentialRampToValueAtTime(
+        0.0001,
+        inicio + offset + 0.20
+      );
+
       osc.connect(gain);
       gain.connect(audioV34.destination);
-      osc.start(inicio + offset);
-      osc.stop(inicio + offset + .22);
-    });
-  }
 
+      osc.start(inicio + offset);
+      osc.stop(inicio + offset + 0.22);
+    });
+
+  } catch (err) {
+    console.error('Falha ao tocar sirene V34:', err);
+  }
+}
   function garantirInterfaceV34() {
     if (!document.getElementById('alerta-passagem-v34')) {
       const modal = document.createElement('div');
@@ -19478,6 +19654,1504 @@ function iniciarAtualizacaoAutomaticaCerca() {
     },1000);
 
 }
+</script>
+
+<script>
+/* =========================================================
+   ZAYRON - CONTINGÊNCIA OFFLINE
+   ========================================================= */
+(function () {
+
+  if (window.__ZAYRON_CONTINGENCIA_OFFLINE__) return;
+  window.__ZAYRON_CONTINGENCIA_OFFLINE__ = true;
+
+  const STORAGE_KEY = 'zayron_contingencia_pairing_key_v1';
+
+  let acaoPendente = null;
+
+  function roleAtual() {
+    try {
+      return String(currentRole || '').toLowerCase();
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function garantirModalOperador() {
+
+    let modal =
+      document.getElementById(
+        'zayron-modal-contingencia-operador'
+      );
+
+    if (modal) return modal;
+
+    modal = document.createElement('div');
+
+    modal.id =
+      'zayron-modal-contingencia-operador';
+
+    modal.className =
+      'modal-overlay hidden';
+
+    modal.innerHTML = `
+      <div class="modal-card"
+           style="max-width:560px">
+
+        <div class="modal-header">
+
+          <div>
+            <b style="
+              font-size:17px;
+              color:#fbbf24
+            ">
+              Autorização de Contingência
+            </b>
+
+            <div class="muted">
+              Operação restrita ao gerente.
+            </div>
+          </div>
+
+          <button
+            class="btn-mini"
+            onclick="fecharContingenciaOperador()">
+            Fechar
+          </button>
+
+        </div>
+
+        <div
+          id="zayron-contingencia-detalhes"
+          style="
+            line-height:1.7;
+            margin-bottom:12px
+          ">
+        </div>
+
+        <div style="
+          padding:12px;
+          border:1px solid #f59e0b;
+          border-radius:10px;
+          margin-bottom:12px
+        ">
+
+          <div class="muted">
+            Informe este desafio ao gerente:
+          </div>
+
+          <div
+            id="zayron-contingencia-desafio"
+            style="
+              font-size:28px;
+              font-weight:900;
+              letter-spacing:2px;
+              color:#fde68a;
+              margin-top:6px
+            ">
+          </div>
+
+          <div
+            class="muted"
+            style="margin-top:6px">
+            Validade: 5 minutos.
+          </div>
+
+        </div>
+
+        <input
+          id="zayron-contingencia-codigo"
+          inputmode="numeric"
+          maxlength="6"
+          placeholder="Código de 6 dígitos"
+          style="
+            font-size:20px;
+            text-align:center;
+            letter-spacing:4px
+          "
+        />
+
+        <button
+          class="btn btn-success"
+          onclick="confirmarContingenciaOperador()">
+          Validar e executar
+        </button>
+
+        <div
+          id="zayron-contingencia-status"
+          class="muted"
+          style="margin-top:10px">
+        </div>
+
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    return modal;
+  }
+
+
+  window.fecharContingenciaOperador =
+    function () {
+
+      const modal =
+        document.getElementById(
+          'zayron-modal-contingencia-operador'
+        );
+
+      if (modal) {
+        modal.classList.add('hidden');
+      }
+
+      acaoPendente = null;
+    };
+
+
+  async function criarDesafio(
+    setorId,
+    novoStatus
+  ) {
+
+    const setor =
+      (MOCK_DB.setores_cerca || [])
+        .find(
+          s =>
+            String(s.id) ===
+            String(setorId)
+        );
+
+    if (!setor) {
+      throw new Error(
+        'Setor não encontrado.'
+      );
+    }
+
+    const payload = {
+
+      status:
+        String(novoStatus)
+          .toLowerCase(),
+
+      operador_nome:
+        currentUser?.nome ||
+        currentUser?.login ||
+        currentUser?.username ||
+        'Operador',
+
+      condominio_id:
+        setor.condominio_id ||
+        currentCondoId ||
+        '',
+
+      setor: {
+        id: setor.id,
+        nome: setor.nome || 'Setor',
+        saida_rele: setor.saida_rele,
+        entrada_alarme:
+          setor.entrada_alarme
+      }
+
+    };
+
+    let ultimoErro = null;
+
+    for (
+      const baseLocal
+      of getApiLocalBases()
+    ) {
+
+      try {
+
+        const resp =
+          await fetch(
+            `${String(baseLocal)
+              .replace(/\/$/, '')}/local/contingencia/desafio`,
+            {
+              method: 'POST',
+
+              headers: {
+                'Content-Type':
+                  'application/json',
+
+                Accept:
+                  'application/json'
+              },
+
+              body:
+                JSON.stringify(payload)
+            }
+          );
+
+        const json =
+          await resp.json()
+            .catch(() => ({}));
+
+        if (
+          !resp.ok ||
+          json?.success === false
+        ) {
+          throw new Error(
+            json?.message ||
+            json?.details ||
+            `HTTP ${resp.status}`
+          );
+        }
+
+        return {
+          ...json.data,
+          setor
+        };
+
+      } catch (e) {
+        ultimoErro = e;
+      }
+    }
+
+    throw (
+      ultimoErro ||
+      new Error(
+        'Agente local não respondeu.'
+      )
+    );
+  }
+
+
+  async function solicitarContingencia(
+    setorId,
+    novoStatus
+  ) {
+
+    const modal =
+      garantirModalOperador();
+
+    modal.classList.remove('hidden');
+
+    const statusBox =
+      document.getElementById(
+        'zayron-contingencia-status'
+      );
+
+    statusBox.textContent =
+      'Gerando desafio...';
+
+    try {
+
+      const dados =
+        await criarDesafio(
+          setorId,
+          novoStatus
+        );
+
+      acaoPendente = {
+        setorId,
+        novoStatus,
+        desafio: dados.desafio
+      };
+
+      document.getElementById(
+        'zayron-contingencia-detalhes'
+      ).innerHTML = `
+        <b>Setor:</b>
+        ${escapeHtml(
+          dados.setor?.nome || '-'
+        )}
+        <br>
+
+        <b>Operação:</b>
+        ${
+          novoStatus === 'desarmado'
+            ? 'DESARMAR'
+            : 'ARMAR'
+        }
+      `;
+
+      document.getElementById(
+        'zayron-contingencia-desafio'
+      ).textContent =
+        dados.desafio;
+
+      document.getElementById(
+        'zayron-contingencia-codigo'
+      ).value = '';
+
+      statusBox.textContent =
+        'Aguardando código do gerente.';
+
+    } catch (erro) {
+
+      statusBox.textContent =
+        erro?.message || erro;
+
+      acaoPendente = null;
+    }
+  }
+
+
+  window.confirmarContingenciaOperador =
+    async function () {
+
+      if (!acaoPendente) {
+        return alert(
+          'Nenhuma operação pendente.'
+        );
+      }
+
+      const codigo =
+        String(
+          document.getElementById(
+            'zayron-contingencia-codigo'
+          )?.value || ''
+        )
+        .replace(/\D/g, '')
+        .slice(0, 6);
+
+      if (codigo.length !== 6) {
+        return alert(
+          'Digite o código de 6 dígitos.'
+        );
+      }
+
+      window
+        .__ZAYRON_AUTORIZACAO_CONTINGENCIA_ATUAL__ = {
+
+          desafio:
+            acaoPendente.desafio,
+
+          codigo
+        };
+
+      window
+        .__ZAYRON_CONTINGENCIA_ULTIMO_RESULTADO__ = {
+          ok: false
+        };
+
+      try {
+
+        await window
+          .__ZAYRON_ACIONAR_SETOR_ORIGINAL__(
+            acaoPendente.setorId,
+            acaoPendente.novoStatus
+          );
+
+        const resultado =
+          window
+            .__ZAYRON_CONTINGENCIA_ULTIMO_RESULTADO__;
+
+        if (!resultado?.ok) {
+          return;
+        }
+
+        document.getElementById(
+          'zayron-contingencia-status'
+        ).textContent =
+          'Operação autorizada e executada.';
+
+        setTimeout(
+          window.fecharContingenciaOperador,
+          800
+        );
+
+      } finally {
+
+        window
+          .__ZAYRON_AUTORIZACAO_CONTINGENCIA_ATUAL__ =
+          null;
+      }
+    };
+
+
+  const original =
+    window.acionarSetorCerca;
+
+  if (
+    typeof original === 'function'
+  ) {
+
+    window
+      .__ZAYRON_ACIONAR_SETOR_ORIGINAL__ =
+      original;
+
+    window.acionarSetorCerca =
+      async function (
+        setorId,
+        novoStatus
+      ) {
+
+        const status =
+          String(
+            novoStatus || ''
+          ).toLowerCase();
+
+        if (
+          roleAtual() === 'operador' &&
+          (
+            status === 'ativo' ||
+            status === 'desarmado'
+          )
+        ) {
+
+          return solicitarContingencia(
+            setorId,
+            status
+          );
+        }
+
+        return original.apply(
+          this,
+          arguments
+        );
+      };
+  }
+
+})();
+</script>
+<script>
+/* =========================================================
+   ZAYRON - GERADOR OFFLINE DE AUTORIZAÇÃO DO GERENTE
+   ========================================================= */
+
+(function () {
+  if (window.__ZAYRON_GERADOR_CONTINGENCIA_GERENTE__) return;
+  window.__ZAYRON_GERADOR_CONTINGENCIA_GERENTE__ = true;
+
+  const STORAGE_KEY =
+    "zayron_contingencia_pairing_key_v1";
+
+
+  function criarModalGeradorGerente() {
+    let modal =
+      document.getElementById(
+        "zayron-modal-gerador-contingencia"
+      );
+
+    if (modal) return modal;
+
+    modal = document.createElement("div");
+
+    modal.id =
+      "zayron-modal-gerador-contingencia";
+
+    modal.className =
+      "modal-overlay hidden";
+
+    modal.innerHTML = `
+      <div class="modal-card"
+           style="max-width:600px">
+
+        <div class="modal-header">
+          <div>
+            <b style="
+              font-size:18px;
+              color:#60a5fa;
+            ">
+              Autorização Offline do Operador
+            </b>
+
+            <div class="muted">
+              Gerador de código de contingência
+            </div>
+          </div>
+
+          <button
+            class="btn-mini"
+            onclick="fecharGeradorContingenciaGerente()">
+            Fechar
+          </button>
+        </div>
+
+
+        <div style="
+          padding:12px;
+          border:1px solid #334155;
+          border-radius:10px;
+          margin-bottom:14px;
+        ">
+
+          <div style="
+            font-weight:700;
+            margin-bottom:8px;
+          ">
+            Desafio informado pelo operador
+          </div>
+
+          <input
+            id="zayron-gerente-desafio"
+            placeholder="Ex: D-SETOR01-583421"
+            style="
+              font-size:18px;
+              text-transform:uppercase;
+              letter-spacing:1px;
+            "
+          />
+
+          <button
+            class="btn btn-success"
+            onclick="gerarCodigoContingenciaGerente()">
+            Gerar código
+          </button>
+
+        </div>
+
+
+        <div style="
+          padding:14px;
+          border:1px solid #3b82f6;
+          border-radius:10px;
+          text-align:center;
+        ">
+
+          <div class="muted">
+            Código para informar ao operador
+          </div>
+
+          <div
+            id="zayron-gerente-codigo"
+            style="
+              font-size:34px;
+              font-weight:900;
+              letter-spacing:6px;
+              color:#bfdbfe;
+              margin-top:8px;
+            ">
+            ------
+          </div>
+
+        </div>
+
+
+        <details style="margin-top:15px">
+          <summary style="
+            cursor:pointer;
+            color:#94a3b8;
+          ">
+            Configuração / Pareamento
+          </summary>
+
+          <div style="margin-top:10px">
+
+            <div class="muted">
+              Cole aqui a chave gerada pelo agente.
+              Isso é feito somente uma vez neste dispositivo.
+            </div>
+
+            <input
+              id="zayron-gerente-pairing-key"
+              placeholder="Chave de pareamento"
+              style="margin-top:8px"
+            />
+
+            <button
+              class="btn btn-warning"
+              onclick="salvarChaveContingenciaGerente()">
+              Salvar chave
+            </button>
+
+            <button
+              class="btn btn-danger"
+              style="margin-top:8px"
+              onclick="removerChaveContingenciaGerente()">
+              Remover chave deste dispositivo
+            </button>
+
+          </div>
+        </details>
+
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    return modal;
+  }
+
+
+  window.abrirGeradorContingenciaGerente =
+    function () {
+
+      if (
+        String(currentRole || "").toLowerCase()
+        !== "gerente"
+      ) {
+        return alert(
+          "Apenas o gerente pode gerar códigos de autorização."
+        );
+      }
+
+      const modal =
+        criarModalGeradorGerente();
+
+      const chave =
+        localStorage.getItem(
+          STORAGE_KEY
+        );
+
+      const inputChave =
+        document.getElementById(
+          "zayron-gerente-pairing-key"
+        );
+
+      if (inputChave) {
+        inputChave.value =
+          chave || "";
+      }
+
+      const desafio =
+        document.getElementById(
+          "zayron-gerente-desafio"
+        );
+
+      const codigo =
+        document.getElementById(
+          "zayron-gerente-codigo"
+        );
+
+      if (desafio) desafio.value = "";
+      if (codigo) codigo.textContent = "------";
+
+      modal.classList.remove("hidden");
+    };
+
+
+  window.fecharGeradorContingenciaGerente =
+    function () {
+
+      const modal =
+        document.getElementById(
+          "zayron-modal-gerador-contingencia"
+        );
+
+      if (modal) {
+        modal.classList.add("hidden");
+      }
+    };
+
+
+  window.salvarChaveContingenciaGerente =
+    function () {
+
+      const chave =
+        String(
+          document.getElementById(
+            "zayron-gerente-pairing-key"
+          )?.value || ""
+        ).trim();
+
+      if (!chave) {
+        return alert(
+          "Informe a chave de pareamento."
+        );
+      }
+
+      localStorage.setItem(
+        STORAGE_KEY,
+        chave
+      );
+
+      alert(
+        "Chave de contingência salva neste dispositivo."
+      );
+    };
+
+
+  window.removerChaveContingenciaGerente =
+    function () {
+
+      if (
+        !confirm(
+          "Remover a chave de contingência deste dispositivo?"
+        )
+      ) {
+        return;
+      }
+
+      localStorage.removeItem(
+        STORAGE_KEY
+      );
+
+      const input =
+        document.getElementById(
+          "zayron-gerente-pairing-key"
+        );
+
+      if (input) input.value = "";
+
+      alert(
+        "Chave removida."
+      );
+    };
+
+
+  async function hmacSha256(
+    chaveBase64Url,
+    texto
+  ) {
+
+    const normalizada =
+      String(chaveBase64Url)
+        .replace(/-/g, "+")
+        .replace(/_/g, "/");
+
+    const padding =
+      "=".repeat(
+        (4 - normalizada.length % 4) % 4
+      );
+
+    const binario =
+      atob(
+        normalizada + padding
+      );
+
+    const bytes =
+      new Uint8Array(
+        binario.length
+      );
+
+    for (
+      let i = 0;
+      i < binario.length;
+      i++
+    ) {
+      bytes[i] =
+        binario.charCodeAt(i);
+    }
+
+
+    const cryptoKey =
+      await crypto.subtle.importKey(
+        "raw",
+        bytes,
+        {
+          name: "HMAC",
+          hash: "SHA-256"
+        },
+        false,
+        ["sign"]
+      );
+
+
+    const dados =
+      new TextEncoder().encode(
+        String(texto)
+          .trim()
+          .toUpperCase()
+      );
+
+
+    const assinatura =
+      await crypto.subtle.sign(
+        "HMAC",
+        cryptoKey,
+        dados
+      );
+
+
+    return new Uint8Array(
+      assinatura
+    );
+  }
+
+
+  window.gerarCodigoContingenciaGerente =
+    async function () {
+
+      const chave =
+        localStorage.getItem(
+          STORAGE_KEY
+        );
+
+      if (!chave) {
+        return alert(
+          "Este dispositivo ainda não foi pareado. Abra Configuração / Pareamento e informe a chave do agente."
+        );
+      }
+
+
+      const desafio =
+        String(
+          document.getElementById(
+            "zayron-gerente-desafio"
+          )?.value || ""
+        )
+        .trim()
+        .toUpperCase();
+
+
+      if (!desafio) {
+        return alert(
+          "Informe o desafio enviado pelo operador."
+        );
+      }
+
+
+      try {
+
+        const digest =
+          await hmacSha256(
+            chave,
+            desafio
+          );
+
+
+        const valor =
+          (
+            (
+              digest[0] << 24
+            ) |
+            (
+              digest[1] << 16
+            ) |
+            (
+              digest[2] << 8
+            ) |
+            digest[3]
+          ) >>> 0;
+
+
+        const codigo =
+          String(
+            valor % 1000000
+          ).padStart(
+            6,
+            "0"
+          );
+
+
+        document.getElementById(
+          "zayron-gerente-codigo"
+        ).textContent =
+          codigo;
+
+      } catch (erro) {
+
+        console.error(
+          "Erro ao gerar código de contingência:",
+          erro
+        );
+
+        alert(
+          "Não foi possível gerar o código."
+        );
+      }
+    };
+
+
+  function instalarBotaoGerente() {
+
+    if (
+      String(currentRole || "").toLowerCase()
+      !== "gerente"
+    ) {
+      return;
+    }
+
+
+    if (
+      document.getElementById(
+        "btn-zayron-contingencia-gerente"
+      )
+    ) {
+      return;
+    }
+
+
+    const botao =
+      document.createElement(
+        "button"
+      );
+
+    botao.id =
+      "btn-zayron-contingencia-gerente";
+
+    botao.className =
+      "btn btn-warning";
+
+    botao.style.marginBottom =
+      "10px";
+
+    botao.textContent =
+      "AUTORIZAÇÃO OFFLINE DO OPERADOR";
+
+    botao.onclick =
+      abrirGeradorContingenciaGerente;
+
+
+    const painel =
+      document.getElementById(
+        "painel-gerente-executivo"
+      );
+
+
+    if (painel) {
+
+      painel.insertBefore(
+        botao,
+        painel.firstChild
+      );
+
+    } else {
+
+      document.body.appendChild(
+        botao
+      );
+    }
+  }
+
+
+  setInterval(
+    instalarBotaoGerente,
+    1500
+  );
+
+})();
+</script>
+
+<script>
+/* =========================================================
+   ZAYRON - CONTINGENCIA OFFLINE DO OPERADOR
+   ========================================================= */
+
+(function () {
+
+  if (window.__ZAYRON_CONTINGENCIA_OPERADOR__) return;
+  window.__ZAYRON_CONTINGENCIA_OPERADOR__ = true;
+
+  let acaoContingenciaPendente = null;
+
+
+  function criarModalContingenciaOperador() {
+
+    let modal =
+      document.getElementById(
+        "zayron-modal-contingencia-operador"
+      );
+
+    if (modal) return modal;
+
+
+    modal = document.createElement("div");
+
+    modal.id =
+      "zayron-modal-contingencia-operador";
+
+    modal.className =
+      "modal-overlay hidden";
+
+
+    modal.innerHTML = `
+      <div class="modal-card"
+           style="max-width:560px">
+
+        <div class="modal-header">
+
+          <div>
+            <b style="
+              font-size:18px;
+              color:#fbbf24;
+            ">
+              Autorização de Contingência
+            </b>
+
+            <div class="muted">
+              Operação restrita ao gerente
+            </div>
+          </div>
+
+          <button
+            class="btn-mini"
+            onclick="fecharContingenciaOperador()">
+            Fechar
+          </button>
+
+        </div>
+
+
+        <div
+          id="zayron-contingencia-operacao"
+          style="
+            margin-bottom:12px;
+            line-height:1.7;
+          ">
+        </div>
+
+
+        <div style="
+          border:1px solid #f59e0b;
+          padding:14px;
+          border-radius:10px;
+          margin-bottom:14px;
+          text-align:center;
+        ">
+
+          <div class="muted">
+            Informe este desafio ao gerente
+          </div>
+
+          <div
+            id="zayron-contingencia-desafio"
+            style="
+              font-size:27px;
+              font-weight:900;
+              color:#fde68a;
+              letter-spacing:2px;
+              margin-top:8px;
+            ">
+            ------
+          </div>
+
+          <div class="muted"
+               style="margin-top:6px">
+            Válido por 5 minutos
+          </div>
+
+        </div>
+
+
+        <input
+          id="zayron-contingencia-codigo"
+          inputmode="numeric"
+          maxlength="6"
+          placeholder="Código fornecido pelo gerente"
+          style="
+            font-size:20px;
+            text-align:center;
+            letter-spacing:4px;
+          "
+        />
+
+
+        <button
+          class="btn btn-success"
+          onclick="confirmarContingenciaOperador()">
+          Validar e executar operação
+        </button>
+
+
+        <div
+          id="zayron-contingencia-status"
+          class="muted"
+          style="margin-top:10px">
+        </div>
+
+      </div>
+    `;
+
+
+    document.body.appendChild(modal);
+
+    return modal;
+  }
+
+
+  window.fecharContingenciaOperador =
+    function () {
+
+      const modal =
+        document.getElementById(
+          "zayron-modal-contingencia-operador"
+        );
+
+      if (modal) {
+        modal.classList.add("hidden");
+      }
+
+      acaoContingenciaPendente = null;
+
+      window
+        .__ZAYRON_AUTORIZACAO_CONTINGENCIA_ATUAL__ =
+        null;
+    };
+
+
+  async function gerarDesafioOperador(
+    setorId,
+    novoStatus
+  ) {
+
+    const setor =
+      (MOCK_DB.setores_cerca || [])
+        .find(
+          item =>
+            String(item.id) ===
+            String(setorId)
+        );
+
+
+    if (!setor) {
+      throw new Error(
+        "Setor não encontrado."
+      );
+    }
+
+
+    const payload = {
+
+      status:
+        String(novoStatus || "")
+          .toLowerCase(),
+
+      operador_nome:
+        currentUser?.nome ||
+        currentUser?.login ||
+        currentUser?.username ||
+        "Operador",
+
+      condominio_id:
+        setor.condominio_id ||
+        currentCondoId ||
+        "",
+
+      setor: {
+        id: setor.id,
+        nome: setor.nome || "Setor",
+        saida_rele: setor.saida_rele,
+        entrada_alarme:
+          setor.entrada_alarme
+      }
+    };
+
+
+    let ultimoErro = null;
+
+
+    for (
+      const baseLocal of getApiLocalBases()
+    ) {
+
+      try {
+
+        const resposta =
+          await fetch(
+            `${String(baseLocal)
+              .replace(/\/$/, "")}/local/contingencia/desafio`,
+            {
+              method: "POST",
+
+              headers: {
+                "Content-Type":
+                  "application/json",
+
+                Accept:
+                  "application/json"
+              },
+
+              body:
+                JSON.stringify(payload)
+            }
+          );
+
+
+        const dados =
+          await resposta.json()
+            .catch(() => ({}));
+
+
+        if (
+          !resposta.ok ||
+          dados?.success === false
+        ) {
+
+          throw new Error(
+            dados?.message ||
+            dados?.details ||
+            `HTTP ${resposta.status}`
+          );
+        }
+
+
+        return {
+          ...dados.data,
+          setor
+        };
+
+      } catch (erro) {
+
+        ultimoErro = erro;
+      }
+    }
+
+
+    throw (
+      ultimoErro ||
+      new Error(
+        "Agente local não respondeu."
+      )
+    );
+  }
+
+
+  async function abrirContingenciaOperador(
+    setorId,
+    novoStatus
+  ) {
+
+    const modal =
+      criarModalContingenciaOperador();
+
+
+    modal.classList.remove("hidden");
+
+
+    const statusBox =
+      document.getElementById(
+        "zayron-contingencia-status"
+      );
+
+
+    statusBox.textContent =
+      "Gerando desafio no agente local...";
+
+
+    try {
+
+      const dados =
+        await gerarDesafioOperador(
+          setorId,
+          novoStatus
+        );
+
+
+      acaoContingenciaPendente = {
+        setorId,
+        novoStatus:
+          String(novoStatus)
+            .toLowerCase(),
+
+        desafio:
+          dados.desafio
+      };
+
+
+      document.getElementById(
+        "zayron-contingencia-operacao"
+      ).innerHTML = `
+
+        <b>Setor:</b>
+        ${escapeHtml(
+          dados.setor?.nome ||
+          dados.setor_nome ||
+          "-"
+        )}
+        <br>
+
+        <b>Operação:</b>
+        ${
+          String(novoStatus)
+            .toLowerCase() ===
+          "desarmado"
+            ? "DESARMAR"
+            : "ARMAR"
+        }
+      `;
+
+
+      document.getElementById(
+        "zayron-contingencia-desafio"
+      ).textContent =
+        dados.desafio;
+
+
+      document.getElementById(
+        "zayron-contingencia-codigo"
+      ).value = "";
+
+
+      statusBox.textContent =
+        "Aguardando código do gerente.";
+
+
+    } catch (erro) {
+
+      statusBox.textContent =
+        erro?.message ||
+        "Não foi possível gerar o desafio.";
+
+      acaoContingenciaPendente = null;
+    }
+  }
+
+
+  window.confirmarContingenciaOperador =
+    async function () {
+
+      if (!acaoContingenciaPendente) {
+
+        return alert(
+          "Nenhuma operação de contingência pendente."
+        );
+      }
+
+
+      const codigo =
+        String(
+          document.getElementById(
+            "zayron-contingencia-codigo"
+          )?.value || ""
+        )
+        .replace(/\D/g, "")
+        .slice(0, 6);
+
+
+      if (codigo.length !== 6) {
+
+        return alert(
+          "Digite o código de 6 dígitos fornecido pelo gerente."
+        );
+      }
+
+
+      const statusBox =
+        document.getElementById(
+          "zayron-contingencia-status"
+        );
+
+
+      statusBox.textContent =
+        "Validando autorização...";
+
+
+      window
+        .__ZAYRON_AUTORIZACAO_CONTINGENCIA_ATUAL__ = {
+
+          desafio:
+            acaoContingenciaPendente
+              .desafio,
+
+          codigo
+        };
+
+
+      window
+        .__ZAYRON_CONTINGENCIA_ULTIMO_RESULTADO__ = {
+          ok: false
+        };
+
+
+      try {
+
+        await window
+          .__ZAYRON_ACIONAR_SETOR_ORIGINAL__(
+            acaoContingenciaPendente
+              .setorId,
+
+            acaoContingenciaPendente
+              .novoStatus
+          );
+
+
+        const resultado =
+          window
+            .__ZAYRON_CONTINGENCIA_ULTIMO_RESULTADO__;
+
+
+        if (!resultado?.ok) {
+
+          statusBox.textContent =
+            "Operação não autorizada.";
+
+          return;
+        }
+
+
+        statusBox.textContent =
+          "Autorização aceita. Operação executada.";
+
+
+        setTimeout(
+          () => {
+            window
+              .fecharContingenciaOperador();
+          },
+          1000
+        );
+
+
+      } catch (erro) {
+
+        statusBox.textContent =
+          erro?.message ||
+          "Falha ao executar a operação.";
+
+
+      } finally {
+
+        window
+          .__ZAYRON_AUTORIZACAO_CONTINGENCIA_ATUAL__ =
+          null;
+      }
+    };
+
+
+  const acionarOriginal =
+    window.acionarSetorCerca;
+
+
+  if (
+    typeof acionarOriginal ===
+    "function"
+  ) {
+
+    window
+      .__ZAYRON_ACIONAR_SETOR_ORIGINAL__ =
+      acionarOriginal;
+
+
+    window.acionarSetorCerca =
+      async function (
+        setorId,
+        novoStatus
+      ) {
+
+        const status =
+          String(
+            novoStatus || ""
+          )
+          .trim()
+          .toLowerCase();
+
+
+        const role =
+          String(
+            currentRole || ""
+          )
+          .trim()
+          .toLowerCase();
+
+
+        /*
+         * SOMENTE OPERADOR
+         * ARMAR / DESARMAR
+         */
+
+        if (
+          role === "operador" &&
+          (
+            status === "ativo" ||
+            status === "desarmado"
+          )
+        ) {
+
+          return abrirContingenciaOperador(
+            setorId,
+            status
+          );
+        }
+
+
+        /*
+         * GERENTE E OUTRAS AÇÕES
+         * continuam exatamente como antes
+         */
+
+        return acionarOriginal.apply(
+          this,
+          arguments
+        );
+      };
+  }
+
+
+})();
 </script>
 </body>
 </html>
