@@ -6284,10 +6284,10 @@ const setores = (MOCK_DB.setores_cerca || [])
   };
 
   const roleComandoCerca = normalizeRole(currentSession?.usuario || currentUser || {});
-  const operadorAcionaLocal =
+ const operadorAcionaLocal =
   ['ativo', 'desarmado'].includes(statusNorm) &&
   currentRole === 'operador' &&
-  !window.location.hostname.includes('github.io');
+  !!window.__ZAYRON_AUTORIZACAO_CONTINGENCIA_ATUAL__;
 
   const localizarModuloLocalSetor = () => {
     if (setor.modulo && (setor.modulo.ip || setor.modulo.host)) return setor.modulo;
