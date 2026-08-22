@@ -21085,14 +21085,10 @@ function iniciarAtualizacaoAutomaticaCerca() {
 
       try {
 
-        await window
-          .__ZAYRON_ACIONAR_SETOR_ORIGINAL__(
-            acaoContingenciaPendente
-              .setorId,
-
-            acaoContingenciaPendente
-              .novoStatus
-          );
+      await atualizarStatusSetorCerca(
+  acaoContingenciaPendente.setorId,
+  acaoContingenciaPendente.novoStatus
+);
 
 
         const resultado =
