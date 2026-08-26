@@ -7370,61 +7370,152 @@ if (['operador','portaria'].includes(String(currentRole || '').toLowerCase())) {
       }
     }
 
-    async function carregarEventosCercaServidor(condominioId = null) {
-      const condoId = condominioId || getFenceCondoId();
-      if (!Array.isArray(MOCK_DB.alarmes_cerca)) MOCK_DB.alarmes_cerca = [];
-      const setores = getSetoresCerca(condoId);
-      const chaves = new Set(MOCK_DB.alarmes_cerca.map(item => String(item.chave_sincronizacao || '')));
-      setores.forEach(setor => {
-        const status = String(setor.status || setor.status_atual || 'ativo').toLowerCase();
-        const alteradoEm = setor.desarmado_em || setor.updated_at || setor.created_at || '';
-        const chave = `${setor.id}:${status}:${alteradoEm}`;
-        if (chaves.has(chave)) return;
-        const jaExiste = MOCK_DB.alarmes_cerca.some(item =>
-          String(item.setor_id) === String(setor.id) &&
-          String(item.status_setor || '').toLowerCase() === status &&
-          String(item.created_at || '') === String(alteradoEm || '')
-        );
-        if (jaExiste) return;
-        const tipo = status === 'alarme' ? 'violacao'
-          : status === 'falha' ? 'falha'
-          : status === 'desarmado' ? 'desarme'
-          : 'arme';
-        const responsavel = setor.desarmado_por || setor.responsavel_nome || 'Sistema';
-        const motivo = setor.motivo_desarme || '';
-        const centro = getSetorCentro(setor) || {};
-        MOCK_DB.alarmes_cerca.push({
-          id: `sync-${setor.id}-${String(alteradoEm || Date.now()).replace(/\W/g, '')}-${status}`,
-          chave_sincronizacao: chave,
-          condominio_id: setor.condominio_id,
-          modulo_id: setor.modulo_id || setor.modulo_cerca_id,
-          setor_id: setor.id,
-          setor_nome: setor.nome,
-          tipo,
-          status_setor: status,
-          prioridade: status === 'alarme' ? 'alta' : status === 'falha' ? 'media' : 'baixa',
-          responsavel_nome: responsavel,
-          motivo,
-          motivo_desarme: motivo,
-          descricao: status === 'desarmado'
-            ? `Setor desarmado por ${responsavel}${motivo ? `. Motivo: ${motivo}.` : '.'}`
-            : status === 'ativo'
-              ? `Setor ativado por ${responsavel}.`
-              : status === 'falha'
-                ? 'Falha registrada no setor.'
-                : 'Alarme ou disparo registrado no setor.',
-          latitude: Number.isFinite(Number(centro.lat)) ? Number(centro.lat) : setor.latitude,
-          longitude: Number.isFinite(Number(centro.lng)) ? Number(centro.lng) : setor.longitude,
-          created_at: alteradoEm || new Date().toISOString()
-        });
-        chaves.add(chave);
-      });
-      MOCK_DB.alarmes_cerca.sort(
-        (a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)
-      );
-      persistMockDb();
-      return MOCK_DB.alarmes_cerca.filter(item => !condoId || String(item.condominio_id) === String(condoId));
+  async function carregarEventosCercaServidor(condominioId = null) {
+  try {
+    const condoId = condominioId || getFenceCondoId();
+
+    if (!condoId) return [];
+
+    const resp = await apiRequest(
+      `/eventos-operacionais?condominio_id=${encodeURIComponent(condoId)}&tipo_origem=cerca`,
+      {
+        baseOverride: API_NUVEM
+      }
+    );
+
+    const eventosServidor = Array.isArray(resp?.data)
+      ? resp.data
+      : [];
+
+    if (!Array.isArray(MOCK_DB.alarmes_cerca)) {
+      MOCK_DB.alarmes_cerca = [];
     }
+
+    const eventosNormalizados = eventosServidor.map(evento => {
+      const payload = evento.payload_json || {};
+
+      return {
+        id: evento.id,
+        condominio_id: evento.condominio_id,
+        modulo_id:
+          payload.modulo_id ||
+          payload.modulo_cerca_id ||
+          null,
+
+        setor_id:
+          evento.origem_id ||
+          payload.setor_id ||
+          null,
+
+        setor_nome:
+          payload.setor_nome ||
+          evento.titulo ||
+          'Setor',
+
+        tipo:
+          evento.tipo_evento ||
+          payload.tipo ||
+          'evento',
+
+        status_setor:
+          payload.status ||
+          payload.status_atual ||
+          evento.tipo_evento ||
+          '',
+
+        prioridade:
+          evento.prioridade ||
+          payload.prioridade ||
+          'media',
+
+        responsavel_nome:
+          payload.responsavel_nome ||
+          payload.responsavel ||
+          'Sistema',
+
+        motivo:
+          payload.motivo ||
+          payload.motivo_desarme ||
+          '',
+
+        motivo_desarme:
+          payload.motivo_desarme ||
+          payload.motivo ||
+          '',
+
+        descricao:
+          evento.descricao ||
+          '',
+
+        dispositivo_nome:
+          payload.modulo_nome ||
+          payload.dispositivo_nome ||
+          'Módulo de cerca',
+
+        latitude:
+          evento.latitude ??
+          payload.latitude ??
+          null,
+
+        longitude:
+          evento.longitude ??
+          payload.longitude ??
+          null,
+
+        created_at:
+          evento.created_at
+      };
+    });
+
+    const outrosCondominios =
+      MOCK_DB.alarmes_cerca.filter(
+        item =>
+          String(item.condominio_id || '') !==
+          String(condoId)
+      );
+
+    MOCK_DB.alarmes_cerca = [
+      ...outrosCondominios,
+      ...eventosNormalizados
+    ];
+
+    persistMockDb();
+
+    latestFenceEvents =
+      eventosNormalizados
+        .slice()
+        .sort(
+          (a, b) =>
+            new Date(b.created_at || 0) -
+            new Date(a.created_at || 0)
+        )
+        .slice(0, 50);
+
+    if (
+      typeof renderizarRelatorioEventosCerca ===
+      'function'
+    ) {
+      renderizarRelatorioEventosCerca();
+    }
+
+    if (
+      typeof window.renderizarRelatorioCercaOperador ===
+      'function'
+    ) {
+      window.renderizarRelatorioCercaOperador();
+    }
+
+    return eventosNormalizados;
+
+  } catch (error) {
+    console.warn(
+      'Não foi possível carregar eventos da cerca pela nuvem:',
+      error?.message || error
+    );
+
+    return [];
+  }
+}
 
   function renderizarSetoresCercaOperador() {
   const lista = document.getElementById('lista-setores-cerca-operador');
